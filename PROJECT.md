@@ -2,7 +2,15 @@
 
 **Owner:** Lucas
 **Started:** 2026-07-28
-**Status:** Brainstorming / idea selection
+**Status:** Phase 0+1 design approved — see
+[design spec](docs/superpowers/specs/2026-07-28-card-recognition-platform-design.md).
+Next: implementation plan.
+
+**Shape:** ONE platform built in phases, not seven apps. All modules share a card-recognition core,
+a pricing layer, and a collection store. Responsive PWA (phone + desktop): React/TypeScript
+frontend, Python/FastAPI backend.
+
+**Public site:** `docs/index.html`, served via GitHub Pages.
 
 ## Vision
 
@@ -24,26 +32,27 @@ instincts transfer; the market is finally one where they can win.
 - "Is this a good deal vs. real market value?" is connective tissue that could later extend to
   Lucas's other hobbies (3D printer parts, PC/electronics, camera gear).
 
-## Candidate ideas (under discussion — not yet chosen)
+## Phase roadmap
 
-> These are the shortlist being brainstormed. See conversation for full detail; this list will be
-> pruned to a single starter project, which then gets its own design spec.
+Each phase ships independently usable functionality and gets its own spec → plan → build cycle.
 
-1. **Grade Predictor / Pre-grade scanner** — photograph a raw card; CV scores centering, corners,
-   edges, surface, then predicts a PSA/CGC grade *and* the EV of grading (cost vs. value uplift).
-   Answers "should I grade this?" — a real money question.
-2. **Bulk photo cataloger** — fan out cards or scan a binder page; detect + identify *every* card
-   in one shot (set, number, holo/reverse, edition), auto-value the whole collection, track over time.
-3. **Deal / arbitrage sniper** — monitor marketplace + local listings vs. sold comps; alert on
-   underpriced listings and raw-vs-graded arbitrage. (ForexAI reborn for an inefficient market.)
-4. **Counterfeit / fake detector** — CV on holo pattern, texture, print rosette, edges to flag fakes.
-5. **Sealed EV / "rip vs. flip" calculator** — expected value of opening a product vs. its sealed
-   market price, using pull rates + live singles prices.
-6. **Set-completion optimizer** — cheapest path to finishing a target set across marketplaces
-   (a traveling-purchaser / shopping-cart optimization problem).
-7. **Collection portfolio tracker** — treat the collection like a stock portfolio: cost basis, P/L,
-   price history, alerts. Extensible to other hobbies later.
+| Phase | Module | Status |
+|---|---|---|
+| 0 | Foundation — card catalog, pricing layer, collection store | Designed |
+| 1 | Single-card scan — photo → identified, valued card | Designed |
+| 2 | Portfolio tracker — cost basis, P/L, price charts | Planned |
+| 3 | Grade Predictor — CV centering/corner scoring + grading EV | Planned |
+| 4 | Bulk cataloger — detect every card in one photo | Planned |
+| 5 | Deal sniper + sealed EV — listings vs. sold comps, rip-vs-flip | Planned |
+| 6 | Set-completion optimizer — cheapest path to finish a set | Planned |
+| 7 | Counterfeit detector — holo pattern, rosette, texture analysis | Planned |
+
+## Phase 1 in one line
+
+Hybrid recognition: on-device rectification → visual embedding match **and** targeted OCR in
+parallel → fused calibrated confidence → auto-confirm or top-3 user pick. Two engines that fail on
+different inputs, so the system knows when it is unsure.
 
 ## Next step
 
-Pick 1 starter idea → write design spec in `docs/superpowers/specs/` → implementation plan.
+Write the Phase 0+1 implementation plan.
