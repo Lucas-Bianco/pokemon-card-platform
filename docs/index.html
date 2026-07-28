@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Card Recognition Platform</title>
+<meta name="description" content="A phased platform that identifies Pokémon cards from a photo — hybrid computer vision, OCR, and market valuation.">
+<style>
+  :root{
+    --bg:#0b0d12; --bg-soft:#11141c; --line:#222736;
+    --fg:#e8eaf0; --fg-dim:#98a0b3; --fg-faint:#666e82;
+    --accent:#ffcb05; --accent-2:#3b6df0; --ok:#3fb950;
+    --radius:14px;
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+    --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Inter,Roboto,sans-serif;
+  }
+  @media (prefers-color-scheme: light){
+    :root{ --bg:#fbfbfd; --bg-soft:#fff; --line:#e3e6ee; --fg:#12141a; --fg-dim:#5a6274; --fg-faint:#8b93a6; }
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--fg);
+    font-family:var(--sans); line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:860px;margin:0 auto;padding:0 20px}
+
+  /* header */
+  header{
+    padding:72px 0 56px; border-bottom:1px solid var(--line);
+    background:radial-gradient(900px 320px at 50% -80px, rgba(59,109,240,.16), transparent 70%);
+  }
+  .tag{
+    display:inline-block; font-family:var(--mono); font-size:11px; letter-spacing:.14em;
+    text-transform:uppercase; color:var(--accent); border:1px solid var(--line);
+    background:var(--bg-soft); padding:5px 11px; border-radius:999px; margin-bottom:22px;
+  }
+  h1{
+    font-size:clamp(2rem,6vw,3.1rem); line-height:1.1; margin:0 0 16px; letter-spacing:-.02em;
+  }
+  h1 .hl{
+    background:linear-gradient(100deg,var(--accent),#ffb700);
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+  }
+  .lede{font-size:clamp(1rem,2.4vw,1.18rem); color:var(--fg-dim); max-width:60ch; margin:0}
+
+  /* sections */
+  section{padding:52px 0; border-bottom:1px solid var(--line)}
+  h2{
+    font-size:.76rem; font-family:var(--mono); letter-spacing:.16em; text-transform:uppercase;
+    color:var(--fg-faint); margin:0 0 22px; font-weight:600;
+  }
+  h3{font-size:1.02rem;margin:0 0 6px}
+  p{margin:0 0 14px; color:var(--fg-dim)}
+  p.body{color:var(--fg)}
+  strong{color:var(--fg); font-weight:600}
+
+  /* pipeline */
+  .pipe{display:grid; gap:10px; margin:0; padding:0; list-style:none; counter-reset:s}
+  .pipe li{
+    counter-increment:s; display:grid; grid-template-columns:34px 1fr; gap:14px;
+    align-items:start; background:var(--bg-soft); border:1px solid var(--line);
+    border-radius:var(--radius); padding:15px 17px;
+  }
+  .pipe li::before{
+    content:counter(s); font-family:var(--mono); font-size:12px; font-weight:600;
+    color:var(--accent-2); border:1px solid var(--line); border-radius:8px;
+    width:30px; height:30px; display:grid; place-items:center; background:var(--bg);
+  }
+  .pipe small{display:block;color:var(--fg-dim);font-size:.9rem}
+
+  /* roadmap */
+  .road{display:grid;gap:8px}
+  .ph{
+    display:grid; grid-template-columns:60px 1fr auto; gap:14px; align-items:center;
+    padding:13px 16px; border:1px solid var(--line); border-radius:var(--radius);
+    background:var(--bg-soft);
+  }
+  .ph .n{font-family:var(--mono);font-size:11px;color:var(--fg-faint);letter-spacing:.1em}
+  .ph .t{font-size:.96rem}
+  .ph .t span{display:block;color:var(--fg-dim);font-size:.85rem}
+  .st{
+    font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase;
+    padding:4px 9px; border-radius:999px; border:1px solid var(--line); color:var(--fg-faint);
+    white-space:nowrap;
+  }
+  .st.now{color:var(--accent); border-color:color-mix(in srgb,var(--accent) 40%,var(--line))}
+  .st.done{color:var(--ok); border-color:color-mix(in srgb,var(--ok) 40%,var(--line))}
+  .ph.active{border-color:color-mix(in srgb,var(--accent) 35%,var(--line))}
+
+  /* stack */
+  .chips{display:flex;flex-wrap:wrap;gap:7px;margin-top:4px}
+  .chip{
+    font-family:var(--mono); font-size:11.5px; padding:6px 11px; border-radius:8px;
+    border:1px solid var(--line); background:var(--bg-soft); color:var(--fg-dim);
+  }
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:26px}
+  @media (max-width:640px){ .cols{grid-template-columns:1fr;gap:22px} .ph{grid-template-columns:44px 1fr; } .ph .st{grid-column:2;justify-self:start} }
+
+  footer{padding:34px 0 60px;color:var(--fg-faint);font-size:.85rem}
+  a{color:var(--accent-2)}
+  .note{
+    border-left:2px solid var(--accent); padding:2px 0 2px 16px; margin:20px 0;
+    color:var(--fg-dim); font-size:.95rem;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <span class="tag">In development · Phase 1</span>
+    <h1>Point a camera at a card.<br><span class="hl">Know exactly what it is.</span></h1>
+    <p class="lede">A phased platform for Pokémon trading cards — hybrid computer vision and OCR that
+    identifies any card from a photo, values it against live market data, and grows into grading,
+    bulk cataloging, and deal detection.</p>
+  </div>
+</header>
+
+<section>
+  <div class="wrap">
+    <h2>The problem</h2>
+    <p class="body">Card scanning apps guess. They return one answer with no sense of whether it's
+    right, and they routinely confuse holo, reverse-holo, and non-holo printings — cards that look
+    nearly identical but differ enormously in price.</p>
+    <p>The fix isn't a better single model. It's <strong>two independent recognition engines that
+    fail on different inputs</strong>, fused into a score that knows when it's uncertain.</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Recognition pipeline</h2>
+    <ol class="pipe">
+      <li><div><h3>Detect &amp; rectify</h3><small>Find the card's corners in-frame and perspective-warp
+        it flat. Runs on-device in WebAssembly to drive a live camera overlay.</small></div></li>
+      <li><div><h3>Visual embedding match</h3><small>Embed the crop and search every card in the
+        catalog by visual similarity. Returns ranked candidates, never one blind guess.</small></div></li>
+      <li><div><h3>Targeted OCR</h3><small>Read the collector number — a unique key for any card —
+        from a known position on the rectified image.</small></div></li>
+      <li><div><h3>Fusion &amp; calibrated confidence</h3><small>Combine both signals. Agreement
+        auto-confirms; disagreement surfaces the top three and logs the user's pick as training
+        data.</small></div></li>
+      <li><div><h3>Variant disambiguation</h3><small>Specular analysis separates holo from
+        reverse-holo foiling — the difference that most scanners silently get wrong.</small></div></li>
+    </ol>
+    <div class="note">Rectification is the load-bearing step: it makes both engines more accurate,
+    shrinks the network payload, and produces exactly the normalized image the grading module needs
+    later.</div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Roadmap</h2>
+    <div class="road">
+      <div class="ph"><span class="n">00</span><span class="t">Foundation<span>Card catalog, pricing layer, collection store</span></span><span class="st now">Building</span></div>
+      <div class="ph active"><span class="n">01</span><span class="t">Single-card scan<span>Photo → identified, valued card</span></span><span class="st now">Building</span></div>
+      <div class="ph"><span class="n">02</span><span class="t">Portfolio tracker<span>Cost basis, P/L, price history charts</span></span><span class="st">Planned</span></div>
+      <div class="ph"><span class="n">03</span><span class="t">Grade predictor<span>CV centering &amp; corner scoring, plus grading EV</span></span><span class="st">Planned</span></div>
+      <div class="ph"><span class="n">04</span><span class="t">Bulk cataloger<span>Detect and log every card in one photo</span></span><span class="st">Planned</span></div>
+      <div class="ph"><span class="n">05</span><span class="t">Deal sniper &amp; sealed EV<span>Listings vs. sold comps; rip-vs-flip modelling</span></span><span class="st">Planned</span></div>
+      <div class="ph"><span class="n">06</span><span class="t">Set-completion optimizer<span>Cheapest path to finishing a set</span></span><span class="st">Planned</span></div>
+      <div class="ph"><span class="n">07</span><span class="t">Counterfeit detector<span>Holo pattern, print rosette, texture analysis</span></span><span class="st">Planned</span></div>
+    </div>
+    <p style="margin-top:18px">Each phase ships something usable on its own and builds on the same
+    recognition core — no module re-solves a problem an earlier one already solved.</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Stack</h2>
+    <div class="cols">
+      <div>
+        <h3>Frontend</h3>
+        <p>Installable PWA — one codebase for phone camera and desktop.</p>
+        <div class="chips">
+          <span class="chip">React</span><span class="chip">TypeScript</span>
+          <span class="chip">OpenCV.js / WASM</span><span class="chip">PWA</span>
+        </div>
+      </div>
+      <div>
+        <h3>Backend</h3>
+        <p>Python, deliberately — the CV and ML ecosystem the later phases depend on.</p>
+        <div class="chips">
+          <span class="chip">FastAPI</span><span class="chip">CLIP / DINOv2</span>
+          <span class="chip">FAISS</span><span class="chip">PaddleOCR</span><span class="chip">Postgres</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    Design spec: <a href="superpowers/specs/2026-07-28-card-recognition-platform-design.md">Phase 0 + 1</a>
+    · Last updated 2026-07-28
+  </div>
+</footer>
+
+</body>
+</html>
