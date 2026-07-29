@@ -121,19 +121,42 @@ Three stores, each with a distinct responsibility.
 
 Every Pokémon card: set, collector number, rarity, variants, and the official card image.
 
-Primary source: **`pokemontcg.io`** — metadata, images, and embedded market pricing in one API,
-approximately 20k cards.
+Primary source: **`pokemontcg.io`** — metadata, images, and embedded market pricing, **20,479 cards**.
 
-> **Open item for planning:** verify current pricing coverage, rate limits, licensing, and API-key
-> requirements before committing to it as the sole source. This is the project's one significant
-> external dependency and should be pinned down first.
+#### Findings from live verification (2026-07-28)
 
-Data is **mirrored into local Postgres** rather than queried live, because:
+| Finding | Detail |
+|---|---|
+| Pricing included, free, no key | TCGplayer **and** Cardmarket blocks embedded per card |
+| **Per-variant pricing** | `holofoil` and `reverseHolofoil` priced *separately* (low/mid/high/market) |
+| TCGplayer freshness | Updated **daily** — sample card stamped 2026/07/28 |
+| Cardmarket freshness | **~4 weeks stale** (stamped 2026/07/01) |
+| Image CDN | `images.pokemontcg.io` — reliable, unaffected by API problems |
+| Rate limit | 20k requests/day with a free key; much lower unauthenticated |
+| **API reliability** | **Severely degraded: 2 of 12 requests succeeded** (HTTP 500s and timeouts) |
+| Ownership | pokemontcg.io is now part of **Scrydex** — long-term free availability uncertain |
 
-- The embedding build job needs bulk offline access to every card image.
-- Recognition must not depend on third-party uptime or rate limits.
+**Consequences for the design:**
 
-A scheduled sync job pulls newly released sets.
+1. **Per-variant pricing directly resolves the variant→price problem** in §2.5. Once the variant is
+   identified, an accurate price for *that specific printing* is available.
+2. **TCGplayer is the authoritative price feed.** Cardmarket is secondary and must be displayed with
+   its own staleness timestamp, never blended silently into a single "market price".
+3. **Local mirroring is mandatory, not merely preferred.** An 83% failure rate makes live dependency
+   untenable. This validates §3.4.
+4. **Do not bulk-load the catalog through the API.** Clone
+   [`PokemonTCG/pokemon-tcg-data`](https://github.com/PokemonTCG/pokemon-tcg-data) instead — the
+   official flat-JSON dump of the same data (~11 MB, actively maintained). This bypasses the flaky
+   API entirely for catalog + image URLs. *Caveat: that repo carries no license file; confirm usage
+   terms before redistributing its contents.*
+5. **Prices still require the API** (they are not in the JSON dump), so the price sync must be
+   resumable, retry-heavy, and tolerant of long outages. Serve last-known-good prices with an
+   explicit "as of" timestamp.
+6. **Assume this source may disappear.** Isolate all catalog/price access behind a provider
+   interface so a second source can be added without touching recognition code.
+
+Data is **mirrored into local Postgres** rather than queried live. A scheduled sync job pulls newly
+released sets and refreshes prices.
 
 ### 3.2 Reference embedding index
 
@@ -179,7 +202,34 @@ Split by ecosystem strength: each half is written in the language that is genuin
 Responsibilities: camera capture, live detection overlay, client-side rectification (OpenCV.js /
 WASM), collection browsing, installable home-screen experience on phone and desktop.
 
-### 4.2 Backend — Python + FastAPI
+### 4.2 Deployment model — local-first
+
+**All inference runs on the user's own machine.** The only outbound network traffic is the scheduled
+catalog and price sync.
+
+The distinction that matters: **compute is fully local; data is periodically synced.** Prices are
+facts about the outside world and cannot be derived locally — that sync is the one irreducible
+network dependency. Everything else (rectification, embedding, search, OCR, and later grading and
+counterfeit analysis) runs offline.
+
+Local execution is not a compromise here; it is the better design:
+
+- **No per-scan cost**, which is what makes the Phase 4 bulk cataloger economically viable at all.
+- **No rate limits** during the embedding index build.
+- **Works offline** — the deal-hunting use case is a card shop or flea market with poor signal. A
+  cloud-dependent app fails precisely when it is most needed.
+- Collection holdings and valuations never leave the user's machine.
+
+**Phase 1 topology:** the PWA talks to a FastAPI service on the user's PC over the local network.
+Full-size models, no quantization compromises.
+
+**Deferred to a later phase:** a true on-device path (quantized encoder via ONNX Runtime Web /
+WebGPU, OCR via WASM) so the phone works standalone away from home. Deferred deliberately —
+recognition accuracy should be proven with unconstrained models before accepting quantization
+tradeoffs. The provider interface in §3.1 and the rectification-on-client design in §2.1 both keep
+this path open without rework.
+
+### 4.3 Backend — Python + FastAPI
 
 **Rationale (deliberate, load-bearing decision):** the entire computer-vision and ML ecosystem is
 first-class in Python and second-class or absent in JavaScript. Phase 3 (grading model), Phase 4
@@ -190,7 +240,7 @@ wall three phases in.
 includes a Python service. This cost is accepted deliberately; the alternative is fighting the ML
 ecosystem for the life of the project.
 
-### 4.3 Component choices
+### 4.4 Component choices
 
 | Concern | Choice | Note |
 |---|---|---|
@@ -200,7 +250,34 @@ ecosystem for the life of the project.
 | Database | Postgres | Catalog, collection, price history |
 | Client CV | OpenCV.js (WASM) | Live overlay requires on-device execution |
 
-### 4.4 End-to-end flow
+### 4.5 Target hardware
+
+Development and deployment machine (verified 2026-07-28):
+
+| | |
+|---|---|
+| GPU | **NVIDIA RTX 5070 Ti, 16 GB VRAM** (Blackwell) |
+| CPU | AMD Ryzen 7 9800X3D, 8C/16T |
+| RAM | 31 GB |
+| Free disk | 145 GB |
+
+**Implications:** ample headroom for Phase 1. 16 GB VRAM makes the expensive later phases realistic
+on this hardware — training a grading model (Phase 3) and fine-tuning the encoder on collected
+user-correction data both become feasible locally rather than requiring rented compute.
+
+**Two environment hazards to handle in setup — both cause silent or confusing failures:**
+
+1. **System Python is 3.14.3**, too new for reliable PyTorch / FAISS / PaddleOCR wheels. Create a
+   dedicated **Python 3.12 virtual environment** for the backend rather than using system Python.
+2. **Blackwell (sm_120) requires a CUDA 12.8+ PyTorch build.** Older wheels either fail to load or
+   silently fall back to CPU. Verify `torch.cuda.is_available()` and the reported device name as an
+   explicit setup step before building the index.
+
+**Storage sizing:** reference images should use the CDN's `small` variant (~1 GB total), not `hires`
+(~17 GB). Hires resolution is unnecessary for embedding and would waste disk and build time. The
+embedding index itself is trivial: ~20k vectors × 768 dims ≈ **60 MB**.
+
+### 4.6 End-to-end flow
 
 ```
 camera
@@ -266,10 +343,23 @@ plan.
 
 ## 8. Open items for planning
 
-1. Verify `pokemontcg.io` pricing coverage, rate limits, licensing, and API-key requirements.
-   Identify a fallback or supplementary price source if coverage is insufficient.
-2. Select the specific pretrained encoder and confirm its near-duplicate retrieval accuracy on a
-   sample of real card photos before building the full index.
-3. Determine deployment target for the Python service (local-first for Phase 1 is acceptable).
-4. Define the initial confidence threshold empirically from the labelled evaluation set rather than
+**Resolved 2026-07-28:**
+
+- ~~Verify `pokemontcg.io` pricing coverage, rate limits, licensing, API-key requirements.~~ Done —
+  see §3.1. Pricing is free, per-variant, and daily-fresh for TCGplayer; the API itself is unreliable
+  and must be bypassed for bulk catalog loading.
+- ~~Determine deployment target for the Python service.~~ Local-first, §4.2.
+
+**Still open:**
+
+1. Select the specific pretrained encoder and confirm its near-duplicate retrieval accuracy on a
+   sample of real card photos **before** building the full index. Cheap to test, expensive to get
+   wrong.
+2. Define the initial confidence threshold empirically from the labelled evaluation set rather than
    guessing a constant.
+3. Confirm licensing/usage terms for `PokemonTCG/pokemon-tcg-data` (no license file present) before
+   redistributing any of its contents from a public repository.
+4. Identify a fallback price provider, given the Scrydex ownership change. Not blocking for Phase 1,
+   but the provider interface (§3.1, item 6) must exist from the start so adding one is cheap.
+5. Decide how holo/reverse-holo specular analysis is calibrated (§2.5) — rule-based thresholds
+   initially, or a small trained classifier once user-correction data accumulates.

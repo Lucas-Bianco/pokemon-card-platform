@@ -162,6 +162,7 @@
       <div class="ph"><span class="n">05</span><span class="t">Deal sniper &amp; sealed EV<span>Listings vs. sold comps; rip-vs-flip modelling</span></span><span class="st">Planned</span></div>
       <div class="ph"><span class="n">06</span><span class="t">Set-completion optimizer<span>Cheapest path to finishing a set</span></span><span class="st">Planned</span></div>
       <div class="ph"><span class="n">07</span><span class="t">Counterfeit detector<span>Holo pattern, print rosette, texture analysis</span></span><span class="st">Planned</span></div>
+      <div class="ph"><span class="n">08</span><span class="t">On-device inference<span>Quantized model in-browser — scanning with no server</span></span><span class="st">Planned</span></div>
     </div>
     <p style="margin-top:18px">Each phase ships something usable on its own and builds on the same
     recognition core — no module re-solves a problem an earlier one already solved.</p>
@@ -188,6 +189,11 @@
           <span class="chip">FAISS</span><span class="chip">PaddleOCR</span><span class="chip">Postgres</span>
         </div>
       </div>
+    </div>
+    <div class="note" style="margin-top:26px">
+      <strong>Runs entirely on your own machine.</strong> Compute is local — recognition, embedding,
+      search, and OCR never leave the device. Only the card catalog and price data sync over the
+      network, so scanning still works offline, in a card shop, on bad signal.
     </div>
   </div>
 </section>

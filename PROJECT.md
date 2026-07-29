@@ -46,6 +46,19 @@ Each phase ships independently usable functionality and gets its own spec → pl
 | 5 | Deal sniper + sealed EV — listings vs. sold comps, rip-vs-flip | Planned |
 | 6 | Set-completion optimizer — cheapest path to finish a set | Planned |
 | 7 | Counterfeit detector — holo pattern, rosette, texture analysis | Planned |
+| 8 | On-device inference — quantized model in-browser, no server | Planned |
+
+## Key decisions
+
+- **Local-first.** All inference runs on Lucas's own machine (RTX 5070 Ti / 16 GB VRAM). Only the
+  catalog + price sync touches the network, so scanning works offline.
+- **Data source verified 2026-07-28.** `pokemontcg.io` supplies free **per-variant** pricing
+  (holofoil vs. reverse-holofoil priced separately — exactly what variant disambiguation needs),
+  TCGplayer refreshed daily. But the **API is badly degraded (2/12 requests succeeded)**, so the
+  catalog is bulk-loaded from the [`pokemon-tcg-data`](https://github.com/PokemonTCG/pokemon-tcg-data)
+  JSON dump instead, and all providers sit behind an interface so a fallback can be swapped in.
+- **Setup hazards:** system Python is 3.14 (too new for the ML wheels — use a 3.12 venv), and
+  Blackwell GPUs need a CUDA 12.8+ PyTorch build or they silently fall back to CPU.
 
 ## Phase 1 in one line
 
