@@ -12,9 +12,6 @@ from sqlalchemy.orm import Session
 from cardplatform.db.models import PriceSnapshot
 from cardplatform.prices.provider import PriceProvider
 
-# TCGplayer refreshed daily when measured; Cardmarket lagged ~4 weeks. Prefer the fresher feed.
-_SOURCE_PRIORITY = {"tcgplayer": 0, "cardmarket": 1}
-
 
 class PriceService:
     def __init__(self, session: Session, provider: PriceProvider) -> None:
@@ -45,15 +42,27 @@ class PriceService:
         return written
 
     def latest_price(self, card_id: str, variant: str) -> PriceSnapshot | None:
-        """Most recent snapshot for a card+variant, preferring the fresher source."""
-        rows = self.session.scalars(
+        """Newest tcgplayer snapshot for this exact variant, else the cardmarket aggregate.
+
+        tcgplayer prices per printing variant; cardmarket only publishes one aggregate
+        figure per card. They never share a variant value, so an explicit fallback is
+        required — a source-priority sort over a single result set can never fire.
+        """
+        return self._newest(card_id, "tcgplayer", variant) or self._newest(
+            card_id, "cardmarket", "aggregate"
+        )
+
+    def _newest(self, card_id: str, source: str, variant: str) -> PriceSnapshot | None:
+        return self.session.scalars(
             select(PriceSnapshot)
-            .where(PriceSnapshot.card_id == card_id, PriceSnapshot.variant == variant)
+            .where(
+                PriceSnapshot.card_id == card_id,
+                PriceSnapshot.source == source,
+                PriceSnapshot.variant == variant,
+            )
             .order_by(PriceSnapshot.fetched_at.desc())
-        ).all()
-        if not rows:
-            return None
-        return min(rows, key=lambda r: _SOURCE_PRIORITY.get(r.source, 99))
+            .limit(1)
+        ).first()
 
     def _already_recorded(
         self, card_id: str, source: str, variant: str, source_updated_at: str

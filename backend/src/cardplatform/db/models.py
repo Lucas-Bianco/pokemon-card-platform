@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import JSON, DateTime, Float, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import JSON, DateTime, Float, ForeignKey, Index, Integer, String, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.types import TypeDecorator
 
@@ -82,6 +82,7 @@ class PriceSnapshot(Base):
     __tablename__ = "price_snapshots"
     __table_args__ = (
         UniqueConstraint("card_id", "source", "variant", "source_updated_at", name="uq_snapshot"),
+        Index("ix_snapshot_lookup", "card_id", "variant", "source", "fetched_at"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)

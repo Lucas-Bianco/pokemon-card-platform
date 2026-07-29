@@ -91,3 +91,79 @@ def test_card_with_no_price_block_returns_empty():
     )
 
     assert PokemonTcgIoProvider(settings).fetch("x-2") == []
+
+
+@respx.mock
+def test_404_is_not_retried():
+    """A 404 (unknown/renamed card id) will never succeed on retry — one request only."""
+    settings = Settings(http_max_attempts=5)
+    route = respx.get(f"{settings.api_base_url}/cards/missing-1").mock(
+        return_value=httpx.Response(404)
+    )
+
+    quotes = PokemonTcgIoProvider(settings).fetch("missing-1")
+
+    assert quotes == []
+    assert route.call_count == 1
+
+
+@respx.mock
+def test_401_is_not_retried():
+    """A bad API key will never succeed on retry — one request only."""
+    settings = Settings(http_max_attempts=5)
+    route = respx.get(f"{settings.api_base_url}/cards/hgss4-1").mock(
+        return_value=httpx.Response(401)
+    )
+
+    quotes = PokemonTcgIoProvider(settings).fetch("hgss4-1")
+
+    assert quotes == []
+    assert route.call_count == 1
+
+
+@respx.mock
+def test_500_is_retried_up_to_max_attempts():
+    settings = Settings(http_max_attempts=3)
+    route = respx.get(f"{settings.api_base_url}/cards/x-1").mock(return_value=httpx.Response(500))
+
+    quotes = PokemonTcgIoProvider(settings).fetch("x-1")
+
+    assert quotes == []
+    assert route.call_count == 3
+
+
+@respx.mock
+def test_429_is_retried_up_to_max_attempts():
+    settings = Settings(http_max_attempts=3)
+    route = respx.get(f"{settings.api_base_url}/cards/x-1").mock(return_value=httpx.Response(429))
+
+    quotes = PokemonTcgIoProvider(settings).fetch("x-1")
+
+    assert quotes == []
+    assert route.call_count == 3
+
+
+@respx.mock
+def test_no_api_key_header_sent_when_key_not_configured():
+    settings = Settings(api_key=None)
+    route = respx.get(f"{settings.api_base_url}/cards/hgss4-1").mock(
+        return_value=httpx.Response(200, json=CARD_RESPONSE)
+    )
+
+    PokemonTcgIoProvider(settings).fetch("hgss4-1")
+
+    sent = route.calls.last.request
+    assert "X-Api-Key" not in sent.headers
+
+
+@respx.mock
+def test_api_key_header_sent_when_key_configured():
+    settings = Settings(api_key="secret-key-123")
+    route = respx.get(f"{settings.api_base_url}/cards/hgss4-1").mock(
+        return_value=httpx.Response(200, json=CARD_RESPONSE)
+    )
+
+    PokemonTcgIoProvider(settings).fetch("hgss4-1")
+
+    sent = route.calls.last.request
+    assert sent.headers["X-Api-Key"] == "secret-key-123"

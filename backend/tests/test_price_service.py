@@ -73,7 +73,8 @@ def test_new_source_timestamp_appends_history(seeded):
     assert seeded.query(PriceSnapshot).count() == 2
 
 
-def test_latest_price_prefers_tcgplayer(seeded):
+def test_latest_price_prefers_tcgplayer_when_both_sources_have_the_variant(seeded):
+    """tcgplayer and cardmarket can both cover a card; tcgplayer must win."""
     quotes = [
         PriceQuote("base1-4", "tcgplayer", "holofoil", market=9.71, source_updated_at="2026/07/28"),
         PriceQuote("base1-4", "cardmarket", "aggregate", market=2.67, source_updated_at="2026/07/01"),
@@ -85,6 +86,38 @@ def test_latest_price_prefers_tcgplayer(seeded):
 
     assert latest.source == "tcgplayer"
     assert latest.market == 9.71
+
+
+def test_latest_price_falls_back_to_cardmarket_when_no_tcgplayer_row_exists(seeded):
+    """Regression guard for the dead-priority-code bug: cardmarket-only cards must
+    still price, not silently return None (which would zero them out in valuation)."""
+    quote = PriceQuote("base1-4", "cardmarket", "aggregate", market=2.67, source_updated_at="2026/07/01")
+    service = PriceService(seeded, FakeProvider([quote]))
+    service.refresh_card("base1-4")
+
+    latest = service.latest_price("base1-4", variant="normal")
+
+    assert latest is not None
+    assert latest.source == "cardmarket"
+    assert latest.market == 2.67
+
+
+def test_latest_price_returns_newest_of_several_out_of_order_snapshots(seeded):
+    """Multiple snapshots for one variant, inserted out of chronological order by
+    source_updated_at — latest_price must return the one with the newest fetched_at,
+    not rely on insertion order or any incidental row ordering."""
+    quotes_in_insertion_order = [
+        PriceQuote("base1-4", "tcgplayer", "holofoil", market=9.71, source_updated_at="2026/07/28"),
+        PriceQuote("base1-4", "tcgplayer", "holofoil", market=5.00, source_updated_at="2026/07/01"),
+        PriceQuote("base1-4", "tcgplayer", "holofoil", market=11.02, source_updated_at="2026/07/29"),
+    ]
+    for quote in quotes_in_insertion_order:
+        PriceService(seeded, FakeProvider([quote])).refresh_card("base1-4")
+
+    latest = PriceService(seeded, FakeProvider([])).latest_price("base1-4", variant="holofoil")
+
+    assert latest.market == 11.02
+    assert latest.source_updated_at == "2026/07/29"
 
 
 def test_latest_price_returns_none_when_unpriced(seeded):

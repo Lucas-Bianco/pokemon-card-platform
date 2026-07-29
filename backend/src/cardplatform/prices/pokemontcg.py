@@ -17,11 +17,18 @@ from cardplatform.prices.provider import PriceQuote
 
 logger = logging.getLogger(__name__)
 
+# Cardmarket has no low/mid/market fields; these are the nearest analogues, not
+# equivalents. averageSellPrice and trendPrice are Cardmarket-specific statistics,
+# not the same measure as tcgplayer's market/mid — do not average them across sources.
 _CARDMARKET_FIELD_MAP = {
     "market": "averageSellPrice",
     "low": "lowPrice",
     "mid": "trendPrice",
 }
+
+
+class _TerminalHttpError(Exception):
+    """A 4xx (other than 429) — retrying identical requests will never succeed."""
 
 
 class PokemonTcgIoProvider:
@@ -42,6 +49,12 @@ class PokemonTcgIoProvider:
         return quotes
 
     def _get_card(self, card_id: str) -> dict[str, Any] | None:
+        """GET the card, retrying transport errors, 5xx, and 429 only.
+
+        A 404 (unknown/renamed id) or 401/403 (bad key) will never succeed on retry, so
+        those raise _TerminalHttpError, which is not in the retry predicate — tenacity
+        propagates it after a single attempt instead of burning the full attempt budget.
+        """
         headers = {"X-Api-Key": self.settings.api_key} if self.settings.api_key else {}
         url = f"{self.settings.api_base_url}/cards/{card_id}"
 
@@ -58,13 +71,24 @@ class PokemonTcgIoProvider:
             except httpx.HTTPError as exc:
                 logger.warning("price fetch transport error for %s: %s", card_id, exc)
                 return None
-            if response.status_code != 200:
-                logger.warning("price fetch HTTP %s for %s", response.status_code, card_id)
+            if response.status_code == 200:
+                return response.json()
+            if response.status_code == 429 or response.status_code >= 500:
+                logger.warning(
+                    "price fetch HTTP %s for %s (retryable)", response.status_code, card_id
+                )
                 return None
-            return response.json()
+            logger.warning(
+                "price fetch HTTP %s for %s (terminal, not retrying)",
+                response.status_code,
+                card_id,
+            )
+            raise _TerminalHttpError(response.status_code)
 
         try:
             return _attempt()
+        except _TerminalHttpError:
+            return None
         except RetryError:
             logger.error(
                 "price fetch gave up for %s after %s attempts",
