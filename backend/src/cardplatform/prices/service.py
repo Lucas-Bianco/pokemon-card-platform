@@ -14,12 +14,18 @@ from cardplatform.prices.provider import PriceProvider
 
 
 class PriceService:
-    def __init__(self, session: Session, provider: PriceProvider) -> None:
+    def __init__(self, session: Session, provider: PriceProvider | None = None) -> None:
+        # provider is optional so read-only consumers (e.g. collection valuation) can
+        # construct the service just for latest_price without wiring up a fetcher.
         self.session = session
         self.provider = provider
 
     def refresh_card(self, card_id: str) -> int:
         """Fetch and persist new snapshots. Returns the number of rows written."""
+        if self.provider is None:
+            raise RuntimeError(
+                "PriceService was constructed without a provider; refresh_card is unavailable"
+            )
         written = 0
         for quote in self.provider.fetch(card_id):
             stamp = quote.source_updated_at or ""
