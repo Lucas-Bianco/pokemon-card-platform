@@ -123,3 +123,32 @@ def test_latest_price_returns_newest_of_several_out_of_order_snapshots(seeded):
 def test_latest_price_returns_none_when_unpriced(seeded):
     service = PriceService(seeded, FakeProvider([]))
     assert service.latest_price("base1-4", variant="holofoil") is None
+
+
+def test_refresh_card_without_a_provider_raises(seeded):
+    """The provider is optional for read-only consumers, so refresh_card must fail
+    loudly rather than dying on an AttributeError against None."""
+    service = PriceService(seeded)
+
+    with pytest.raises(RuntimeError, match="without a provider"):
+        service.refresh_card("base1-4")
+
+
+def test_latest_price_works_without_a_provider(seeded):
+    """The reason the provider is optional: valuation constructs PriceService(session)
+    purely to read prices and never fetches."""
+    seeded.add(
+        PriceSnapshot(
+            card_id="base1-4",
+            source="tcgplayer",
+            variant="holofoil",
+            market=9.71,
+            source_updated_at="2026/07/28",
+        )
+    )
+    seeded.commit()
+
+    latest = PriceService(seeded).latest_price("base1-4", variant="holofoil")
+
+    assert latest is not None
+    assert latest.market == 9.71
