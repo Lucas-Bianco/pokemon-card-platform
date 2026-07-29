@@ -44,6 +44,10 @@ env/
 .pytest_cache/
 .mypy_cache/
 
+# ---- Cardplatform data (never commit the SQLite db) ----
+data/
+*.sqlite3
+
 # ---- Claude Code ----
 # Keep project config tracked, but ignore local-only overrides
 .claude/settings.local.json
