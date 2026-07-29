@@ -39,6 +39,14 @@ class Settings(BaseSettings):
     http_timeout_seconds: float = Field(default=30.0)
     http_max_attempts: int = Field(default=8)
 
+    # --- recognition (Phase 1a) ---
+    # ViT-B-32/laion2b measured at 2.2 ms/card on an RTX 5070 Ti: ~0.7 min for the
+    # full 20,444-card catalog, 512-d vectors, ~42 MB index.
+    encoder_model: str = Field(default="ViT-B-32")
+    encoder_pretrained: str = Field(default="laion2b_s34b_b79k")
+    rectified_size: tuple[int, int] = Field(default=(600, 825))
+    visual_top_k: int = Field(default=5)
+
     @property
     def db_path(self) -> Path:
         return self.data_dir / "cardplatform.sqlite3"
@@ -50,6 +58,18 @@ class Settings(BaseSettings):
     @property
     def dump_sets_url(self) -> str:
         return f"{self.dump_base_url}/sets/en.json"
+
+    @property
+    def reference_image_dir(self) -> Path:
+        return self.data_dir / "reference_images"
+
+    @property
+    def index_path(self) -> Path:
+        return self.data_dir / "card_index.faiss"
+
+    @property
+    def index_ids_path(self) -> Path:
+        return self.data_dir / "card_index_ids.json"
 
     def dump_cards_url(self, set_id: str) -> str:
         return f"{self.dump_base_url}/cards/en/{set_id}.json"
