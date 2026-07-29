@@ -38,8 +38,8 @@ Each phase ships independently usable functionality and gets its own spec → pl
 
 | Phase | Module | Status |
 |---|---|---|
-| 0 | Foundation — card catalog, pricing layer, collection store | Designed |
-| 1 | Single-card scan — photo → identified, valued card | Designed |
+| 0 | Foundation — card catalog, pricing layer, collection store | **Complete** |
+| 1 | Single-card scan — photo → identified, valued card | Designed, next |
 | 2 | Portfolio tracker — cost basis, P/L, price charts | Planned |
 | 3 | Grade Predictor — CV centering/corner scoring + grading EV | Planned |
 | 4 | Bulk cataloger — detect every card in one photo | Planned |
@@ -59,6 +59,55 @@ Each phase ships independently usable functionality and gets its own spec → pl
   JSON dump instead, and all providers sit behind an interface so a fallback can be swapped in.
 - **Setup hazards:** system Python is 3.14 (too new for the ML wheels — use a 3.12 venv), and
   Blackwell GPUs need a CUDA 12.8+ PyTorch build or they silently fall back to CPU.
+
+## Phase 0 — shipped
+
+Built 2026-07-29 ([plan](docs/superpowers/plans/2026-07-28-phase-0-foundation.md)). **69 tests passing.**
+
+- **Catalog:** 174 sets, **20,444 cards** loaded locally from the
+  [`pokemon-tcg-data`](https://github.com/PokemonTCG/pokemon-tcg-data) JSON dump. Sync is idempotent
+  and resumable (commits per set), so a dropped connection mid-run costs one set, not the whole load.
+- **Prices:** per-variant snapshots from pokemontcg.io behind a swappable provider interface,
+  retry-hardened with backoff. Terminal errors (404/401) are not retried; 5xx and 429 are. Snapshots
+  are immutable and deduped, so price history accrues from day one.
+- **Collection:** add/remove/list with deliberately conservative valuation — an unpriced item counts
+  as zero and is reported separately rather than guessed at.
+- **API:** FastAPI over catalog, prices, and collection. Every price carries its `source` and
+  `source_updated_at`.
+- **Stack note:** SQLite via SQLAlchemy ORM (no SQLite-specific SQL), so a Postgres swap stays cheap.
+
+**Why staleness is surfaced rather than blended** — real data for `base1-4` on 2026-07-29:
+cardmarket said **$1531.00** (updated 07/01), tcgplayer said **$800.43** (updated 07/29). Nearly 2×
+apart. Collapsing those into a single "market price" would be actively misleading, so the API never
+does.
+
+## Carried into Phase 1 (from the final Phase 0 review)
+
+Verified against the real 20,444-card database — resolve these when planning Phase 1:
+
+**Data facts that affect the image pipeline**
+- **0 cards have a missing `image_small`**, 0 duplicates, 0 orphan `set_id`s. The catalog is clean
+  enough to build the embedding index on directly.
+- **Images span two CDNs** — 19,783 on `images.pokemontcg.io`, 661 on `images.scrydex.com`. The
+  post-acquisition migration is visibly in progress.
+- **661 URLs have no file extension**, ending in `/small` rather than `.png`. Any cache-filename
+  logic doing `url.rsplit(".", 1)[-1]` breaks on 3% of the catalog.
+
+**Gaps to close before the scan loop works end to end**
+- **Only 2 of 20,444 cards have any price snapshot.** Prices arrive solely via
+  `cardplatform refresh-prices <ids>`. A scan of an arbitrary card returns "unpriced" until there is
+  a bulk backfill job or an on-demand `POST /cards/{id}/prices/refresh`.
+- **No HTTP endpoint returns the *resolved* price.** `GET /cards/{id}/prices` returns every
+  `(source, variant)` pair; the "which one is *the* price" rule lives only in
+  `PriceService.latest_price`. Add `GET /cards/{id}/price?variant=…` so the scan UI does not
+  reimplement it client-side.
+- **`variant` is unvalidated free text.** A recognizer emitting `"reverse_holo"` instead of
+  `"reverseHolofoil"` silently creates a row that can never be priced correctly.
+- **`latest_price` hardcodes `"tcgplayer"` / `"cardmarket"` / `"aggregate"`**, so a second provider
+  would persist snapshots yet stay invisible to valuation. Worth fixing before Phase 5 adds a source.
+- Nowhere to record match confidence or the source photo for a recognized card.
+- `cli.py` has 0% test coverage (87% overall). It was exercised manually against real data, but it
+  is the one module where a typo ships undetected.
 
 ## Phase 1 in one line
 
