@@ -16,6 +16,7 @@ def test_settings_expose_encoder_defaults(tmp_path):
     assert s.encoder_model == "ViT-B-32"
     assert s.encoder_pretrained == "laion2b_s34b_b79k"
     assert s.rectified_size == (600, 825)
+    assert s.visual_top_k == 5
 
 
 def test_candidate_is_frozen():
