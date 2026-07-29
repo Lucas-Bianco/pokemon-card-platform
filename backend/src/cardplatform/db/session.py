@@ -16,7 +16,7 @@ class Database:
     def __init__(self, settings: Settings | None = None) -> None:
         self.settings = settings or default_settings
         self.settings.ensure_dirs()
-        self.engine: Engine = create_engine(self.settings.database_url, future=True)
+        self.engine: Engine = create_engine(self.settings.database_url)
         _enable_sqlite_pragmas(self.engine)
         self._factory = sessionmaker(bind=self.engine, expire_on_commit=False)
 
@@ -30,7 +30,13 @@ class Database:
 
 
 def _enable_sqlite_pragmas(engine: Engine) -> None:
-    """WAL improves concurrent reads; foreign_keys is off by default in SQLite."""
+    """WAL improves concurrent reads; foreign_keys is off by default in SQLite.
+
+    No-op on non-SQLite engines so a future Postgres swap doesn't choke on these
+    pragmas (Postgres doesn't understand `PRAGMA journal_mode=WAL`).
+    """
+    if engine.dialect.name != "sqlite":
+        return
 
     @event.listens_for(engine, "connect")
     def _set_pragmas(dbapi_conn, _record):  # noqa: ANN001

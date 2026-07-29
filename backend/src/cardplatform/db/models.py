@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import JSON, DateTime, Float, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy.types import TypeDecorator
 
 
 class Base(DeclarativeBase):
@@ -14,6 +15,25 @@ class Base(DeclarativeBase):
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+class UtcDateTime(TypeDecorator):
+    """SQLite has no tz-aware type. Normalize to UTC on write, re-attach UTC on read."""
+
+    impl = DateTime
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            raise ValueError("naive datetime rejected; pass an aware datetime")
+        return value.astimezone(timezone.utc).replace(tzinfo=None)
+
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return None
+        return value.replace(tzinfo=timezone.utc)
 
 
 class CardSet(Base):
@@ -72,8 +92,11 @@ class PriceSnapshot(Base):
     mid: Mapped[float | None] = mapped_column(Float, default=None)
     high: Mapped[float | None] = mapped_column(Float, default=None)
     market: Mapped[float | None] = mapped_column(Float, default=None)
-    source_updated_at: Mapped[str | None] = mapped_column(String, default=None)
-    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    # Non-nullable with an empty-string sentinel: SQL treats NULLs as distinct in
+    # unique constraints, so a NULL here would defeat uq_snapshot's dedupe whenever a
+    # source omits its timestamp. "" collides correctly; NULL would not.
+    source_updated_at: Mapped[str] = mapped_column(String, default="", server_default="")
+    fetched_at: Mapped[datetime] = mapped_column(UtcDateTime, default=_utcnow)
 
 
 class CollectionItem(Base):
@@ -85,8 +108,8 @@ class CollectionItem(Base):
     quantity: Mapped[int] = mapped_column(Integer, default=1)
     condition: Mapped[str | None] = mapped_column(String, default=None)
     acquired_price: Mapped[float | None] = mapped_column(Float, default=None)
-    acquired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+    acquired_at: Mapped[datetime | None] = mapped_column(UtcDateTime, default=None)
     notes: Mapped[str | None] = mapped_column(String, default=None)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=_utcnow)
 
     card: Mapped[Card] = relationship()

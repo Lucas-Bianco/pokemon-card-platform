@@ -5,7 +5,21 @@ from pathlib import Path
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-_REPO_ROOT = Path(__file__).resolve().parents[3]
+def _find_repo_root() -> Path:
+    """Walk up for a repo marker. Falls back to cwd when installed as a wheel.
+
+    A fixed `parents[N]` index breaks on a non-editable install: from
+    `.venv/Lib/site-packages/cardplatform/config.py`, that index resolves inside the
+    venv and `data_dir` silently lands in `.venv/data`, vanishing on rebuild.
+    """
+    here = Path(__file__).resolve()
+    for candidate in here.parents:
+        if (candidate / ".git").exists() or (candidate / "pytest.ini").exists():
+            return candidate
+    return Path.cwd()
+
+
+_REPO_ROOT = _find_repo_root()
 _DUMP_BASE = "https://raw.githubusercontent.com/PokemonTCG/pokemon-tcg-data/master"
 
 
