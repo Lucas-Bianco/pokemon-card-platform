@@ -17,8 +17,10 @@ class DumpSource(Protocol):
 
 @dataclass
 class LoadResult:
-    sets_loaded: int = 0
-    cards_loaded: int = 0
+    sets_seen: int = 0
+    cards_seen: int = 0
+    cards_inserted: int = 0
+    cards_updated: int = 0
 
 
 class CatalogLoader:
@@ -31,12 +33,23 @@ class CatalogLoader:
 
         for raw_set in self.dump.fetch_sets():
             self._upsert_set(raw_set)
-            result.sets_loaded += 1
-            for raw_card in self.dump.fetch_cards(raw_set["id"]):
-                self._upsert_card(raw_card, raw_set["id"])
-                result.cards_loaded += 1
+            result.sets_seen += 1
 
-        self.session.commit()
+            for raw_card in self.dump.fetch_cards(raw_set["id"]):
+                inserted = self._upsert_card(raw_card, raw_set["id"])
+                result.cards_seen += 1
+                if inserted:
+                    result.cards_inserted += 1
+                else:
+                    result.cards_updated += 1
+
+            # Commit per set, not once at the end: the upsert is idempotent, so a
+            # failure partway through a ~175-request sync only costs the in-flight
+            # set instead of discarding every set already downloaded, and a re-run
+            # cheaply skips the sets already committed.
+            self.session.commit()
+
+        self.session.commit()  # anything left pending, e.g. a dump with zero sets
         return result
 
     def _upsert_set(self, raw: dict[str, Any]) -> None:
@@ -56,7 +69,8 @@ class CatalogLoader:
         if existing is None:
             self.session.add(target)
 
-    def _upsert_card(self, raw: dict[str, Any], set_id: str) -> None:
+    def _upsert_card(self, raw: dict[str, Any], set_id: str) -> bool:
+        """Returns True if this card was newly inserted, False if it was updated."""
         images = raw.get("images") or {}
         existing = self.session.get(Card, raw["id"])
         target = existing or Card(id=raw["id"])
@@ -72,5 +86,7 @@ class CatalogLoader:
         target.image_small = images.get("small")
         target.image_large = images.get("large")
 
-        if existing is None:
+        was_inserted = existing is None
+        if was_inserted:
             self.session.add(target)
+        return was_inserted

@@ -52,8 +52,10 @@ def test_loads_sets_and_cards(db):
 
     result = loader.load_all()
 
-    assert result.sets_loaded == 1
-    assert result.cards_loaded == 1
+    assert result.sets_seen == 1
+    assert result.cards_seen == 1
+    assert result.cards_inserted == 1
+    assert result.cards_updated == 0
     card = db.get(Card, "base1-4")
     assert card.name == "Charizard"
     assert card.supertype == "Pokémon"
@@ -68,7 +70,9 @@ def test_load_is_idempotent(db):
     loader.load_all()
     second = loader.load_all()
 
-    assert second.cards_loaded == 1
+    assert second.cards_seen == 1
+    assert second.cards_inserted == 0
+    assert second.cards_updated == 1
     assert db.query(Card).count() == 1
     assert db.query(CardSet).count() == 1
 
