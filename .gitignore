@@ -43,6 +43,9 @@ env/
 *.egg-info/
 .pytest_cache/
 .mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
 
 # ---- Cardplatform data (never commit the SQLite db) ----
 data/

@@ -66,7 +66,9 @@ class PriceService:
                 PriceSnapshot.source == source,
                 PriceSnapshot.variant == variant,
             )
-            .order_by(PriceSnapshot.fetched_at.desc())
+            # id breaks fetched_at ties: _utcnow() is evaluated per row in a single
+            # flush, and Windows clock granularity (~15ms) produces real ties.
+            .order_by(PriceSnapshot.fetched_at.desc(), PriceSnapshot.id.desc())
             .limit(1)
         ).first()
 
