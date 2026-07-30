@@ -20,14 +20,20 @@ NOW = datetime(2026, 7, 29, 12, 0, tzinfo=timezone.utc)
 
 
 class StubService:
-    """Stands in for RecognitionService; records the rectify flag it was called with."""
+    """Stands in for RecognitionService; records the arguments it was called with.
+
+    `corners` starts as the sentinel "unset" so a test can tell "the endpoint passed
+    None" apart from "the endpoint never called us at all".
+    """
 
     def __init__(self, result):
         self.result = result
         self.calls = []
+        self.corners = "unset"
 
-    def recognize(self, image, rectify=True):
+    def recognize(self, image, rectify=True, corners=None):
         self.calls.append(rectify)
+        self.corners = corners
         return self.result
 
 
@@ -246,3 +252,46 @@ def test_a_candidate_missing_from_the_catalog_is_skipped_not_fatal(make_client):
 
     assert response.status_code == 200
     assert [c["card_id"] for c in response.json()["candidates"]] == ["base1-4"]
+
+
+def not_found_result():
+    return result(card_id=None, status="not_found", confidence=0.0, candidates=(),
+                  ocr=OcrReading(), visual_margin=0.0)
+
+
+def test_manual_corners_are_passed_to_the_service(make_client):
+    """Hand-placed corners are the fallback for the 36 real scans that come back
+    ambiguous, so they must survive the trip to the service unrounded and in order."""
+    client = make_client(result())
+
+    response = upload(client, params={"corners": "10,20,110,20,110,160,10,160"})
+
+    assert response.status_code == 200
+    assert client.stub.corners == [(10.0, 20.0), (110.0, 20.0), (110.0, 160.0), (10.0, 160.0)]
+
+
+def test_corners_default_to_none(make_client):
+    """Omitting corners must not change existing behaviour."""
+    client = make_client(not_found_result())
+
+    upload(client)
+
+    assert client.stub.corners is None
+
+
+def test_corners_with_wrong_count_are_rejected(make_client):
+    client = make_client(not_found_result())
+
+    response = upload(client, params={"corners": "1,2,3"})
+
+    assert response.status_code == 422
+    assert client.stub.corners == "unset"
+
+
+def test_non_numeric_corners_are_rejected(make_client):
+    client = make_client(not_found_result())
+
+    response = upload(client, params={"corners": "a,b,c,d,e,f,g,h"})
+
+    assert response.status_code == 422
+    assert client.stub.corners == "unset"

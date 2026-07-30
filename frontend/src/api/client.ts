@@ -22,12 +22,17 @@ async function jsonOrNull<T>(response: Response): Promise<T | null> {
 
 export async function recognize(
   image: Blob,
-  options: { rectify?: boolean; variant?: string },
+  options: { rectify?: boolean; variant?: string; corners?: [number, number][] },
 ): Promise<RecognizeResponse> {
   const params = new URLSearchParams({
     rectify: String(options.rectify ?? true),
     variant: options.variant ?? "normal",
   });
+  // Hand-placed corners, in the source image's pixel space — the server rectifies
+  // against the original, so the caller converts from its own display scale first.
+  if (options.corners) {
+    params.set("corners", options.corners.flat().join(","));
+  }
   const body = new FormData();
   body.append("file", image, "scan.jpg");
 

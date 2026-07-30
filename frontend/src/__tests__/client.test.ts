@@ -45,6 +45,29 @@ describe("recognize", () => {
     expect(spy.mock.calls[0][0]).toContain("rectify=true");
   });
 
+  it("serialises manual corners as a flat list", async () => {
+    const spy = mockFetch(200, { status: "confident", candidates: [] });
+
+    await recognize(new Blob(["x"]), {
+      corners: [
+        [10, 20],
+        [110, 20],
+        [110, 160],
+        [10, 160],
+      ],
+    });
+
+    expect(spy.mock.calls[0][0]).toContain("corners=10%2C20%2C110%2C20%2C110%2C160%2C10%2C160");
+  });
+
+  it("omits corners when none were placed", async () => {
+    const spy = mockFetch(200, { status: "not_found", candidates: [] });
+
+    await recognize(new Blob(["x"]), {});
+
+    expect(spy.mock.calls[0][0]).not.toContain("corners");
+  });
+
   it("throws with the status on failure", async () => {
     mockFetch(500);
 

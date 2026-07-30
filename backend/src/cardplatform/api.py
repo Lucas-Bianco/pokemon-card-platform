@@ -372,11 +372,15 @@ def create_app() -> FastAPI:
         file: UploadFile = File(),
         variant: str = Query(default="normal"),
         rectify: bool = Query(default=True),
+        corners: str | None = Query(default=None),
         session: Session = Depends(get_session),
         service=Depends(get_recognition_service),
     ) -> RecognizeOut:
+        # Parsed before the decode so a malformed quad fails fast, and so a rejected
+        # request never reaches the service.
+        placed_corners = _parse_corners(corners)
         image = _decode_upload(await file.read())
-        result = service.recognize(image, rectify=rectify)
+        result = service.recognize(image, rectify=rectify, corners=placed_corners)
 
         card = session.get(Card, result.card_id) if result.card_id else None
         price = (
@@ -443,6 +447,23 @@ def _decode_upload(raw: bytes) -> Image.Image:
             status_code=400, detail="upload could not be decoded as an image"
         ) from exc
     return image.convert("RGB")
+
+
+def _parse_corners(raw: str | None) -> list[tuple[float, float]] | None:
+    """Parse "x1,y1,x2,y2,x3,y3,x4,y4" from the manual-adjust UI.
+
+    Coordinates are in the source image's pixel space, because that is what the
+    server rectifies against — the client converts from its own display scale.
+    """
+    if not raw:
+        return None
+    try:
+        values = [float(part) for part in raw.split(",")]
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="corners must be numbers") from exc
+    if len(values) != 8:
+        raise HTTPException(status_code=422, detail="corners must be 8 numbers")
+    return [(values[i], values[i + 1]) for i in range(0, 8, 2)]
 
 
 def _candidates_out(session: Session, candidates) -> list[CandidateOut]:
