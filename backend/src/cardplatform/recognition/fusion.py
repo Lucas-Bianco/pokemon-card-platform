@@ -23,7 +23,22 @@ from cardplatform.recognition.types import Candidate, OcrReading, RecognitionRes
 class FusionConfig:
     # Below this top similarity, nothing plausible was found at all.
     min_similarity: float = 0.45
-    # Above this margin the visual winner stands on its own.
+    # Above this margin the visual winner stands on its own, with no OCR backup.
+    #
+    # Calibrated 2026-07-29 over 3,000 queries (500 cards x 6 degradations) against the
+    # full 20,391-card index. Margin separates correct from incorrect matches 13.7x
+    # (0.1201 vs 0.0088). Measured precision on auto-confirmed matches:
+    #
+    #     0.02 -> 89.9% auto, 99.5% precision, 14 wrong
+    #     0.05 -> 78.8% auto, 100.0% precision,  1 wrong
+    #     0.06 -> 74.6% auto, 100.0% precision,  0 wrong
+    #
+    # The harness recommends 0.02 as the lowest threshold clearing 99%, but that is the
+    # wrong trade here: a confidently wrong identification is far worse for this product
+    # than one extra "which of these three?" prompt, and 14 wrong in 3,000 is not a rate
+    # worth 11 percentage points of extra auto-confirm. 0.05 buys near-perfect precision
+    # while still auto-confirming four scans in five. Note this threshold only decides
+    # cases OCR could not arbitrate, so it is a fallback path, not the common one.
     min_margin: float = 0.05
     # Confidence assigned when both signals agree.
     agreement_confidence: float = 0.97

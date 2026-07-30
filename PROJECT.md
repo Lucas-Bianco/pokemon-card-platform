@@ -39,7 +39,8 @@ Each phase ships independently usable functionality and gets its own spec → pl
 | Phase | Module | Status |
 |---|---|---|
 | 0 | Foundation — card catalog, pricing layer, collection store | **Complete** |
-| 1 | Single-card scan — photo → identified, valued card | Designed, next |
+| 1a | Recognition engine — photo → identified, valued card (API) | **Complete** |
+| 1b | Scan PWA — camera, live overlay, top-3 picker | Next |
 | 2 | Portfolio tracker — cost basis, P/L, price charts | Planned |
 | 3 | Grade Predictor — CV centering/corner scoring + grading EV | Planned |
 | 4 | Bulk cataloger — detect every card in one photo | Planned |
@@ -80,6 +81,54 @@ Built 2026-07-29 ([plan](docs/superpowers/plans/2026-07-28-phase-0-foundation.md
 cardmarket said **$1531.00** (updated 07/01), tcgplayer said **$800.43** (updated 07/29). Nearly 2×
 apart. Collapsing those into a single "market price" would be actively misleading, so the API never
 does.
+
+## Phase 1a — shipped
+
+Recognition engine built 2026-07-29
+([plan](docs/superpowers/plans/2026-07-29-phase-1a-recognition-engine.md)). **155 tests passing.**
+
+Photo → rectify → CLIP embedding search over a FAISS index of **20,391 cards** → targeted OCR of the
+collector number → fused into a calibrated decision. Served at `POST /recognize`, returning the card,
+its price with staleness stamp, and ranked candidates when uncertain.
+
+### Measured accuracy at full index scale
+
+3,000 queries (500 cards × 6 degradations) against all 20,391 cards:
+
+| Condition | top-1 | top-3 |
+|---|---|---|
+| clean | 99.8% | 99.8% |
+| jpeg q35 | 98.0% | 99.6% |
+| dim (55% brightness) | 99.0% | 99.8% |
+| glare overlay | 99.2% | 99.8% |
+| blur (σ1.6) | 89.0% | 97.2% |
+| **combo** (all stacked) | **85.4%** | 93.8% |
+
+Blur is the weak spot; everything else clears 98%. The earlier "~85% at full scale" projection turned
+out to describe the *stacked worst case*, not the typical one.
+
+### Why the hybrid design earns its keep
+
+Margin (top score minus runner-up) separates correct from incorrect matches **13.7×** — 0.1201 vs
+0.0088. That is what makes calibrated confidence possible rather than guesswork.
+
+`min_margin` is set to **0.05**: 78.8% of scans auto-confirm at 100% precision (1 wrong in 3,000).
+The calibration harness recommended 0.02 (89.9% auto, 14 wrong), but a confidently wrong
+identification is far worse for this product than one extra "which of these three?" prompt.
+
+Visual search alone confuses same-name reprints — a live scan of Base Charizard returns `base6-3` and
+`base4-4` Charizards at 0.901 and 0.873 behind the correct 0.991. The collector number resolves
+exactly those, which is why OCR is load-bearing rather than decorative.
+
+### Known limitation
+
+**Every number above comes from degraded reference images, not photographs of physical cards.** Real
+photos add perspective, uneven lighting, background clutter, and foil glare that no augmentation
+here simulates. Phase 1b starts by collecting real phone photos and re-running the harness — that is
+the honest accuracy figure.
+
+Rectification is also known to fail on pale backgrounds and edge-clipped framings; it now rejects
+non-card-shaped quads rather than silently returning a stretched crop of the card's artwork.
 
 ## Carried into Phase 1 (from the final Phase 0 review)
 
