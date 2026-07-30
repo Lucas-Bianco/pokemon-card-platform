@@ -40,7 +40,8 @@ Each phase ships independently usable functionality and gets its own spec → pl
 |---|---|---|
 | 0 | Foundation — card catalog, pricing layer, collection store | **Complete** |
 | 1a | Recognition engine — photo → identified, valued card (API) | **Complete** |
-| 1b | Scan PWA — camera, live overlay, top-3 picker | Next |
+| 1b | Scan PWA — camera capture, top-3 picker, scan logging | **Complete** |
+| 1c | Robust card detection — the measured bottleneck | Next |
 | 2 | Portfolio tracker — cost basis, P/L, price charts | Planned |
 | 3 | Grade Predictor — CV centering/corner scoring + grading EV | Planned |
 | 4 | Bulk cataloger — detect every card in one photo | Planned |
@@ -129,6 +130,69 @@ the honest accuracy figure.
 
 Rectification is also known to fail on pale backgrounds and edge-clipped framings; it now rejects
 non-card-shaped quads rather than silently returning a stretched crop of the card's artwork.
+
+## Phase 1b — shipped, and what it measured
+
+Scan PWA built 2026-07-30
+([plan](docs/superpowers/plans/2026-07-29-phase-1b-scan-pwa.md)). React + TypeScript, served over
+HTTPS (mandatory — `getUserMedia` refuses to run otherwise), proxying to the FastAPI backend.
+
+**99 real scans of physical cards, 39 reviewed.** This is the first accuracy figure not derived from
+reference images, and it reframes what the project's actual problem is.
+
+| Status | scans | reviewed | correct | precision |
+|---|---|---|---|---|
+| **confident** | 30 | 29 | **29** | **100.0%** |
+| ambiguous | 13 | 10 | — | declined, user picked |
+| **not_found** | **56** | — | — | never detected a card |
+
+### The two findings that matter
+
+**1. Recognition is not the problem. Detection is.**
+
+When the pipeline committed to an answer it was right **29 out of 29**. Zero confidently wrong
+identifications on real photographs. The `min_margin = 0.05` calibration — chosen over the harness's
+0.02 recommendation precisely to avoid confident errors — held up under real conditions.
+
+The signal separation survived the jump from reference images to phone photos:
+
+| | mean confidence | mean margin |
+|---|---|---|
+| correct | 0.953 | **0.0866** |
+| wrong | 0.820 | **0.0205** |
+
+**But 57% of scans never got past finding the card in the frame.** Diagnosed across 20 failures:
+**no 4-point quad was found at all in 20 of 20** (mean large-contour count 0.4). It is not the aspect
+gate rejecting a wrong shape — there is nothing to reject. In 20 successful scans the detected quad's
+median aspect was 1.40, exactly a card.
+
+Brightness was near-identical between the two groups (89 vs 96 of 255), so it is not darkness. It is
+**edge contrast**: Canny needs a closed boundary, and a light card border against a light background
+never forms one. Hence the user-observed rule that a black background is required.
+
+Re-running 25 failed images with detection bypassed produced **ambiguous, not not_found** — the cards
+are recognizable, but an uncropped frame dilutes the embedding below the confidence threshold.
+Detection is squarely the bottleneck.
+
+**2. The headline "74.4%" is a bad metric and should not be quoted.**
+
+`ScanStore.accuracy()` counts an ambiguous result the user resolved as "wrong", because the pipeline
+made no prediction to be right about. That conflates *declining to guess* with *guessing wrong* —
+which are the opposite of each other in a system built around calibrated uncertainty. The honest
+pair of numbers is **100% precision at 30% coverage**.
+
+### Carried into Phase 1c
+
+- **Card detection is the single highest-value fix.** Canny + external contours is too fragile for
+  varied backgrounds. Worth trying: adaptive thresholding, saturation-based segmentation, or a
+  learned segmentation model, with a multi-strategy fallback chain.
+- **A manual corner-drag fallback** for when automatic detection fails — anticipated in the design
+  spec and now clearly justified.
+- **Sleeved cards are inconsistent** (user-reported): glare and the sleeve's own edge both interfere.
+- **Fix the accuracy metric** to report precision and coverage separately.
+- On-demand price fetches were measured at **27 s** in one live test, far worse than the 4.3 s mean
+  seen earlier. The decoupled price line handles it, but the interactive path may want a lower retry
+  ceiling than the batch path.
 
 ## Carried into Phase 1 (from the final Phase 0 review)
 
