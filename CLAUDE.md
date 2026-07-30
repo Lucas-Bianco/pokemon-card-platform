@@ -48,6 +48,8 @@ C:\ClaudeKnowledge\backend\.venv\Scripts\pip.exe install -e "C:\ClaudeKnowledge\
 - **Install torch and torchvision together from the cu128 index, and re-run that install after any package that depends on torch.** `pip install open-clip-torch` silently replaces the CUDA build with a CPU one, and repairing torch alone then breaks torchvision (`operator torchvision::nms does not exist`).
 - **Never derive a cache filename from an image URL.** 661 catalog images have no file extension, and two real card ids (`ex10-!`, `ex10-?`) contain characters illegal in NTFS filenames. Key on `card_id` and percent-encode it.
 - **Recognition must report uncertainty, never guess.** A confidently wrong identification is the worst outcome this pipeline can produce — prefer an `ambiguous` result with ranked candidates. Only a full `N/M` OCR reading may override the visual winner; a bare number may only confirm it.
+- **Card detection is the pipeline's weakest link, not recognition.** Measured over 99 real phone scans: 57% never found a card in the frame, while confident identifications were right 29/29. Canny + external contours needs a closed high-contrast boundary, which a light card border on a light background never forms — hence the black-background requirement.
+- **Report precision and coverage separately, never a blended "accuracy".** Counting a declined `ambiguous` result as a wrong answer conflates refusing to guess with guessing wrong, which are opposites in a system built on calibrated uncertainty.
 - **Rectification must reject non-card-shaped quads.** Without the aspect gate it latches onto the card's interior artwork window on pale backgrounds and returns it stretched to full size, which nothing downstream can detect.
 
 ## Notes for Claude

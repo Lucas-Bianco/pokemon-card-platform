@@ -54,3 +54,10 @@ data/
 # ---- Claude Code ----
 # Keep project config tracked, but ignore local-only overrides
 .claude/settings.local.json
+
+# ---- Frontend ----
+node_modules/
+frontend/dist/
+frontend/.vite/
+*.tsbuildinfo
+*.local

@@ -1,0 +1,178 @@
+:root {
+  --bg: #0b0d12;
+  --surface: #141821;
+  --line: #242a38;
+  --fg: #e8eaf0;
+  --fg-dim: #98a0b3;
+  --accent: #ffcb05;
+  --ok: #3fb950;
+  --warn: #d29922;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.app {
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 16px;
+  padding-bottom: max(16px, env(safe-area-inset-bottom));
+}
+
+h1 { font-size: 1.25rem; margin: 4px 0 16px; }
+
+.camera-frame {
+  position: relative;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #000;
+  aspect-ratio: 3 / 4;
+}
+
+.camera-frame video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.guide {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  height: 78%;
+  border: 2px solid var(--accent);
+  border-radius: 10px;
+  box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}
+
+.guide-hint {
+  position: absolute;
+  bottom: 10px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--fg-dim);
+  text-shadow: 0 1px 3px #000;
+}
+
+.shutter {
+  width: 100%;
+  margin-top: 14px;
+  padding: 15px;
+  font-size: 1rem;
+  font-weight: 600;
+  border: none;
+  border-radius: 12px;
+  background: var(--accent);
+  color: #1a1500;
+}
+
+.shutter:disabled { opacity: 0.55; }
+
+.camera-error {
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.camera-error .hint { color: var(--fg-dim); font-size: 0.9rem; }
+
+.result { margin-top: 18px; }
+
+.result-status {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-radius: 10px 10px 0 0;
+  font-weight: 600;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-bottom: none;
+}
+
+.result-status.confident { color: var(--ok); }
+.result-status.ambiguous { color: var(--warn); }
+.result-status.not_found { color: var(--fg-dim); }
+.confidence { color: var(--fg-dim); font-weight: 400; }
+
+.card-detail {
+  display: flex;
+  gap: 14px;
+  padding: 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+.card-detail img { width: 96px; border-radius: 6px; align-self: flex-start; }
+.card-detail h2 { margin: 0 0 4px; font-size: 1.1rem; }
+.card-meta { margin: 0 0 10px; color: var(--fg-dim); font-size: 0.88rem; }
+
+.price { margin: 0; font-size: 1.35rem; }
+.price.muted { font-size: 0.9rem; color: var(--fg-dim); }
+.price-meta { display: block; font-size: 0.78rem; color: var(--fg-dim); font-weight: 400; }
+
+.ocr-note {
+  margin: 0;
+  padding: 8px 14px;
+  font-size: 0.8rem;
+  color: var(--fg-dim);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-top: none;
+}
+
+.actions { display: flex; gap: 8px; margin-top: 12px; }
+.actions button, .reject, .rescan {
+  flex: 1;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--fg);
+  font-size: 0.95rem;
+}
+.actions .primary { background: var(--ok); color: #04210c; border-color: transparent; font-weight: 600; }
+
+.candidates { list-style: none; margin: 12px 0 8px; padding: 0; display: grid; gap: 8px; }
+.candidates button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  text-align: left;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--fg);
+}
+.candidates img { width: 44px; border-radius: 4px; }
+.candidate-text { flex: 1; display: flex; flex-direction: column; }
+.candidate-meta { font-size: 0.8rem; color: var(--fg-dim); }
+.score { color: var(--fg-dim); font-size: 0.85rem; }
+
+.reject, .rescan { width: 100%; margin-top: 8px; }
+.muted { color: var(--fg-dim); }
+
+.error, .note {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 0.9rem;
+}
+.error { background: #3a1418; color: #ffb4ab; }
+.note { background: var(--surface); color: var(--fg-dim); border: 1px solid var(--line); }

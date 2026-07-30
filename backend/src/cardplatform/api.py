@@ -6,16 +6,18 @@ import io
 from datetime import datetime
 from typing import Iterator
 
-from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, Query, Response, UploadFile
+from fastapi.responses import JSONResponse
 from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from cardplatform.collection.store import CollectionStore
-from cardplatform.db.models import Card, CollectionItem, PriceSnapshot
+from cardplatform.db.models import Card, CollectionItem, PriceSnapshot, ScanLog
 from cardplatform.db.session import Database
 from cardplatform.prices.service import PriceService
+from cardplatform.scans.store import ScanStore
 
 _database: Database | None = None
 
@@ -62,6 +64,23 @@ def get_recognition_stack() -> dict:
             "reader": CollectorNumberReader(),
         }
     return _recognition_stack
+
+
+def get_price_provider():
+    """The live price source. A dependency so tests can stub it out — the real one
+    talks to an API measured at roughly a 17% success rate."""
+    from cardplatform.prices.pokemontcg import PokemonTcgIoProvider
+
+    return PokemonTcgIoProvider()
+
+
+def get_scan_store(session: Session = Depends(get_session)) -> ScanStore:
+    """Scan storage for this request.
+
+    A dependency so tests can point it at a temp directory — otherwise the module-level
+    settings singleton wins and test runs litter the real data directory.
+    """
+    return ScanStore(session)
 
 
 def get_recognition_service(session: Session = Depends(get_session)):
@@ -157,6 +176,23 @@ class RecognizeOut(BaseModel):
     collector_number_read: str | None
 
 
+class ScanOut(BaseModel):
+    id: int
+    status: str
+    predicted_card_id: str | None
+    corrected_card_id: str | None
+    confirmed: bool
+    confidence: float | None
+    visual_margin: float | None
+    collector_number_read: str | None
+
+
+class ScanAccuracyOut(BaseModel):
+    reviewed: int
+    correct: int
+    top1_accuracy: float
+
+
 class CollectionItemIn(BaseModel):
     card_id: str
     variant: str = "normal"
@@ -226,7 +262,100 @@ def create_app() -> FastAPI:
         latest: dict[tuple[str, str], PriceSnapshot] = {}
         for snapshot in snapshots:
             latest.setdefault((snapshot.source, snapshot.variant), snapshot)
-        return [PriceOut.model_validate(s, from_attributes=True) for s in latest.values()]
+        return [_price_out(s) for s in latest.values()]
+
+    @app.get("/cards/{card_id}/price")
+    def resolved_price(
+        card_id: str,
+        variant: str = Query(default="normal"),
+        session: Session = Depends(get_session),
+    ) -> Response:
+        """The single price to show for this card and variant, or 204 if unpriced.
+
+        `/cards/{id}/prices` returns every source and variant; this applies the
+        tcgplayer-then-cardmarket resolution rule so callers do not reimplement it.
+
+        Returns a bare Response rather than declaring a response_model: a 204 must
+        carry no body, and returning `None` under a response_model would serialise a
+        literal `null`, which is not a valid 204.
+        """
+        _require_card(session, card_id)
+        return _price_response(PriceService(session).latest_price(card_id, variant))
+
+    @app.post("/cards/{card_id}/prices/refresh")
+    def refresh_price(
+        card_id: str,
+        variant: str = Query(default="normal"),
+        session: Session = Depends(get_session),
+        provider=Depends(get_price_provider),
+    ) -> Response:
+        """Fetch this card's price from the live source now.
+
+        Measured 4.3 s mean and 9.1 s worst case, because the upstream API fails
+        often and the client backs off. Callers must not block a scan on this.
+        """
+        _require_card(session, card_id)
+        service = PriceService(session, provider)
+        service.refresh_card(card_id)
+        return _price_response(service.latest_price(card_id, variant))
+
+    @app.post("/scans", response_model=ScanOut, status_code=201)
+    async def record_scan(
+        file: UploadFile = File(...),
+        status: str = Query(...),
+        predicted_card_id: str | None = Query(default=None),
+        confidence: float | None = Query(default=None),
+        visual_margin: float | None = Query(default=None),
+        collector_number_read: str | None = Query(default=None),
+        store: ScanStore = Depends(get_scan_store),
+    ) -> ScanOut:
+        scan = store.record(
+            image_bytes=await file.read(),
+            status=status,
+            predicted_card_id=predicted_card_id,
+            confidence=confidence,
+            visual_margin=visual_margin,
+            collector_number_read=collector_number_read,
+        )
+        return _scan_out(scan)
+
+    # Declared before /scans/{scan_id}: a literal path must be registered ahead of the
+    # parameterised one, or "accuracy" is captured as a scan_id and fails to parse.
+    @app.get("/scans/accuracy", response_model=ScanAccuracyOut)
+    def scan_accuracy(store: ScanStore = Depends(get_scan_store)) -> ScanAccuracyOut:
+        stats = store.accuracy()
+        return ScanAccuracyOut(
+            reviewed=stats.reviewed, correct=stats.correct, top1_accuracy=stats.top1_accuracy
+        )
+
+    @app.get("/scans", response_model=list[ScanOut])
+    def list_scans(
+        limit: int = Query(default=50, le=200), store: ScanStore = Depends(get_scan_store)
+    ) -> list[ScanOut]:
+        return [_scan_out(s) for s in store.recent(limit)]
+
+    @app.post("/scans/{scan_id}/confirm", response_model=ScanOut)
+    def confirm_scan(scan_id: int, store: ScanStore = Depends(get_scan_store)) -> ScanOut:
+        scan = store.confirm(scan_id)
+        if scan is None:
+            raise HTTPException(status_code=404, detail="unknown scan")
+        return _scan_out(scan)
+
+    @app.post("/scans/{scan_id}/correct", response_model=ScanOut)
+    def correct_scan(
+        scan_id: int,
+        card_id: str = Query(...),
+        store: ScanStore = Depends(get_scan_store),
+    ) -> ScanOut:
+        try:
+            scan = store.correct(scan_id, card_id)
+        except ValueError as exc:
+            # An id the catalog has never heard of is a client mistake, not a server
+            # fault; without this it would surface as an opaque 500.
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        if scan is None:
+            raise HTTPException(status_code=404, detail="unknown scan")
+        return _scan_out(scan)
 
     @app.post("/recognize", response_model=RecognizeOut)
     async def recognize(
@@ -248,7 +377,7 @@ def create_app() -> FastAPI:
             confidence=result.confidence,
             visual_margin=result.visual_margin,
             card=CardOut.from_card(card) if card is not None else None,
-            price=PriceOut.model_validate(price, from_attributes=True) if price else None,
+            price=_price_out(price) if price else None,
             candidates=_candidates_out(session, result.candidates),
             collector_number_read=result.ocr.collector_number,
         )
@@ -332,6 +461,40 @@ def _candidates_out(session: Session, candidates) -> list[CandidateOut]:
         for candidate in candidates
         if candidate.card_id in cards
     ]
+
+
+def _price_out(snapshot: PriceSnapshot) -> PriceOut:
+    """Snapshot -> wire model, in one place.
+
+    Every endpoint that returns a price goes through here so `source` and
+    `source_updated_at` can never be dropped from one of them and not another.
+    """
+    return PriceOut.model_validate(snapshot, from_attributes=True)
+
+
+def _price_response(snapshot: PriceSnapshot | None) -> Response:
+    """A resolved price, or a bodiless 204 when the card is simply unpriced.
+
+    Only 2 of 20,444 catalogued cards currently carry a price, so "no price" is the
+    common case and must not read as an error. mode="json" because `fetched_at` is a
+    datetime, which JSONResponse's encoder will not serialise on its own.
+    """
+    if snapshot is None:
+        return Response(status_code=204)
+    return JSONResponse(_price_out(snapshot).model_dump(mode="json"))
+
+
+def _scan_out(scan: ScanLog) -> ScanOut:
+    return ScanOut(
+        id=scan.id,
+        status=scan.status,
+        predicted_card_id=scan.predicted_card_id,
+        corrected_card_id=scan.corrected_card_id,
+        confirmed=scan.confirmed,
+        confidence=scan.confidence,
+        visual_margin=scan.visual_margin,
+        collector_number_read=scan.collector_number_read,
+    )
 
 
 def _require_card(session: Session, card_id: str) -> Card:

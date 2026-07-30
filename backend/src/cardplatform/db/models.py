@@ -4,7 +4,17 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import JSON, DateTime, Float, ForeignKey, Index, Integer, String, UniqueConstraint
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.types import TypeDecorator
 
@@ -114,3 +124,32 @@ class CollectionItem(Base):
     created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=_utcnow)
 
     card: Mapped[Card] = relationship()
+
+
+class ScanLog(Base):
+    """One recognition attempt, kept for evaluation and future fine-tuning.
+
+    This is the project's only source of labelled real-world data: every accuracy
+    figure so far came from degraded reference images, and improving on that depends
+    on users correcting wrong answers — which is only useful if the image that
+    produced the answer was kept.
+    """
+
+    __tablename__ = "scan_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    image_path: Mapped[str] = mapped_column(String)
+    predicted_card_id: Mapped[str | None] = mapped_column(
+        ForeignKey("cards.id"), index=True, default=None
+    )
+    status: Mapped[str] = mapped_column(String, index=True)
+    confidence: Mapped[float | None] = mapped_column(Float, default=None)
+    visual_margin: Mapped[float | None] = mapped_column(Float, default=None)
+    collector_number_read: Mapped[str | None] = mapped_column(String, default=None)
+    # Set when the user says the prediction was wrong. NULL means "not reviewed",
+    # which is deliberately different from "reviewed and correct" — see `confirmed`.
+    corrected_card_id: Mapped[str | None] = mapped_column(
+        ForeignKey("cards.id"), index=True, default=None
+    )
+    confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=_utcnow)
