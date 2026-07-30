@@ -61,6 +61,91 @@ def refresh_prices(args: argparse.Namespace) -> int:
     return 0
 
 
+def build_index(args: argparse.Namespace) -> int:
+    """Download every catalog image, embed it, and persist a FAISS index.
+
+    Images are fetched and embedded in chunks rather than all at once: 20,444 decoded
+    PIL images is roughly 5 GB resident, while the vectors they reduce to are ~42 MB.
+    """
+    import numpy as np
+    from sqlalchemy import select
+
+    from cardplatform.db.models import Card
+    from cardplatform.recognition.encoder import CardEncoder
+    from cardplatform.recognition.images import ReferenceImageCache
+    from cardplatform.recognition.index import CardIndex
+
+    db = Database()
+    db.create_all()
+    cache = ReferenceImageCache(db.settings)
+
+    with db.session() as session:
+        rows = session.execute(
+            select(Card.id, Card.image_small).where(Card.image_small.is_not(None))
+        ).all()
+
+    print(f"Catalog: {len(rows)} cards with images", flush=True)
+    print(f"Cache:   {db.settings.reference_image_dir}")
+    print("First run downloads every image and takes a while; re-runs skip cached.", flush=True)
+
+    encoder = CardEncoder(db.settings)
+    print(f"Encoder: {db.settings.encoder_model} on {encoder.device}", flush=True)
+    if encoder.device != "cuda":
+        print("WARNING: running on CPU — this will be roughly 20x slower.", flush=True)
+
+    chunk_size = args.chunk_size
+    card_ids: list[str] = []
+    vectors: list[np.ndarray] = []
+    unavailable = 0
+
+    pending_ids: list[str] = []
+    pending_images = []
+
+    def flush_pending() -> None:
+        if not pending_images:
+            return
+        vectors.append(encoder.embed_many(pending_images))
+        card_ids.extend(pending_ids)
+        pending_ids.clear()
+        pending_images.clear()
+
+    for position, (card_id, url) in enumerate(rows, start=1):
+        if cache.fetch(card_id, url) is None:
+            unavailable += 1
+        else:
+            image = cache.load(card_id)
+            if image is None:
+                unavailable += 1
+            else:
+                pending_ids.append(card_id)
+                pending_images.append(image)
+
+        if len(pending_images) >= chunk_size:
+            flush_pending()
+        if position % 1000 == 0:
+            print(
+                f"  {position}/{len(rows)} processed, {unavailable} unavailable",
+                flush=True,
+            )
+
+    flush_pending()
+
+    if not card_ids:
+        print("No images available — nothing to index.", flush=True)
+        return 1
+
+    stacked = np.vstack(vectors)
+    CardIndex(db.settings).build(card_ids, stacked).save()
+
+    print("")
+    print("Index built.")
+    print(f"  cards indexed: {len(card_ids)}")
+    print(f"  unavailable:   {unavailable}")
+    print(f"  dimension:     {stacked.shape[1]}")
+    print(f"  saved to:      {db.settings.index_path}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="cardplatform",
@@ -80,6 +165,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     refresh.add_argument("card_ids", nargs="+", metavar="CARD_ID", help="e.g. base1-4")
     refresh.set_defaults(handler=refresh_prices)
+
+    index = subparsers.add_parser(
+        "build-index",
+        help="Download card images and build the recognition index (resumable).",
+    )
+    index.add_argument(
+        "--chunk-size",
+        type=int,
+        default=256,
+        help="Images embedded per batch. Lower it if you run short of memory.",
+    )
+    index.set_defaults(handler=build_index)
 
     return parser
 
