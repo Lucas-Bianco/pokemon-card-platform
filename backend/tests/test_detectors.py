@@ -38,7 +38,9 @@ def test_quad_is_card_shaped_rejects_something_tiny():
 
 
 def test_every_strategy_has_a_name():
-    assert len(STRATEGIES) >= 3
+    # Two strategies, deliberately: adaptive thresholding was measured contributing
+    # 0 usable proposals across all 101 real scans and removed rather than carried.
+    assert len(STRATEGIES) >= 2
     assert all(name and callable(fn) for name, fn in STRATEGIES)
 
 

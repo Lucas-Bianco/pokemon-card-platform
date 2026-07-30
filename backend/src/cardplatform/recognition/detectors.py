@@ -150,26 +150,15 @@ def detect_otsu_rect(image: Image.Image) -> np.ndarray | None:
     return None
 
 
-def detect_adaptive_rect(image: Image.Image) -> np.ndarray | None:
-    """Local thresholding, for uneven lighting across the frame."""
-    bgr = _to_bgr(image)
-    gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
-    binary = cv2.adaptiveThreshold(
-        cv2.GaussianBlur(gray, (7, 7), 0),
-        255,
-        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv2.THRESH_BINARY,
-        51,
-        8,
-    )
-    closed = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, np.ones((11, 11), np.uint8))
-    return _largest_rotated_rect(closed, bgr.shape[0] * bgr.shape[1])
-
+# Adaptive thresholding was tried here and removed. With a 51-px block and an 11x11
+# closing kernel it merged card and background on every one of the 101 real scans,
+# producing a whole-frame quad rather than a card — it contributed 0 usable proposals.
+# The MAX_AREA_FRACTION guard now rejects that degenerate output, which left the
+# strategy doing nothing but costing time. Re-add only with measurement behind it.
 
 STRATEGIES: list[tuple[str, object]] = [
     ("canny", detect_canny),
     ("otsu_rect", detect_otsu_rect),
-    ("adaptive_rect", detect_adaptive_rect),
 ]
 
 
