@@ -66,8 +66,19 @@ def fuse(
             visual_margin=margin,
         )
 
-    # OCR arbitration: if the read number uniquely identifies one candidate, it wins
-    # regardless of visual rank. This is the path that fixes same-artwork reprints.
+    # OCR arbitration: if the read number uniquely identifies one candidate, it can
+    # decide. This is the path that fixes same-artwork reprints.
+    #
+    # Trust is deliberately asymmetric, and must stay that way. A reading that captured
+    # the full 'N/M' form is much stronger evidence than a bare number, because the '/'
+    # is what proves OCR located the collector-number field at all rather than picking up
+    # a retreat cost, an HP value, or a copyright year. Measured: hgss4-1 prints '1/102',
+    # OCR dropped the leading digit and returned a bare '102' with no total. Given equal
+    # authority, that misread would promote whichever shortlisted card happens to be
+    # number 102 over a correct visual top-1 — turning a right answer into a confidently
+    # wrong one, the worst outcome this pipeline can produce. So:
+    #   full 'N/M'  -> may override visual rank (promote a lower-ranked candidate)
+    #   bare number -> may only confirm the visual top-1, never promote
     read_number = normalize_collector_number(ocr.collector_number)
     if read_number is not None:
         matches = [
@@ -77,14 +88,19 @@ def fuse(
             == read_number
         ]
         if len(matches) == 1:
-            return RecognitionResult(
-                card_id=matches[0].card_id,
-                confidence=config.agreement_confidence,
-                status="confident",
-                candidates=candidates,
-                ocr=ocr,
-                visual_margin=margin,
-            )
+            matched = matches[0]
+            captured_full_form = ocr.printed_total is not None
+            if captured_full_form or matched.card_id == top.card_id:
+                return RecognitionResult(
+                    card_id=matched.card_id,
+                    confidence=config.agreement_confidence,
+                    status="confident",
+                    candidates=candidates,
+                    ocr=ocr,
+                    visual_margin=margin,
+                )
+            # A bare reading disagreeing with visual rank is too weak to act on at all,
+            # so it is discarded and the decision falls through to the margin logic.
 
     # No usable OCR: trust a clear visual winner, otherwise ask the user.
     if margin >= config.min_margin:

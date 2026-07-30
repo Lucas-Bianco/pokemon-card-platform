@@ -34,12 +34,16 @@ def test_clear_visual_winner_with_ocr_agreement_is_confident():
 
 def test_ocr_breaks_a_visual_tie():
     """The measured real failure: same name, different print, margin 0.006.
-    Visual alone picks wrong; the collector number settles it."""
+    Visual alone picks wrong; the collector number settles it.
+
+    The reading carries `printed_total`, because only a full 'N/M' read is trusted
+    enough to override visual rank.
+    """
     candidates = (Candidate("me2pt5-252", 0.781), Candidate("me2pt5-114", 0.775))
 
     result = fuse(
         candidates,
-        OcrReading(collector_number="114"),
+        OcrReading(collector_number="114", printed_total="252"),
         numbers_for(["me2pt5-252", "me2pt5-114"]),
     )
 
@@ -47,12 +51,67 @@ def test_ocr_breaks_a_visual_tie():
     assert result.status == "confident"
 
 
-def test_ocr_promotes_a_lower_ranked_candidate():
+def test_full_reading_promotes_a_lower_ranked_candidate():
+    """A complete 'N/M' read is strong enough to outrank the visual winner."""
     candidates = (Candidate("ex3-88", 0.79), Candidate("ex15-82", 0.78))
 
-    result = fuse(candidates, OcrReading(collector_number="82"), numbers_for(["ex3-88", "ex15-82"]))
+    result = fuse(
+        candidates,
+        OcrReading(collector_number="82", printed_total="115"),
+        numbers_for(["ex3-88", "ex15-82"]),
+    )
 
     assert result.card_id == "ex15-82"
+    assert result.status == "confident"
+
+
+def test_bare_reading_does_not_promote_a_non_top_candidate():
+    """Regression guard for the measured hgss4-1 misread.
+
+    That card prints '1/102'; OCR dropped the leading digit and returned a bare '102'
+    with no total. If a bare number were allowed to promote, that misread would override
+    a correct visual top-1 and return it as `confident` — a confidently wrong answer.
+    """
+    candidates = (Candidate("base1-4", 0.88), Candidate("base4-4", 0.61))
+
+    result = fuse(
+        candidates,
+        OcrReading(collector_number="4", printed_total=None),
+        {"base1-4": "17", "base4-4": "4"},
+    )
+
+    assert result.card_id == "base1-4"
+    assert result.status == "confident"
+
+
+def test_bare_reading_confirming_the_visual_winner_is_agreement():
+    """A bare number may still confirm what vision already chose."""
+    candidates = (Candidate("base1-4", 0.88), Candidate("base4-4", 0.61))
+    config = FusionConfig()
+
+    result = fuse(
+        candidates,
+        OcrReading(collector_number="004", printed_total=None),
+        {"base1-4": "4", "base4-4": "17"},
+    )
+
+    assert result.card_id == "base1-4"
+    assert result.status == "confident"
+    assert result.confidence == pytest.approx(config.agreement_confidence)
+
+
+def test_bare_reading_on_a_narrow_margin_stays_ambiguous():
+    """Discarding a bare disagreement must not manufacture a decision either way."""
+    candidates = (Candidate("me2pt5-252", 0.781), Candidate("me2pt5-114", 0.775))
+
+    result = fuse(
+        candidates,
+        OcrReading(collector_number="114", printed_total=None),
+        numbers_for(["me2pt5-252", "me2pt5-114"]),
+    )
+
+    assert result.status == "ambiguous"
+    assert result.card_id is None
 
 
 def test_narrow_margin_without_ocr_is_ambiguous():
