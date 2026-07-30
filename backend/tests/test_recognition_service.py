@@ -181,3 +181,132 @@ def test_empty_candidate_list_is_not_found(seeded):
 
     assert result.status == "not_found"
     assert result.candidates == ()
+
+
+class ScriptedIndex:
+    """Returns a different result per call, so proposal selection is observable."""
+
+    def __init__(self, per_call):
+        self.per_call = list(per_call)
+        self.calls = 0
+
+    def search(self, vector, top_k):
+        result = self.per_call[min(self.calls, len(self.per_call) - 1)]
+        self.calls += 1
+        return list(result)[:top_k]
+
+
+class CountingReader:
+    def __init__(self):
+        self.calls = 0
+
+    def read(self, image):
+        self.calls += 1
+        return OcrReading()
+
+
+def test_best_scoring_proposal_wins(seeded, monkeypatch):
+    """Two detectors propose different crops; the better-matching one wins."""
+    from cardplatform.recognition import service as service_module
+
+    quad_a = np.array([[0, 0], [100, 0], [100, 140], [0, 140]], dtype="float32")
+    quad_b = np.array([[10, 10], [110, 10], [110, 150], [10, 150]], dtype="float32")
+    monkeypatch.setattr(
+        service_module, "detect_candidates", lambda image: [("a", quad_a), ("b", quad_b)]
+    )
+
+    index = ScriptedIndex(
+        [
+            (Candidate("base1-4", 0.60), Candidate("base4-4", 0.59)),
+            (Candidate("me2pt5-114", 0.93), Candidate("me2pt5-252", 0.70)),
+        ]
+    )
+    service = RecognitionService(
+        session=seeded, encoder=FakeEncoder(), index=index, reader=FakeReader()
+    )
+
+    result = service.recognize(Image.new("RGB", (300, 400), (200, 40, 40)), rectify=True)
+
+    assert result.card_id == "me2pt5-114"
+
+
+def test_ocr_runs_once_not_per_proposal(seeded, monkeypatch):
+    """OCR costs ~1s. Running it per proposal would triple scan time for nothing."""
+    from cardplatform.recognition import service as service_module
+
+    quad = np.array([[0, 0], [100, 0], [100, 140], [0, 140]], dtype="float32")
+    monkeypatch.setattr(
+        service_module,
+        "detect_candidates",
+        lambda image: [("a", quad), ("b", quad), ("c", quad)],
+    )
+    reader = CountingReader()
+    service = RecognitionService(
+        session=seeded,
+        encoder=FakeEncoder(),
+        index=FakeIndex([Candidate("base1-4", 0.9), Candidate("base4-4", 0.6)]),
+        reader=reader,
+    )
+
+    service.recognize(Image.new("RGB", (300, 400), (200, 40, 40)), rectify=True)
+
+    assert reader.calls == 1
+
+
+def test_no_proposals_is_not_found(seeded, monkeypatch):
+    from cardplatform.recognition import service as service_module
+
+    monkeypatch.setattr(service_module, "detect_candidates", lambda image: [])
+    service = RecognitionService(
+        session=seeded,
+        encoder=FakeEncoder(),
+        index=FakeIndex([Candidate("base1-4", 0.9)]),
+        reader=FakeReader(),
+    )
+
+    result = service.recognize(Image.new("RGB", (300, 400), (18, 18, 18)), rectify=True)
+
+    assert result.status == "not_found"
+
+
+def test_proposal_with_no_search_hits_still_yields_a_real_crop(seeded, monkeypatch):
+    """A card was detected but the index matched nothing — OCR must still receive the
+    rectified crop. Scoring proposals from a -1.0 floor let a no-hit proposal fail to
+    beat it, leaving the winning crop unset and handing the reader None."""
+    from cardplatform.recognition import service as service_module
+
+    quad = np.array([[0, 0], [100, 0], [100, 140], [0, 140]], dtype="float32")
+    monkeypatch.setattr(service_module, "detect_candidates", lambda image: [("a", quad)])
+    reader = FakeReader()
+    service = RecognitionService(
+        session=seeded, encoder=FakeEncoder(), index=FakeIndex([]), reader=reader
+    )
+
+    result = service.recognize(Image.new("RGB", (300, 400), (200, 40, 40)), rectify=True)
+
+    assert result.status == "not_found"
+    assert isinstance(reader.read_images[0], Image.Image)
+
+
+def test_manual_corners_bypass_detection(seeded, monkeypatch):
+    """The fallback path: the user dragged the corners, so trust them."""
+    from cardplatform.recognition import service as service_module
+
+    def _should_not_run(image):
+        raise AssertionError("detection must be skipped when corners are supplied")
+
+    monkeypatch.setattr(service_module, "detect_candidates", _should_not_run)
+    service = RecognitionService(
+        session=seeded,
+        encoder=FakeEncoder(),
+        index=FakeIndex([Candidate("base1-4", 0.9), Candidate("base4-4", 0.6)]),
+        reader=FakeReader(),
+    )
+
+    result = service.recognize(
+        Image.new("RGB", (300, 400), (200, 40, 40)),
+        rectify=True,
+        corners=[(0, 0), (100, 0), (100, 140), (0, 140)],
+    )
+
+    assert result.status == "confident"

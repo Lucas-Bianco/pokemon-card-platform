@@ -176,3 +176,31 @@ h1 { font-size: 1.25rem; margin: 4px 0 16px; }
 }
 .error { background: #3a1418; color: #ffb4ab; }
 .note { background: var(--surface); color: var(--fg-dim); border: 1px solid var(--line); }
+
+.corner-box { position: relative; touch-action: none; user-select: none; }
+.corner-box img { width: 100%; display: block; border-radius: 10px; }
+.corner-overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.handle {
+  position: absolute;
+  width: 30px;
+  height: 30px;
+  margin: -15px 0 0 -15px;
+  border-radius: 50%;
+  border: 2px solid #1a1500;
+  background: var(--accent);
+  padding: 0;
+  touch-action: none;
+}
+.corner-adjust .hint { color: var(--fg-dim); font-size: 0.9rem; margin-top: 0; }
+/* Matches .rescan rather than inheriting the browser default: it sits directly under
+   the result card, where an unstyled button would read as a rendering fault. */
+.adjust-offer {
+  width: 100%;
+  margin-top: 8px;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--fg);
+  font-size: 0.95rem;
+}

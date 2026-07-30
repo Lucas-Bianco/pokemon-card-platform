@@ -19,9 +19,24 @@ from cardplatform.db.models import Card, ScanLog
 
 @dataclass(frozen=True)
 class ScanAccuracy:
-    reviewed: int
+    """Precision and coverage, reported separately and deliberately.
+
+    A blended "accuracy" counts a declined `ambiguous` result as a wrong answer, which
+    conflates refusing to guess with guessing wrong. Measured over 99 real scans, that
+    blend read 74.4% for a pipeline that was right 29 out of 29 when it committed —
+    and hid the real finding, which was that detection was failing, not recognition.
+
+    precision = of the predictions a human checked, how many were right
+    coverage  = of all scans, how many produced any answer at all
+    """
+
+    total: int
+    answered: int
+    predicted: int
     correct: int
-    top1_accuracy: float
+    precision: float
+    coverage: float
+    by_status: dict[str, int]
 
 
 class ScanStore:
@@ -87,19 +102,22 @@ class ScanStore:
         )
 
     def accuracy(self) -> ScanAccuracy:
-        """Top-1 accuracy over reviewed scans only.
+        rows = list(self.session.scalars(select(ScanLog)).all())
+        by_status: dict[str, int] = {}
+        for row in rows:
+            by_status[row.status] = by_status.get(row.status, 0) + 1
 
-        An unreviewed scan is not evidence in either direction, so it is excluded
-        rather than silently counted as a success.
-        """
-        reviewed = list(
-            self.session.scalars(select(ScanLog).where(ScanLog.confirmed.is_(True))).all()
-        )
-        if not reviewed:
-            return ScanAccuracy(reviewed=0, correct=0, top1_accuracy=0.0)
-        correct = sum(1 for s in reviewed if s.corrected_card_id is None)
+        answered = [r for r in rows if r.predicted_card_id is not None]
+        # Only reviewed predictions are evidence; an unreviewed one is neither.
+        predicted = [r for r in answered if r.confirmed]
+        correct = [r for r in predicted if r.corrected_card_id is None]
+
         return ScanAccuracy(
-            reviewed=len(reviewed),
-            correct=correct,
-            top1_accuracy=correct / len(reviewed),
+            total=len(rows),
+            answered=len(answered),
+            predicted=len(predicted),
+            correct=len(correct),
+            precision=len(correct) / len(predicted) if predicted else 0.0,
+            coverage=len(answered) / len(rows) if rows else 0.0,
+            by_status=by_status,
         )

@@ -153,27 +153,66 @@ def test_recent_returns_newest_first(db, tmp_path):
     assert store.recent()[0].id == second.id
 
 
-def test_accuracy_counts_only_reviewed_scans(db, tmp_path):
-    """An unreviewed scan is not evidence either way — that is the whole point of
-    keeping `confirmed` separate from `corrected_card_id`."""
+def test_precision_counts_only_scans_that_made_a_prediction(db, tmp_path):
+    """An ambiguous scan made no claim, so it can be neither right nor wrong."""
     _seed(db)
     store = ScanStore(db, Settings(data_dir=tmp_path))
     right = store.record(image_bytes=_png(), predicted_card_id="base1-4", status="confident")
     wrong = store.record(image_bytes=_png(), predicted_card_id="base1-4", status="confident")
-    store.record(image_bytes=_png(), predicted_card_id="base1-4", status="confident")  # unreviewed
+    amb = store.record(image_bytes=_png(), predicted_card_id=None, status="ambiguous")
+    store.record(image_bytes=_png(), predicted_card_id=None, status="not_found")
 
     store.confirm(right.id)
     store.correct(wrong.id, "base4-4")
+    store.correct(amb.id, "base4-4")
 
     stats = store.accuracy()
-    assert stats.reviewed == 2
+    assert stats.predicted == 2
     assert stats.correct == 1
-    assert stats.top1_accuracy == pytest.approx(0.5)
+    assert stats.precision == pytest.approx(0.5)
 
 
-def test_accuracy_with_no_reviews_is_zero_not_a_crash(db, tmp_path):
+def test_coverage_is_answers_over_all_scans(db, tmp_path):
+    _seed(db)
+    store = ScanStore(db, Settings(data_dir=tmp_path))
+    store.record(image_bytes=_png(), predicted_card_id="base1-4", status="confident")
+    store.record(image_bytes=_png(), predicted_card_id=None, status="ambiguous")
+    store.record(image_bytes=_png(), predicted_card_id=None, status="not_found")
+    store.record(image_bytes=_png(), predicted_card_id=None, status="not_found")
+
+    stats = store.accuracy()
+    assert stats.total == 4
+    assert stats.answered == 1
+    assert stats.coverage == pytest.approx(0.25)
+
+
+def test_unreviewed_predictions_are_not_evidence(db, tmp_path):
+    """A prediction nobody checked is neither right nor wrong."""
+    _seed(db)
+    store = ScanStore(db, Settings(data_dir=tmp_path))
+    store.record(image_bytes=_png(), predicted_card_id="base1-4", status="confident")
+
+    stats = store.accuracy()
+    assert stats.answered == 1
+    assert stats.predicted == 0
+    assert stats.precision == 0.0
+
+
+def test_status_breakdown_is_reported(db, tmp_path):
+    _seed(db)
+    store = ScanStore(db, Settings(data_dir=tmp_path))
+    store.record(image_bytes=_png(), predicted_card_id="base1-4", status="confident")
+    store.record(image_bytes=_png(), predicted_card_id=None, status="not_found")
+    store.record(image_bytes=_png(), predicted_card_id=None, status="not_found")
+
+    assert store.accuracy().by_status == {"confident": 1, "not_found": 2}
+
+
+def test_precision_with_nothing_predicted_is_zero_not_a_crash(db, tmp_path):
     _seed(db)
     stats = ScanStore(db, Settings(data_dir=tmp_path)).accuracy()
 
-    assert stats.reviewed == 0
-    assert stats.top1_accuracy == 0.0
+    assert stats.predicted == 0
+    assert stats.precision == 0.0
+    assert stats.coverage == 0.0
+    assert stats.by_status == {}

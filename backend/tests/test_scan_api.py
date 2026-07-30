@@ -92,18 +92,22 @@ def test_confirming_a_missing_scan_is_404(client):
     assert client.post("/scans/9999/confirm").status_code == 404
 
 
-def test_accuracy_reports_reviewed_scans_only(client):
+def test_accuracy_endpoint_reports_precision_and_coverage(client):
     right = _record(client).json()["id"]
     wrong = _record(client).json()["id"]
-    _record(client)  # left unreviewed
+    _record(client, status="not_found", predicted=None)
 
     client.post(f"/scans/{right}/confirm")
     client.post(f"/scans/{wrong}/correct", params={"card_id": "base4-4"})
 
     body = client.get("/scans/accuracy").json()
-    assert body["reviewed"] == 2
+    assert body["total"] == 3
+    assert body["answered"] == 2
+    assert body["predicted"] == 2
     assert body["correct"] == 1
-    assert body["top1_accuracy"] == 0.5
+    assert body["precision"] == 0.5
+    assert body["coverage"] == pytest.approx(2 / 3)
+    assert body["by_status"]["not_found"] == 1
 
 
 def test_accuracy_route_is_not_shadowed_by_the_id_route(client):

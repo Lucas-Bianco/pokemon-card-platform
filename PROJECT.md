@@ -41,7 +41,7 @@ Each phase ships independently usable functionality and gets its own spec → pl
 | 0 | Foundation — card catalog, pricing layer, collection store | **Complete** |
 | 1a | Recognition engine — photo → identified, valued card (API) | **Complete** |
 | 1b | Scan PWA — camera capture, top-3 picker, scan logging | **Complete** |
-| 1c | Robust card detection — the measured bottleneck | Next |
+| 1c | Robust card detection — coverage 31% → 61%, 0 regressions | **Complete** |
 | 2 | Portfolio tracker — cost basis, P/L, price charts | Planned |
 | 3 | Grade Predictor — CV centering/corner scoring + grading EV | Planned |
 | 4 | Bulk cataloger — detect every card in one photo | Planned |
@@ -193,6 +193,68 @@ pair of numbers is **100% precision at 30% coverage**.
 - On-demand price fetches were measured at **27 s** in one live test, far worse than the 4.3 s mean
   seen earlier. The decoupled price line handles it, but the interactive path may want a lower retry
   ceiling than the batch path.
+
+## Phase 1c — shipped
+
+Robust card detection, built 2026-07-30
+([plan](docs/superpowers/plans/2026-07-30-phase-1c-robust-detection.md)). **207 backend tests,
+22 frontend tests.**
+
+### Measured by replaying all 101 real scans
+
+| status | before | after |
+|---|---|---|
+| confident | 31 | **62** |
+| ambiguous | 13 | 36 |
+| **not_found** | **57** | **3** |
+
+**Coverage 31% → 61%. Zero regressions** — not one scan that was previously identified correctly
+now returns a different card. `not_found` fell from 57 to 3.
+
+### What actually fixed it
+
+Two compounding causes, both diagnosed on the real failures:
+
+1. **Canny needs a gradient, not a level.** A light card border on a light background forms no closed
+   contour — the reason a black background was required.
+2. **`approxPolyDP` demands exactly 4 vertices.** Real photos have rounded corners and sensor noise,
+   so it lands on 5–7 and discards a visible card. Fitting a **rotated rectangle** to the largest
+   blob drops that requirement — a card *is* a rectangle.
+
+The design is a **strategy chain scored by recognition**: each strategy proposes a quad, every
+proposal is embedded (2.2 ms), and the crop that actually matches best wins. OCR runs once, on the
+winner, because it costs ~1 s. This matters because a single better detector was *not* strictly
+better — `otsu_rect` alone recovered 33 failures but regressed 6 working scans. The chain regresses
+none.
+
+### A research error worth recording
+
+The original detector comparison credited `adaptive_rect` with 56/56. It was wrong. Adaptive
+thresholding returned a **whole-frame quad on all 101 real scans** — never once a card — and the
+image border's aspect ratio (1.29 on a portrait photo) passed the shape gate. "Found a quad" was
+being counted as "found the card", the exact trap the aspect gate exists to prevent.
+
+Fixed with a `MAX_AREA_FRACTION = 0.98` guard, after which the strategy contributed **0 usable
+proposals** and was removed. Real card detections measure 0.15–0.44 of the frame. The live chain is
+`canny` + `otsu_rect`; on 101 scans canny proposed 43 times and otsu_rect 98.
+
+### Also in this phase
+
+- **Manual corner drag** — the user places four corners when detection still fails. Corner-adjusted
+  scans are logged identically, so the fallback's value shows up in the accuracy stats.
+- **The accuracy metric was replaced.** It reported 74.4% for a pipeline that was right 30/30 on
+  reviewed predictions, by counting a *declined* result as a *wrong* one. It now reports
+  **precision 1.000 at 30.7% coverage** on the same data — separately, as it should always have been.
+
+### Known limitations
+
+- 36 scans still return `ambiguous` — detected but not confidently matched. That is a *recognition*
+  problem, and the honest next lever is fine-tuning the encoder on the corrections collected since
+  Phase 1b.
+- The corner-drag interaction is verified by type-check only; jsdom has no layout, so pointer capture
+  and handle positioning need a real device pass.
+- A corner-adjusted retry writes a second scan row, mildly deflating measured coverage.
+- Sleeve glare remains unquantified.
 
 ## Carried into Phase 1 (from the final Phase 0 review)
 
