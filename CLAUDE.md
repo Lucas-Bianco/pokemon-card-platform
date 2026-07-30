@@ -25,6 +25,8 @@ C:\ClaudeKnowledge\backend\.venv\Scripts\pip.exe install -e "C:\ClaudeKnowledge\
 - Coverage: `C:\ClaudeKnowledge\backend\.venv\Scripts\python.exe -m pytest --cov=cardplatform --cov-report=term-missing`
 - Sync the card catalog: `C:\ClaudeKnowledge\backend\.venv\Scripts\cardplatform.exe sync-catalog` (idempotent, resumable)
 - Fetch prices: `C:\ClaudeKnowledge\backend\.venv\Scripts\cardplatform.exe refresh-prices base1-4 hgss4-1`
+- Build the recognition index: `C:\ClaudeKnowledge\backend\.venv\Scripts\cardplatform.exe build-index` (downloads ~20k images; re-runs skip cached)
+- Evaluate recognition accuracy: `C:\ClaudeKnowledge\backend\.venv\Scripts\python.exe backend/scripts/evaluate_recognition.py --sample 500`
 
 ## Project structure
 
@@ -43,6 +45,10 @@ C:\ClaudeKnowledge\backend\.venv\Scripts\pip.exe install -e "C:\ClaudeKnowledge\
 - **Decode downloaded JSON explicitly as UTF-8.** ~430 card names are accented; a wrong-charset response header would mojibake them.
 - **Use `func.lower(col).like(...)`, not `ilike`,** for name search — SQLite's `LIKE` is case-insensitive for ASCII only, so `ilike` misses accented names.
 - No SQLite-specific SQL: everything goes through the SQLAlchemy ORM so a Postgres swap stays cheap.
+- **Install torch and torchvision together from the cu128 index, and re-run that install after any package that depends on torch.** `pip install open-clip-torch` silently replaces the CUDA build with a CPU one, and repairing torch alone then breaks torchvision (`operator torchvision::nms does not exist`).
+- **Never derive a cache filename from an image URL.** 661 catalog images have no file extension, and two real card ids (`ex10-!`, `ex10-?`) contain characters illegal in NTFS filenames. Key on `card_id` and percent-encode it.
+- **Recognition must report uncertainty, never guess.** A confidently wrong identification is the worst outcome this pipeline can produce — prefer an `ambiguous` result with ranked candidates. Only a full `N/M` OCR reading may override the visual winner; a bare number may only confirm it.
+- **Rectification must reject non-card-shaped quads.** Without the aspect gate it latches onto the card's interior artwork window on pale backgrounds and returns it stretched to full size, which nothing downstream can detect.
 
 ## Notes for Claude
 

@@ -15,6 +15,23 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.2", "pytest-cov>=5.0", "respx>=0.21"]
+# Recognition stack (Phase 1a). Kept out of base dependencies so the CLI and API
+# stay installable without a multi-gigabyte ML install.
+#
+# IMPORTANT: installing this group pulls torch from PyPI, which REPLACES a CUDA
+# build with a CPU-only one. After installing, always re-run:
+#   pip install --force-reinstall torch torchvision --index-url https://download.pytorch.org/whl/cu128
+# torch and torchvision must come from that index together, or torchvision fails
+# with "operator torchvision::nms does not exist".
+ml = [
+    "open-clip-torch>=2.24",
+    "faiss-cpu>=1.8",
+    "opencv-python>=4.9",
+    "pillow>=10.0",
+    "numpy>=2.0",
+    "rapidocr-onnxruntime>=1.3",
+    "python-multipart>=0.0.9",
+]
 
 [project.scripts]
 cardplatform = "cardplatform.cli:main"
