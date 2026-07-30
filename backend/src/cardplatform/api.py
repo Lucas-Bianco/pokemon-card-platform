@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import io
 from datetime import datetime
 from typing import Iterator
 
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile
+from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -13,6 +15,7 @@ from sqlalchemy.orm import Session
 from cardplatform.collection.store import CollectionStore
 from cardplatform.db.models import Card, CollectionItem, PriceSnapshot
 from cardplatform.db.session import Database
+from cardplatform.prices.service import PriceService
 
 _database: Database | None = None
 
@@ -35,6 +38,47 @@ def _get_database() -> Database:
 def get_session() -> Iterator[Session]:
     with _get_database().session() as session:
         yield session
+
+
+_recognition_stack: dict | None = None
+
+
+def get_recognition_stack() -> dict:
+    """Load CLIP weights and the FAISS index once per process.
+
+    Building these per request would add seconds to every scan. Imports are local for
+    the same reason _get_database is lazy: importing this module must not drag in torch
+    or require an index to exist on disk.
+    """
+    global _recognition_stack
+    if _recognition_stack is None:
+        from cardplatform.recognition.encoder import CardEncoder
+        from cardplatform.recognition.index import CardIndex
+        from cardplatform.recognition.ocr import CollectorNumberReader
+
+        _recognition_stack = {
+            "encoder": CardEncoder(),
+            "index": CardIndex().load(),
+            "reader": CollectorNumberReader(),
+        }
+    return _recognition_stack
+
+
+def get_recognition_service(session: Session = Depends(get_session)):
+    """Per-request recognition service bound to this request's session.
+
+    Declared as a dependency so tests can override it with a stub and never load real
+    model weights or require a built index on disk.
+    """
+    from cardplatform.recognition.service import RecognitionService
+
+    stack = get_recognition_stack()
+    return RecognitionService(
+        session=session,
+        encoder=stack["encoder"],
+        index=stack["index"],
+        reader=stack["reader"],
+    )
 
 
 class CardOut(BaseModel):
@@ -79,6 +123,38 @@ class PriceOut(BaseModel):
     market: float | None
     source_updated_at: str
     fetched_at: datetime
+
+
+class CandidateOut(BaseModel):
+    """A runner-up the user may have to choose between, resolved against the catalog.
+
+    A bare card_id is unusable in a picker, so the name, set, number and thumbnail
+    travel with the score.
+    """
+
+    card_id: str
+    name: str
+    set_name: str
+    number: str
+    image_small: str | None
+    visual_score: float
+
+
+class RecognizeOut(BaseModel):
+    """The scan verdict, with the pipeline's reasoning attached.
+
+    `card` and `price` are only populated for a result that actually named a card;
+    `collector_number_read` is exposed so the UI can show what OCR saw rather than
+    presenting the match as an oracle.
+    """
+
+    status: str
+    confidence: float
+    visual_margin: float
+    card: CardOut | None
+    price: PriceOut | None
+    candidates: list[CandidateOut]
+    collector_number_read: str | None
 
 
 class CollectionItemIn(BaseModel):
@@ -152,6 +228,31 @@ def create_app() -> FastAPI:
             latest.setdefault((snapshot.source, snapshot.variant), snapshot)
         return [PriceOut.model_validate(s, from_attributes=True) for s in latest.values()]
 
+    @app.post("/recognize", response_model=RecognizeOut)
+    async def recognize(
+        file: UploadFile = File(),
+        variant: str = Query(default="normal"),
+        rectify: bool = Query(default=True),
+        session: Session = Depends(get_session),
+        service=Depends(get_recognition_service),
+    ) -> RecognizeOut:
+        image = _decode_upload(await file.read())
+        result = service.recognize(image, rectify=rectify)
+
+        card = session.get(Card, result.card_id) if result.card_id else None
+        price = (
+            PriceService(session).latest_price(card.id, variant) if card is not None else None
+        )
+        return RecognizeOut(
+            status=result.status,
+            confidence=result.confidence,
+            visual_margin=result.visual_margin,
+            card=CardOut.from_card(card) if card is not None else None,
+            price=PriceOut.model_validate(price, from_attributes=True) if price else None,
+            candidates=_candidates_out(session, result.candidates),
+            collector_number_read=result.ocr.collector_number,
+        )
+
     @app.post("/collection", response_model=CollectionItemOut, status_code=201)
     def add_collection_item(
         payload: CollectionItemIn, session: Session = Depends(get_session)
@@ -186,6 +287,51 @@ def create_app() -> FastAPI:
         )
 
     return app
+
+
+def _decode_upload(raw: bytes) -> Image.Image:
+    """Turn uploaded bytes into an RGB image, or refuse them as a client error.
+
+    A phone can post anything; a decode failure is a bad request, not a server fault.
+    load() forces the decode here so a truncated file fails now rather than deep inside
+    the pipeline as a 500.
+    """
+    try:
+        image = Image.open(io.BytesIO(raw))
+        image.load()
+    except (UnidentifiedImageError, OSError, ValueError) as exc:
+        raise HTTPException(
+            status_code=400, detail="upload could not be decoded as an image"
+        ) from exc
+    return image.convert("RGB")
+
+
+def _candidates_out(session: Session, candidates) -> list[CandidateOut]:
+    """Resolve candidate ids against the catalog, dropping any it does not know.
+
+    RecognitionService already filters stale ids and logs them, so this should be a
+    no-op — but the endpoint must not 500 if an index ever outruns the catalog.
+    """
+    if not candidates:
+        return []
+    cards = {
+        card.id: card
+        for card in session.scalars(
+            select(Card).where(Card.id.in_([c.card_id for c in candidates]))
+        ).all()
+    }
+    return [
+        CandidateOut(
+            card_id=candidate.card_id,
+            name=cards[candidate.card_id].name,
+            set_name=cards[candidate.card_id].card_set.name,
+            number=cards[candidate.card_id].number,
+            image_small=cards[candidate.card_id].image_small,
+            visual_score=candidate.visual_score,
+        )
+        for candidate in candidates
+        if candidate.card_id in cards
+    ]
 
 
 def _require_card(session: Session, card_id: str) -> Card:
