@@ -269,6 +269,25 @@ def test_no_proposals_is_not_found(seeded, monkeypatch):
     assert result.status == "not_found"
 
 
+def test_proposal_with_no_search_hits_still_yields_a_real_crop(seeded, monkeypatch):
+    """A card was detected but the index matched nothing — OCR must still receive the
+    rectified crop. Scoring proposals from a -1.0 floor let a no-hit proposal fail to
+    beat it, leaving the winning crop unset and handing the reader None."""
+    from cardplatform.recognition import service as service_module
+
+    quad = np.array([[0, 0], [100, 0], [100, 140], [0, 140]], dtype="float32")
+    monkeypatch.setattr(service_module, "detect_candidates", lambda image: [("a", quad)])
+    reader = FakeReader()
+    service = RecognitionService(
+        session=seeded, encoder=FakeEncoder(), index=FakeIndex([]), reader=reader
+    )
+
+    result = service.recognize(Image.new("RGB", (300, 400), (200, 40, 40)), rectify=True)
+
+    assert result.status == "not_found"
+    assert isinstance(reader.read_images[0], Image.Image)
+
+
 def test_manual_corners_bypass_detection(seeded, monkeypatch):
     """The fallback path: the user dragged the corners, so trust them."""
     from cardplatform.recognition import service as service_module

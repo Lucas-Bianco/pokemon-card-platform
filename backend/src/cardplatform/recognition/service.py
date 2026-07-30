@@ -78,7 +78,10 @@ class RecognitionService:
 
         best_crop: Image.Image | None = None
         best_found: tuple = ()
-        best_score = -1.0
+        # -inf, not -1.0: a proposal whose search returns nothing scores -1.0, which
+        # would fail to beat a -1.0 floor and leave the winning crop unset. A card was
+        # still detected, so the crop it produced is what OCR must see.
+        best_score = float("-inf")
         best_name = ""
         for name, quad in proposals:
             crop = rectify_from_corners(image, quad, self.settings.rectified_size)
