@@ -74,6 +74,15 @@ def get_price_provider():
     return PokemonTcgIoProvider()
 
 
+def get_scan_store(session: Session = Depends(get_session)) -> ScanStore:
+    """Scan storage for this request.
+
+    A dependency so tests can point it at a temp directory — otherwise the module-level
+    settings singleton wins and test runs litter the real data directory.
+    """
+    return ScanStore(session)
+
+
 def get_recognition_service(session: Session = Depends(get_session)):
     """Per-request recognition service bound to this request's session.
 
@@ -298,9 +307,9 @@ def create_app() -> FastAPI:
         confidence: float | None = Query(default=None),
         visual_margin: float | None = Query(default=None),
         collector_number_read: str | None = Query(default=None),
-        session: Session = Depends(get_session),
+        store: ScanStore = Depends(get_scan_store),
     ) -> ScanOut:
-        scan = ScanStore(session).record(
+        scan = store.record(
             image_bytes=await file.read(),
             status=status,
             predicted_card_id=predicted_card_id,
@@ -313,21 +322,21 @@ def create_app() -> FastAPI:
     # Declared before /scans/{scan_id}: a literal path must be registered ahead of the
     # parameterised one, or "accuracy" is captured as a scan_id and fails to parse.
     @app.get("/scans/accuracy", response_model=ScanAccuracyOut)
-    def scan_accuracy(session: Session = Depends(get_session)) -> ScanAccuracyOut:
-        stats = ScanStore(session).accuracy()
+    def scan_accuracy(store: ScanStore = Depends(get_scan_store)) -> ScanAccuracyOut:
+        stats = store.accuracy()
         return ScanAccuracyOut(
             reviewed=stats.reviewed, correct=stats.correct, top1_accuracy=stats.top1_accuracy
         )
 
     @app.get("/scans", response_model=list[ScanOut])
     def list_scans(
-        limit: int = Query(default=50, le=200), session: Session = Depends(get_session)
+        limit: int = Query(default=50, le=200), store: ScanStore = Depends(get_scan_store)
     ) -> list[ScanOut]:
-        return [_scan_out(s) for s in ScanStore(session).recent(limit)]
+        return [_scan_out(s) for s in store.recent(limit)]
 
     @app.post("/scans/{scan_id}/confirm", response_model=ScanOut)
-    def confirm_scan(scan_id: int, session: Session = Depends(get_session)) -> ScanOut:
-        scan = ScanStore(session).confirm(scan_id)
+    def confirm_scan(scan_id: int, store: ScanStore = Depends(get_scan_store)) -> ScanOut:
+        scan = store.confirm(scan_id)
         if scan is None:
             raise HTTPException(status_code=404, detail="unknown scan")
         return _scan_out(scan)
@@ -336,10 +345,10 @@ def create_app() -> FastAPI:
     def correct_scan(
         scan_id: int,
         card_id: str = Query(...),
-        session: Session = Depends(get_session),
+        store: ScanStore = Depends(get_scan_store),
     ) -> ScanOut:
         try:
-            scan = ScanStore(session).correct(scan_id, card_id)
+            scan = store.correct(scan_id, card_id)
         except ValueError as exc:
             # An id the catalog has never heard of is a client mistake, not a server
             # fault; without this it would surface as an opaque 500.

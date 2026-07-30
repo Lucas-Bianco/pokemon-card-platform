@@ -84,7 +84,15 @@ def test_resolved_price_does_not_call_the_provider(seeded):
 
 def test_refresh_fetches_and_returns_the_new_price(seeded):
     provider = StubProvider(
-        [PriceQuote("base1-58", "tcgplayer", "normal", market=12.5, source_updated_at="2026/07/29")]
+        [
+            PriceQuote(
+                card_id="base1-58",
+                source="tcgplayer",
+                variant="normal",
+                market=12.5,
+                source_updated_at="2026/07/29",
+            )
+        ]
     )
     client, stub = _client(seeded, provider)
 

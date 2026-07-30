@@ -4,8 +4,10 @@ import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 
-from cardplatform.api import create_app, get_session
+from cardplatform.api import create_app, get_scan_store, get_session
+from cardplatform.config import Settings
 from cardplatform.db.models import Card, CardSet
+from cardplatform.scans.store import ScanStore
 
 
 def _png() -> bytes:
@@ -24,9 +26,12 @@ def seeded(db):
 
 
 @pytest.fixture
-def client(seeded):
+def client(seeded, tmp_path):
     app = create_app()
     app.dependency_overrides[get_session] = lambda: seeded
+    app.dependency_overrides[get_scan_store] = lambda: ScanStore(
+        seeded, Settings(data_dir=tmp_path)
+    )
     return TestClient(app)
 
 
