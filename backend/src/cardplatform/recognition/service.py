@@ -62,6 +62,19 @@ class RecognitionService:
         # Drop index entries the catalog no longer knows about.
         candidates = tuple(c for c in raw_candidates if c.card_id in catalog_numbers)
 
+        if len(candidates) != len(raw_candidates):
+            # Should be unreachable: the index is built from the catalog and the loader
+            # never deletes. Log loudly anyway — dropping the top candidate lets the
+            # runner-up be scored against an empty field, which can turn a weak match
+            # into a "confident" one. A stale index needs rebuilding, not tolerating.
+            stale = [c.card_id for c in raw_candidates if c.card_id not in catalog_numbers]
+            logger.warning(
+                "index returned %d card(s) absent from the catalog (%s); "
+                "rebuild the index with 'cardplatform build-index'",
+                len(stale),
+                ", ".join(stale),
+            )
+
         reading = self.reader.read(working)
         return fuse(candidates, reading, catalog_numbers, config=self.fusion_config)
 
