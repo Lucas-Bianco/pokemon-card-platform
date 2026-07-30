@@ -188,9 +188,13 @@ class ScanOut(BaseModel):
 
 
 class ScanAccuracyOut(BaseModel):
-    reviewed: int
+    total: int
+    answered: int
+    predicted: int
     correct: int
-    top1_accuracy: float
+    precision: float
+    coverage: float
+    by_status: dict[str, int]
 
 
 class CollectionItemIn(BaseModel):
@@ -325,7 +329,13 @@ def create_app() -> FastAPI:
     def scan_accuracy(store: ScanStore = Depends(get_scan_store)) -> ScanAccuracyOut:
         stats = store.accuracy()
         return ScanAccuracyOut(
-            reviewed=stats.reviewed, correct=stats.correct, top1_accuracy=stats.top1_accuracy
+            total=stats.total,
+            answered=stats.answered,
+            predicted=stats.predicted,
+            correct=stats.correct,
+            precision=stats.precision,
+            coverage=stats.coverage,
+            by_status=stats.by_status,
         )
 
     @app.get("/scans", response_model=list[ScanOut])
