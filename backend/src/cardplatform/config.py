@@ -64,6 +64,10 @@ class Settings(BaseSettings):
         return self.data_dir / "reference_images"
 
     @property
+    def scan_image_dir(self) -> Path:
+        return self.data_dir / "scans"
+
+    @property
     def index_path(self) -> Path:
         return self.data_dir / "card_index.faiss"
 

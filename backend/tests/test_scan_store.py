@@ -1,4 +1,13 @@
+import io
+
+import pytest
+from PIL import Image
+
+from sqlalchemy.exc import IntegrityError
+
+from cardplatform.config import Settings
 from cardplatform.db.models import Card, CardSet, ScanLog
+from cardplatform.scans.store import ScanStore
 
 
 def _seed(db):
@@ -52,11 +61,119 @@ def test_scan_log_allows_a_prediction_of_nothing(db):
 
 def test_scan_log_rejects_an_unknown_predicted_card(db):
     """predicted_card_id is a real foreign key; foreign keys are enforced in tests."""
-    import pytest
-    from sqlalchemy.exc import IntegrityError
-
     _seed(db)
     db.add(ScanLog(image_path="scans/y.png", predicted_card_id="ghost-1", status="confident"))
 
     with pytest.raises(IntegrityError):
         db.commit()
+
+
+def _png() -> bytes:
+    buf = io.BytesIO()
+    Image.new("RGB", (60, 82), (200, 40, 40)).save(buf, "PNG")
+    return buf.getvalue()
+
+
+def test_settings_expose_scan_dir(tmp_path):
+    assert Settings(data_dir=tmp_path).scan_image_dir == tmp_path / "scans"
+
+
+def test_record_writes_the_image_and_the_row(db, tmp_path):
+    _seed(db)
+    store = ScanStore(db, Settings(data_dir=tmp_path))
+
+    scan = store.record(
+        image_bytes=_png(),
+        predicted_card_id="base1-4",
+        status="confident",
+        confidence=0.97,
+        visual_margin=0.14,
+        collector_number_read="4",
+    )
+
+    assert scan.id is not None
+    saved = tmp_path / scan.image_path
+    assert saved.exists()
+    assert Image.open(saved).size == (60, 82)
+
+
+def test_recorded_image_paths_are_unique(db, tmp_path):
+    _seed(db)
+    store = ScanStore(db, Settings(data_dir=tmp_path))
+
+    first = store.record(image_bytes=_png(), predicted_card_id="base1-4", status="confident")
+    second = store.record(image_bytes=_png(), predicted_card_id="base1-4", status="confident")
+
+    assert first.image_path != second.image_path
+
+
+def test_confirm_marks_the_prediction_correct(db, tmp_path):
+    _seed(db)
+    store = ScanStore(db, Settings(data_dir=tmp_path))
+    scan = store.record(image_bytes=_png(), predicted_card_id="base1-4", status="confident")
+
+    store.confirm(scan.id)
+
+    assert store.get(scan.id).confirmed is True
+    assert store.get(scan.id).corrected_card_id is None
+
+
+def test_correct_records_the_real_card(db, tmp_path):
+    _seed(db)
+    store = ScanStore(db, Settings(data_dir=tmp_path))
+    scan = store.record(image_bytes=_png(), predicted_card_id="base1-4", status="ambiguous")
+
+    store.correct(scan.id, "base4-4")
+
+    stored = store.get(scan.id)
+    assert stored.corrected_card_id == "base4-4"
+    assert stored.confirmed is True
+
+
+def test_correcting_to_an_unknown_card_is_rejected(db, tmp_path):
+    _seed(db)
+    store = ScanStore(db, Settings(data_dir=tmp_path))
+    scan = store.record(image_bytes=_png(), predicted_card_id="base1-4", status="confident")
+
+    with pytest.raises(ValueError, match="unknown card"):
+        store.correct(scan.id, "nope-1")
+
+
+def test_confirming_a_missing_scan_returns_none(db, tmp_path):
+    _seed(db)
+    assert ScanStore(db, Settings(data_dir=tmp_path)).confirm(9999) is None
+
+
+def test_recent_returns_newest_first(db, tmp_path):
+    _seed(db)
+    store = ScanStore(db, Settings(data_dir=tmp_path))
+    store.record(image_bytes=_png(), predicted_card_id="base1-4", status="confident")
+    second = store.record(image_bytes=_png(), predicted_card_id="base4-4", status="confident")
+
+    assert store.recent()[0].id == second.id
+
+
+def test_accuracy_counts_only_reviewed_scans(db, tmp_path):
+    """An unreviewed scan is not evidence either way — that is the whole point of
+    keeping `confirmed` separate from `corrected_card_id`."""
+    _seed(db)
+    store = ScanStore(db, Settings(data_dir=tmp_path))
+    right = store.record(image_bytes=_png(), predicted_card_id="base1-4", status="confident")
+    wrong = store.record(image_bytes=_png(), predicted_card_id="base1-4", status="confident")
+    store.record(image_bytes=_png(), predicted_card_id="base1-4", status="confident")  # unreviewed
+
+    store.confirm(right.id)
+    store.correct(wrong.id, "base4-4")
+
+    stats = store.accuracy()
+    assert stats.reviewed == 2
+    assert stats.correct == 1
+    assert stats.top1_accuracy == pytest.approx(0.5)
+
+
+def test_accuracy_with_no_reviews_is_zero_not_a_crash(db, tmp_path):
+    _seed(db)
+    stats = ScanStore(db, Settings(data_dir=tmp_path)).accuracy()
+
+    assert stats.reviewed == 0
+    assert stats.top1_accuracy == 0.0
