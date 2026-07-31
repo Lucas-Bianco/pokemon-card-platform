@@ -26,15 +26,18 @@ class StubService:
     None" apart from "the endpoint never called us at all".
     """
 
-    def __init__(self, result):
+    def __init__(self, result, centering=None):
         self.result = result
+        self.centering = centering
         self.calls = []
         self.corners = "unset"
 
     def recognize(self, image, rectify=True, corners=None):
         self.calls.append(rectify)
         self.corners = corners
-        return self.result
+        # The service returns (result, centering); centering is None whenever the
+        # border could not be measured, which is the common case on real cards.
+        return self.result, self.centering
 
 
 def result(
@@ -107,8 +110,8 @@ def seeded(db):
 def make_client(seeded):
     stubs = []
 
-    def _make(recognition_result) -> TestClient:
-        stub = StubService(recognition_result)
+    def _make(recognition_result, centering=None) -> TestClient:
+        stub = StubService(recognition_result, centering)
         stubs.append(stub)
         app.dependency_overrides[get_session] = lambda: seeded
         app.dependency_overrides[get_recognition_service] = lambda: stub
@@ -295,3 +298,79 @@ def test_non_numeric_corners_are_rejected(make_client):
 
     assert response.status_code == 422
     assert client.stub.corners == "unset"
+
+
+def centering_result(worst_axis=54.0, uncertainty=1.0, psa_cap=10, certain=True):
+    from cardplatform.grading.centering import CenteringResult
+
+    return CenteringResult(
+        left_right=(worst_axis, 100.0 - worst_axis),
+        top_bottom=(50.0, 50.0),
+        worst_axis=worst_axis,
+        uncertainty=uncertainty,
+        border_pixels=(23, 17, 20, 20),
+        psa_cap=psa_cap,
+        psa_cap_certain=certain,
+    )
+
+
+def test_centering_is_returned_when_measurable(make_client):
+    client = make_client(result(), centering=centering_result())
+
+    body = upload(client).json()
+
+    assert body["centering"]["worst_axis"] == 54.0
+    assert body["centering"]["psa_cap"] == 10
+    assert body["centering"]["left_right"] == [54.0, 46.0]
+
+
+def test_centering_is_null_when_the_border_could_not_be_measured(make_client):
+    """The common case on real cards — modern textured frames cannot be measured."""
+    client = make_client(result(), centering=None)
+
+    assert upload(client).json()["centering"] is None
+
+
+def test_cap_range_is_null_when_the_cap_is_certain(make_client):
+    client = make_client(result(), centering=centering_result(certain=True))
+
+    assert upload(client).json()["centering"]["psa_cap_range"] is None
+
+
+def test_cap_range_names_both_grades_when_the_interval_straddles_a_boundary(make_client):
+    """54.5 +/- 2.5 spans 52.0-57.0, crossing the 55 line between PSA 10 and 9."""
+    client = make_client(
+        result(),
+        centering=centering_result(worst_axis=54.5, uncertainty=2.5, psa_cap=10, certain=False),
+    )
+
+    assert upload(client).json()["centering"]["psa_cap_range"] == [9, 10]
+
+
+def test_cap_range_is_ordered_low_to_high():
+    """Better centering yields the HIGHER grade, so the low end of the interval maps to
+    the top of the range. Backwards, this would understate every uncertain card."""
+    from cardplatform.api import _psa_cap_range
+
+    assert _psa_cap_range(
+        centering_result(worst_axis=59.5, uncertainty=1.5, psa_cap=9, certain=False)
+    ) == (8, 9)
+
+
+def test_cap_range_is_null_when_one_end_leaves_every_band():
+    """Past the last published band (90/10) there is no bound to state, and inventing
+    one would be worse than saying nothing. 88 +/- 5 spans 83-93, and 93 has no cap."""
+    from cardplatform.api import _psa_cap_range
+
+    assert _psa_cap_range(
+        centering_result(worst_axis=88.0, uncertainty=5.0, psa_cap=3, certain=False)
+    ) is None
+
+
+def test_cap_range_spans_the_lower_bands_too():
+    """The table runs past 6 to grades 5 and 3, so the range logic must work there."""
+    from cardplatform.api import _psa_cap_range
+
+    assert _psa_cap_range(
+        centering_result(worst_axis=79.0, uncertainty=4.0, psa_cap=6, certain=False)
+    ) == (5, 6)

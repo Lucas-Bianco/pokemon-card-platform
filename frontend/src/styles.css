@@ -277,3 +277,44 @@ h1 { font-size: 1.25rem; margin: 4px 0 16px; }
 .collection-meta { font-size: 0.78rem; color: var(--fg-dim); }
 .small { font-size: 0.8rem; }
 .valuation .unknown { color: var(--fg-dim); }
+
+/* Continues the stacked result card: same surface, borders collapsed against the
+   panel above so the whole result reads as one block. */
+.centering {
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-top: none;
+}
+/* Deliberately not a badge or a large number — a grade-shaped chip would read as a
+   verdict, and this is only a ceiling. */
+.centering-headline { margin: 0; font-size: 0.95rem; font-weight: 600; }
+.centering-flag { color: var(--warn); font-weight: 600; }
+.centering-sub { margin: 4px 0 0; font-size: 0.78rem; color: var(--fg-dim); }
+
+.centering-axes { margin: 10px 0 0; display: grid; gap: 4px; }
+.centering-axes > div { display: flex; justify-content: space-between; gap: 12px; }
+.centering-axes dt { font-size: 0.82rem; color: var(--fg-dim); }
+.centering-axes dd {
+  margin: 0;
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.centering-uncertain {
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  font-size: 0.78rem;
+  color: var(--warn);
+}
+
+.centering-caveats {
+  margin: 10px 0 0;
+  padding-left: 16px;
+  font-size: 0.75rem;
+  color: var(--fg-dim);
+}
+.centering-caveats li + li { margin-top: 2px; }

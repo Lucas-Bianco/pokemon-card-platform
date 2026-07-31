@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from cardplatform.config import Settings, settings as default_settings
 from cardplatform.db.models import Card
+from cardplatform.grading.centering import CenteringResult, measure_centering
 from cardplatform.recognition.detectors import detect_candidates
 from cardplatform.recognition.fusion import FusionConfig, fuse
 from cardplatform.recognition.rectify import rectify_from_corners
@@ -41,8 +42,8 @@ class RecognitionService:
         image: Image.Image,
         rectify: bool = True,
         corners: list[tuple[float, float]] | None = None,
-    ) -> RecognitionResult:
-        """Identify the card in `image`.
+    ) -> tuple[RecognitionResult, CenteringResult | None]:
+        """Identify the card in `image`, and measure its centering.
 
         `rectify=False` is for callers that already rectified client-side (the Phase 1b
         PWA does this in WebAssembly for the live overlay).
@@ -67,13 +68,17 @@ class RecognitionService:
         proposals = detect_candidates(image)
         if not proposals:
             logger.info("no card detected in frame by any strategy")
-            return RecognitionResult(
-                card_id=None,
-                confidence=0.0,
-                status="not_found",
-                candidates=(),
-                ocr=OcrReading(),
-                visual_margin=0.0,
+            # No crop was produced, so there is nothing to measure centering on.
+            return (
+                RecognitionResult(
+                    card_id=None,
+                    confidence=0.0,
+                    status="not_found",
+                    candidates=(),
+                    ocr=OcrReading(),
+                    visual_margin=0.0,
+                ),
+                None,
             )
 
         best_crop: Image.Image | None = None
@@ -99,13 +104,17 @@ class RecognitionService:
         )
         return self._fuse_for(best_crop, best_found)
 
-    def _recognize_crop(self, crop: Image.Image) -> RecognitionResult:
+    def _recognize_crop(
+        self, crop: Image.Image
+    ) -> tuple[RecognitionResult, CenteringResult | None]:
         found = tuple(
             self.index.search(self.encoder.embed(crop), top_k=self.settings.visual_top_k)
         )
         return self._fuse_for(crop, found)
 
-    def _fuse_for(self, crop: Image.Image, found: tuple) -> RecognitionResult:
+    def _fuse_for(
+        self, crop: Image.Image, found: tuple
+    ) -> tuple[RecognitionResult, CenteringResult | None]:
         catalog_numbers = self._collector_numbers([c.card_id for c in found])
         # Drop index entries the catalog no longer knows about.
         candidates = tuple(c for c in found if c.card_id in catalog_numbers)
@@ -124,7 +133,10 @@ class RecognitionService:
             )
 
         reading = self.reader.read(crop)
-        return fuse(candidates, reading, catalog_numbers, config=self.fusion_config)
+        result = fuse(candidates, reading, catalog_numbers, config=self.fusion_config)
+        # Measured once, on the winning crop only — the losing proposals were never
+        # the card, so measuring them would be pure waste.
+        return result, measure_centering(crop)
 
     def _collector_numbers(self, card_ids: list[str]) -> dict[str, str]:
         if not card_ids:

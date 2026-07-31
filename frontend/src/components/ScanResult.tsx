@@ -3,6 +3,7 @@ import { useState } from "react";
 import type { RecognizeResponse } from "../api/types";
 import { statusLabel } from "../lib/format";
 import CandidatePicker from "./CandidatePicker";
+import CenteringPanel from "./CenteringPanel";
 import PriceLine from "./PriceLine";
 
 interface Props {
@@ -48,6 +49,10 @@ export default function ScanResult({
           </div>
         </div>
       )}
+
+      {/* Absent whenever the border could not be measured. There is nothing to say in
+          that case, so the panel does not appear at all rather than as an empty box. */}
+      {result.centering && <CenteringPanel centering={result.centering} />}
 
       {result.collector_number_read && (
         <p className="ocr-note">Read card number: {result.collector_number_read}</p>

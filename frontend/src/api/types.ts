@@ -30,6 +30,20 @@ export interface Candidate {
   visual_score: number;
 }
 
+// A geometric measurement of the *front* border only, and only ever a ceiling: it
+// says what centering rules out, never what the card grades. `psa_cap_certain` is
+// false when the ± interval straddles a band boundary — at a 20px border one pixel
+// is ±2.5 share points and the PSA 10→9 band is only 5 points wide, so the reading
+// genuinely cannot say which side the card falls on.
+export interface Centering {
+  left_right: [number, number];
+  top_bottom: [number, number];
+  worst_axis: number;
+  uncertainty: number;
+  psa_cap: number | null;
+  psa_cap_certain: boolean;
+}
+
 export interface RecognizeResponse {
   status: RecognitionStatus;
   confidence: number;
@@ -38,6 +52,7 @@ export interface RecognizeResponse {
   price: Price | null;
   candidates: Candidate[];
   collector_number_read: string | null;
+  centering: Centering | null;
 }
 
 export interface CollectionItem {

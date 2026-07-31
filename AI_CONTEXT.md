@@ -205,8 +205,7 @@ can chart anything real.** Building it sooner means charting single dots.
 
 ## 7. The most useful next levers
 
-1. **Phase 3 (grade predictor).** Needs the rectified card images the pipeline now produces reliably.
-   The hard part is training data: graded cards with known PSA/CGC grades.
+1. **Fix centering's coverage on real photos — it is built but only 4% usable.** See §9.
 2. **Phase 2**, once price history has accrued — see §6.
 3. **A different OCR engine**, if OCR is revisited. See the dead ends below: cropping and
    preprocessing are exhausted, so the remaining gain would have to come from the recogniser itself
@@ -280,3 +279,52 @@ pure profit.*
   20,391 downloaded images, a 40 MB index, the database, and 101 irreplaceable real scan photos.
 - Match the style of surrounding code.
 - `CLAUDE.md` holds the same conventions in condensed form for Claude Code specifically.
+
+---
+
+## 9. Phase 3a — centering: built, correct, and mostly unusable on real photos
+
+Shipped 2026-07-31 on branch `phase-3a-centering`. **248 backend + 29 frontend tests.**
+
+Centering is the one PSA sub-grade measurable without training data — a distance, not a judgement.
+Corners, edges, surface and grading EV stay blocked: they need labelled graded cards and
+graded-card prices, and this project has neither.
+
+### What is proven correct
+
+- Synthetic cards with centering exact by construction measure **0.00% error**, at every border
+  thickness from 6px to 60px. Mirror-equivariance holds on real renders.
+- An earlier "2.6% systematic bias" was **disproved**: the skew was small-sample noise (it inverts at
+  n=79), and worst-axis is a `max()` over four shares so it is ≥50 by construction and can never
+  average to 50 under any noise. A matched null model predicts 51.28% against an observed 52.27%.
+- Output is always a **ceiling** — "centering allows up to PSA 9" — never a grade, with front-only
+  and one-of-four caveats in the UI, and a `psa_cap_range` when the interval straddles a band.
+
+### The blocking problem
+
+Run over all 101 real scans (`backend/scripts/evaluate_centering.py`):
+
+| outcome | count | share |
+|---|---|---|
+| measured | 4 | **4%** |
+| declined: no card detected | 3 | 3% |
+| **declined: border unmeasurable** | **94** | **93%** |
+
+**Diagnosed cause — do not re-diagnose this.** It is *not* that photos are too noisy overall: peak
+border purity across 98 real crops has a **median of 0.92**, and 55% clear the 0.90 threshold. The
+guard rejects because it requires **both sides of an axis to be clean simultaneously**, and a real
+photo with directional lighting almost always has one shadowed edge.
+
+This is the same failure class as the earlier detector work: **a threshold calibrated on the wrong
+population.** `MIN_BORDER_PURITY` was tuned against clean catalog renders, then applied to phone
+photos.
+
+Plausible fixes, none yet tested:
+- Judge purity **per axis** rather than globally — report the horizontal ratio when only the left/right
+  borders are clean, and say the vertical is unmeasured.
+- Normalise illumination across the crop before classifying the border.
+- Lower the threshold for photos while keeping it high for renders — but note that the guard exists to
+  reject modern textured frames, so loosening it naively brings that failure back.
+
+**The feature is correct but not yet earning its place.** Fixing coverage is the next lever, and the
+101 saved scans are the test set to fix it against.

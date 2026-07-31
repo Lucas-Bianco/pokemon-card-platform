@@ -61,7 +61,7 @@ def test_confident_match_returns_card(seeded):
         reader=FakeReader(),
     )
 
-    result = service.recognize(_photo(), rectify=False)
+    result, _centering = service.recognize(_photo(), rectify=False)
 
     assert result.status == "confident"
     assert result.card_id == "base1-4"
@@ -76,7 +76,7 @@ def test_ocr_disambiguates_same_name_reprints(seeded):
         reader=FakeReader(OcrReading(collector_number="114", printed_total="252")),
     )
 
-    result = service.recognize(_photo(), rectify=False)
+    result, _centering = service.recognize(_photo(), rectify=False)
 
     assert result.card_id == "me2pt5-114"
     assert result.status == "confident"
@@ -90,7 +90,7 @@ def test_ambiguous_result_returns_candidates(seeded):
         reader=FakeReader(),
     )
 
-    result = service.recognize(_photo(), rectify=False)
+    result, _centering = service.recognize(_photo(), rectify=False)
 
     assert result.status == "ambiguous"
     assert [c.card_id for c in result.candidates] == ["me2pt5-252", "me2pt5-114"]
@@ -105,7 +105,7 @@ def test_candidates_unknown_to_the_catalog_are_dropped(seeded):
         reader=FakeReader(),
     )
 
-    result = service.recognize(_photo(), rectify=False)
+    result, _centering = service.recognize(_photo(), rectify=False)
 
     assert all(c.card_id != "ghost-1" for c in result.candidates)
 
@@ -120,7 +120,7 @@ def test_rectification_failure_is_reported(seeded):
     )
     blank = Image.new("RGB", (900, 700), (18, 18, 18))
 
-    result = service.recognize(blank, rectify=True)
+    result, _centering = service.recognize(blank, rectify=True)
 
     assert result.status == "not_found"
     assert result.card_id is None
@@ -177,7 +177,7 @@ def test_empty_candidate_list_is_not_found(seeded):
         session=seeded, encoder=FakeEncoder(), index=FakeIndex([]), reader=FakeReader()
     )
 
-    result = service.recognize(_photo(), rectify=False)
+    result, _centering = service.recognize(_photo(), rectify=False)
 
     assert result.status == "not_found"
     assert result.candidates == ()
@@ -225,7 +225,7 @@ def test_best_scoring_proposal_wins(seeded, monkeypatch):
         session=seeded, encoder=FakeEncoder(), index=index, reader=FakeReader()
     )
 
-    result = service.recognize(Image.new("RGB", (300, 400), (200, 40, 40)), rectify=True)
+    result, _centering = service.recognize(Image.new("RGB", (300, 400), (200, 40, 40)), rectify=True)
 
     assert result.card_id == "me2pt5-114"
 
@@ -264,7 +264,7 @@ def test_no_proposals_is_not_found(seeded, monkeypatch):
         reader=FakeReader(),
     )
 
-    result = service.recognize(Image.new("RGB", (300, 400), (18, 18, 18)), rectify=True)
+    result, _centering = service.recognize(Image.new("RGB", (300, 400), (18, 18, 18)), rectify=True)
 
     assert result.status == "not_found"
 
@@ -282,7 +282,7 @@ def test_proposal_with_no_search_hits_still_yields_a_real_crop(seeded, monkeypat
         session=seeded, encoder=FakeEncoder(), index=FakeIndex([]), reader=reader
     )
 
-    result = service.recognize(Image.new("RGB", (300, 400), (200, 40, 40)), rectify=True)
+    result, _centering = service.recognize(Image.new("RGB", (300, 400), (200, 40, 40)), rectify=True)
 
     assert result.status == "not_found"
     assert isinstance(reader.read_images[0], Image.Image)
@@ -303,7 +303,7 @@ def test_manual_corners_bypass_detection(seeded, monkeypatch):
         reader=FakeReader(),
     )
 
-    result = service.recognize(
+    result, _centering = service.recognize(
         Image.new("RGB", (300, 400), (200, 40, 40)),
         rectify=True,
         corners=[(0, 0), (100, 0), (100, 140), (0, 140)],
