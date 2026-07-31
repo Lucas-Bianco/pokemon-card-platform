@@ -60,4 +60,6 @@ C:\ClaudeKnowledge\backend\.venv\Scripts\pip.exe install -e "C:\ClaudeKnowledge\
 
 <!-- Anything Claude should always keep in mind: gotchas, do-nots, priorities. -->
 - Ask before running destructive or irreversible commands.
+- **Never delete anything under `data/`** — it holds 20,391 downloaded card images, a 40 MB FAISS index, the SQLite database, and 101 irreplaceable real scan photos. It is gitignored, so nothing there can be recovered from git.
+- **Keep `AI_CONTEXT.md` current.** It is the onboarding document for any AI working on this repo, and a stale one is worse than none because it gets trusted. Update it — including the "Last updated" date — after any change to architecture, measured results, the roadmap, or a newly discovered gotcha. Rule of thumb: if a fresh AI would make a worse decision without knowing it, it belongs there.
 - Match the style of surrounding code.
