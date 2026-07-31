@@ -7,7 +7,7 @@
 > **Keep it current.** Update this file after any change that alters architecture, measured
 > results, or the roadmap. A stale onboarding doc is worse than none, because it is trusted.
 >
-> Last updated: **2026-07-30**
+> Last updated: **2026-07-31**
 
 ---
 
@@ -56,7 +56,7 @@ images*, which flattered it badly.
 | | value |
 |---|---|
 | **Precision when the pipeline commits** | **100%** (29/29, zero confident errors) |
-| **Coverage** (scans producing a confident answer) | **63%** (was 31% before Phase 1c) |
+| **Coverage** (scans producing a confident answer) | **64%** (was 31% before Phase 1c) |
 | True card at rank 1 | **88%** |
 | True card in top 3 | **98%** |
 
@@ -205,13 +205,41 @@ can chart anything real.** Building it sooner means charting single dots.
 
 ## 7. The most useful next levers
 
-1. **OCR reliability.** ~34 scans sit at `ambiguous` — detected but not confidently matched. OCR read
-   a number in only 5 of 11 sampled, with a mean visual margin of 0.023 against a 0.05 threshold.
-   These are narrow calls a collector number would settle. This is a better lever than encoder
-   fine-tuning, which lacks training data.
+1. **Rectification vertical alignment — the real remaining OCR blocker.** OCR was improved on
+   2026-07-31 (see below), but diagnosis of the residual failures showed the crop itself is often
+   at fault: several rectified cards put the *weakness / resistance / retreat* row inside the bottom
+   12% strip, meaning the detected quad extends below the card and the whole card content sits too
+   high. That is a detector-precision problem, not an OCR one, and no amount of preprocessing fixes
+   it. Fixing the quad would help both OCR and the embedding.
 2. **Phase 3 (grade predictor).** Needs the rectified card images the pipeline now produces reliably.
    The hard part is training data: graded cards with known PSA/CGC grades.
 3. **Phase 2**, once price history has accrued — see §6.
+
+### OCR work done 2026-07-31
+
+Diagnosed all 15 OCR failures across 39 real crops before changing anything:
+
+| cause | count |
+|---|---|
+| OCR saw text the parser rejected | 8 |
+| read a wrong number | 3 |
+| number outside the bottom strip | 2 |
+| no text at all | 2 |
+| **card rectified upside down** | **0** — hypothesis disproved |
+
+Two fixes shipped, both measured:
+- **Suffix letters in the token pattern.** Real ids use them (`63a`, `12b`). OCR had read `63a/111`
+  correctly and the parser threw it away because it only allowed letters as a *prefix*.
+- **A wider fallback band, accepting only a full `N/M` reading.** The wide band also contains rules
+  text and copyright lines, so a bare number found there is usually not the collector number.
+
+Result: 24 → **27 correct** reads, wrong held at 4. Rejected after measurement: an `S`→`5`
+confusion repair, which added 2 wrong reads for 0 correct, and allowing bare numbers in the wide
+band, which doubled wrong reads from 4 to 8.
+
+End-to-end that was worth **+1 confident answer** (63% → 64% coverage, 0 regressions) — OCR only
+arbitrates when its reading uniquely matches one shortlisted candidate, so extra correct reads do
+not convert one-for-one.
 
 *Done 2026-07-30: the PWA now has a collection view. It shows holdings and a valuation summary, and
 renders unrealised P/L as an em dash when no cost basis exists rather than reporting market value as

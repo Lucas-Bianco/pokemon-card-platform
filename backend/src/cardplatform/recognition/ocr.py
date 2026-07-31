@@ -27,8 +27,29 @@ logger = logging.getLogger(__name__)
 # entirely — measured, it read 1/4 reference cards instead of 3/4.
 _NUMBER_REGION = (0.0, 0.88, 1.0, 1.0)  # left, top, right, bottom as fractions
 
-_NUMBER_PATTERN = re.compile(r"([A-Z]{0,3}\d{1,4})\s*/\s*([A-Z]{0,3}\d{1,4})")
-_BARE_NUMBER_PATTERN = re.compile(r"^([A-Z]{0,3}\d{1,4})$")
+# A collector-number token. Real ids carry a prefix (SV049, TG12, SM106) or a suffix
+# (63a, 12b) but not both. The suffix half was missing and cost real reads: OCR read
+# '63a/111' correctly on a real scan and the parser threw it away.
+_TOKEN = r"(?:[A-Z]{0,3}\d{1,4}[A-Z]?)"
+_NUMBER_PATTERN = re.compile(rf"({_TOKEN})\s*/\s*({_TOKEN})")
+_BARE_NUMBER_PATTERN = re.compile(rf"^({_TOKEN})$")
+
+# Where to look, in order. The tight strip is the collector number's usual home; the
+# wider band catches cards whose rectified crop sits a little high — several real scans
+# showed the weakness/resistance row in the tight strip, meaning the number fell below it.
+#
+# Only a full 'N/M' reading is accepted from the wide band. Measured over 39 real crops:
+#
+#     tight strip only (previous)          24 correct, 3 wrong
+#     + suffix letters                     25 correct, 4 wrong
+#     + suffix + wide band, N/M only       27 correct, 4 wrong   <- shipped
+#     + suffix + wide band, bare allowed   27 correct, 8 wrong
+#     + S->5 style confusion repair        25 correct, 6 wrong   <- rejected, pure loss
+#
+# The wide band sees far more text (rules, attack costs, copyright), so a bare number
+# found there is usually not the collector number at all.
+_TIGHT_REGION = (0.88, 1.0)
+_WIDE_REGION = (0.78, 1.0)
 
 
 def _enhance_for_ocr(crop: Image.Image) -> Image.Image:
@@ -115,26 +136,40 @@ class CollectorNumberReader:
             self._engine = RapidOCR()
         return self._engine
 
-    def read(self, rectified: Image.Image) -> OcrReading:
-        """OCR the number region of a rectified card. Never raises."""
+    def _read_band(self, rectified: Image.Image, band: tuple[float, float]) -> tuple[str, ...]:
+        """OCR one horizontal band of a rectified card. Never raises."""
         width, height = rectified.size
-        left, top, right, bottom = _NUMBER_REGION
-        crop = rectified.crop(
-            (int(width * left), int(height * top), int(width * right), int(height * bottom))
+        top, bottom = band
+        crop = _enhance_for_ocr(
+            rectified.crop((0, int(height * top), width, int(height * bottom)))
         )
-        crop = _enhance_for_ocr(crop)
-
         try:
             results, _ = self._get_engine()(np.array(crop))
         except Exception as exc:  # noqa: BLE001 - OCR engines raise broadly
             logger.warning("ocr failed: %s", exc)
-            return OcrReading()
+            return ()
+        return tuple(str(text) for _, text, _ in (results or []))
 
-        if not results:
-            return OcrReading()
+    def read(self, rectified: Image.Image) -> OcrReading:
+        """Find the collector number on a rectified card. Never raises.
 
-        regions = tuple(str(text) for _, text, _ in results)
-        number, total = select_number_region(regions)
-        return OcrReading(
-            collector_number=number, printed_total=total, raw_regions=regions
-        )
+        Reads the tight bottom strip first, where the number normally sits. If that
+        yields nothing usable, widens the search — but accepts only a full 'N/M'
+        reading from the wider band, because it also contains rules text, attack
+        costs, and the copyright line, where a bare number is rarely the one wanted.
+        """
+        tight = self._read_band(rectified, _TIGHT_REGION)
+        number, total = select_number_region(tight)
+        if number is not None:
+            return OcrReading(collector_number=number, printed_total=total, raw_regions=tight)
+
+        wide = self._read_band(rectified, _WIDE_REGION)
+        for text in wide:
+            candidate, candidate_total = parse_number_text(text)
+            if candidate is not None and candidate_total is not None:
+                return OcrReading(
+                    collector_number=candidate,
+                    printed_total=candidate_total,
+                    raw_regions=tight + wide,
+                )
+        return OcrReading(raw_regions=tight + wide)

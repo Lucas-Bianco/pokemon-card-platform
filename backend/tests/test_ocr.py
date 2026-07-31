@@ -69,3 +69,80 @@ def test_reader_returns_empty_reading_for_blank_image():
 
     assert reading.collector_number is None
     assert reading.raw_regions == ()
+
+
+def test_parse_accepts_a_trailing_letter_suffix():
+    """Real ids carry suffixes (63a, 12b). OCR read '63a/111' correctly on a real scan
+    and the old pattern threw it away because it only allowed letters as a prefix."""
+    assert parse_number_text("63a/111") == ("63A", "111")
+
+
+def test_parse_still_accepts_a_prefix():
+    assert parse_number_text("SV049/SV122") == ("SV049", "SV122")
+
+
+def test_parse_still_rejects_free_text():
+    """The suffix allowance must not turn the pattern into a general word matcher."""
+    assert parse_number_text("weakness") == (None, None)
+    assert parse_number_text("Illus. Mitsuhiro Arita") == (None, None)
+    assert parse_number_text("Pokemon-GXrule") == (None, None)
+
+
+def test_bare_suffix_number_is_accepted():
+    assert parse_number_text("63a") == ("63A", None)
+
+
+def test_wide_band_is_only_consulted_when_the_tight_strip_fails(monkeypatch):
+    """The wide band contains rules text and copyright lines, so it is a fallback."""
+    from PIL import Image
+
+    from cardplatform.recognition.ocr import CollectorNumberReader
+
+    reader = CollectorNumberReader()
+    bands = []
+
+    def fake_band(_self, _rectified, band):
+        bands.append(band)
+        return ("32/198",) if band[0] > 0.85 else ("nonsense",)
+
+    monkeypatch.setattr(CollectorNumberReader, "_read_band", fake_band)
+    reading = reader.read(Image.new("RGB", (600, 825)))
+
+    assert reading.collector_number == "32"
+    assert len(bands) == 1, "wide band should not be read when the tight strip succeeds"
+
+
+def test_wide_band_accepts_only_a_full_reading(monkeypatch):
+    """A bare number found in the wide band is usually an attack cost or a year.
+    Measured: allowing bare reads there doubled wrong answers from 4 to 8."""
+    from PIL import Image
+
+    from cardplatform.recognition.ocr import CollectorNumberReader
+
+    reader = CollectorNumberReader()
+
+    def fake_band(_self, _rectified, band):
+        return () if band[0] > 0.85 else ("20", "2016", "weakness")
+
+    monkeypatch.setattr(CollectorNumberReader, "_read_band", fake_band)
+    reading = reader.read(Image.new("RGB", (600, 825)))
+
+    assert reading.collector_number is None
+    assert "20" in reading.raw_regions
+
+
+def test_wide_band_rescues_a_number_below_the_tight_strip(monkeypatch):
+    from PIL import Image
+
+    from cardplatform.recognition.ocr import CollectorNumberReader
+
+    reader = CollectorNumberReader()
+
+    def fake_band(_self, _rectified, band):
+        return () if band[0] > 0.85 else ("weakness", "106/181")
+
+    monkeypatch.setattr(CollectorNumberReader, "_read_band", fake_band)
+    reading = reader.read(Image.new("RGB", (600, 825)))
+
+    assert reading.collector_number == "106"
+    assert reading.printed_total == "181"
