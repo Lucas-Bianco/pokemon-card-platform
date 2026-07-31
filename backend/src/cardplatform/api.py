@@ -14,6 +14,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from cardplatform.collection.store import CollectionStore
+from cardplatform.grading.centering import CenteringResult, psa_cap_for
 from cardplatform.db.models import Card, CollectionItem, PriceSnapshot, ScanLog
 from cardplatform.db.session import Database
 from cardplatform.prices.service import PriceService
@@ -159,6 +160,23 @@ class CandidateOut(BaseModel):
     visual_score: float
 
 
+class CenteringOut(BaseModel):
+    """A geometric measurement of the front border, reported as a ceiling.
+
+    `psa_cap_range` is computed here rather than in the UI: naming the two grades a
+    reading sits between requires PSA's threshold table, which belongs with the
+    thresholds and not duplicated in a presentation component.
+    """
+
+    left_right: tuple[float, float]
+    top_bottom: tuple[float, float]
+    worst_axis: float
+    uncertainty: float
+    psa_cap: int | None
+    psa_cap_certain: bool
+    psa_cap_range: tuple[int, int] | None
+
+
 class RecognizeOut(BaseModel):
     """The scan verdict, with the pipeline's reasoning attached.
 
@@ -174,6 +192,7 @@ class RecognizeOut(BaseModel):
     price: PriceOut | None
     candidates: list[CandidateOut]
     collector_number_read: str | None
+    centering: CenteringOut | None
 
 
 class ScanOut(BaseModel):
@@ -380,7 +399,9 @@ def create_app() -> FastAPI:
         # request never reaches the service.
         placed_corners = _parse_corners(corners)
         image = _decode_upload(await file.read())
-        result = service.recognize(image, rectify=rectify, corners=placed_corners)
+        result, centering = service.recognize(
+            image, rectify=rectify, corners=placed_corners
+        )
 
         card = session.get(Card, result.card_id) if result.card_id else None
         price = (
@@ -394,6 +415,7 @@ def create_app() -> FastAPI:
             price=_price_out(price) if price else None,
             candidates=_candidates_out(session, result.candidates),
             collector_number_read=result.ocr.collector_number,
+            centering=_centering_out(centering) if centering is not None else None,
         )
 
     @app.post("/collection", response_model=CollectionItemOut, status_code=201)
@@ -492,6 +514,38 @@ def _candidates_out(session: Session, candidates) -> list[CandidateOut]:
         for candidate in candidates
         if candidate.card_id in cards
     ]
+
+
+def _psa_cap_range(centering: CenteringResult) -> tuple[int, int] | None:
+    """The two grades an uncertain reading sits between, or None.
+
+    Evaluated at both ends of the uncertainty interval. Note the direction: a LOWER
+    worst_axis means BETTER centering, so the low end of the interval yields the
+    HIGHER grade.
+
+    Returns None when the cap is certain, when both ends agree, or when either end
+    falls outside every published band — an unbounded range cannot be stated, and
+    inventing a bound would be worse than saying nothing.
+    """
+    if centering.psa_cap_certain:
+        return None
+    better = psa_cap_for(centering.worst_axis - centering.uncertainty)
+    worse = psa_cap_for(centering.worst_axis + centering.uncertainty)
+    if better is None or worse is None or better == worse:
+        return None
+    return (min(better, worse), max(better, worse))
+
+
+def _centering_out(centering: CenteringResult) -> CenteringOut:
+    return CenteringOut(
+        left_right=centering.left_right,
+        top_bottom=centering.top_bottom,
+        worst_axis=centering.worst_axis,
+        uncertainty=centering.uncertainty,
+        psa_cap=centering.psa_cap,
+        psa_cap_certain=centering.psa_cap_certain,
+        psa_cap_range=_psa_cap_range(centering),
+    )
 
 
 def _price_out(snapshot: PriceSnapshot) -> PriceOut:
