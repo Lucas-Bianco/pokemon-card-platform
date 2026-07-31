@@ -204,3 +204,27 @@ h1 { font-size: 1.25rem; margin: 4px 0 16px; }
   color: var(--fg);
   font-size: 0.95rem;
 }
+
+.paid {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  font-size: 0.88rem;
+  color: var(--fg-dim);
+}
+.paid input {
+  width: 110px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 1rem;
+  text-align: right;
+}

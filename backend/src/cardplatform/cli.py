@@ -61,6 +61,49 @@ def refresh_prices(args: argparse.Namespace) -> int:
     return 0
 
 
+def refresh_collection_prices(args: argparse.Namespace) -> int:
+    """Refresh prices for every card in the collection.
+
+    Price history only accrues if something re-fetches repeatedly. Measured 2026-07-30:
+    82 snapshots existed across 35 cards, but ZERO card+variant series had more than one
+    distinct source date — so every price chart would be a single dot. Running this on a
+    schedule is what turns the snapshot table into actual history.
+
+    Snapshots are deduplicated on the source's own updatedAt, so running it more often
+    than the source updates costs requests but writes nothing.
+    """
+    from sqlalchemy import select
+
+    from cardplatform.db.models import CollectionItem
+
+    db = Database()
+    db.create_all()
+
+    with db.session() as session:
+        card_ids = sorted({row for row in session.scalars(select(CollectionItem.card_id)).all()})
+
+        if not card_ids:
+            print("Collection is empty; nothing to refresh.")
+            return 0
+
+        print(f"Refreshing prices for {len(card_ids)} card(s) in the collection.")
+        print("The price API is unreliable; retries back off, so this can be slow.", flush=True)
+
+        service = PriceService(session, PokemonTcgIoProvider(db.settings))
+        total = written_for = 0
+        for position, card_id in enumerate(card_ids, start=1):
+            written = service.refresh_card(card_id)
+            total += written
+            written_for += 1 if written else 0
+            if position % 10 == 0 or position == len(card_ids):
+                print(f"  {position}/{len(card_ids)} done, {total} new snapshot(s)", flush=True)
+
+    print(f"\nTotal: {total} new snapshot(s); {written_for}/{len(card_ids)} cards had fresh data.")
+    if total == 0:
+        print("No new snapshots — the source has not published newer prices since last run.")
+    return 0
+
+
 def build_index(args: argparse.Namespace) -> int:
     """Download every catalog image, embed it, and persist a FAISS index.
 
@@ -165,6 +208,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     refresh.add_argument("card_ids", nargs="+", metavar="CARD_ID", help="e.g. base1-4")
     refresh.set_defaults(handler=refresh_prices)
+
+    refresh_all = subparsers.add_parser(
+        "refresh-collection-prices",
+        help="Refresh prices for every card in the collection (run on a schedule).",
+    )
+    refresh_all.set_defaults(handler=refresh_collection_prices)
 
     index = subparsers.add_parser(
         "build-index",

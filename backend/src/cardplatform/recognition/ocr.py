@@ -31,6 +31,28 @@ _NUMBER_PATTERN = re.compile(r"([A-Z]{0,3}\d{1,4})\s*/\s*([A-Z]{0,3}\d{1,4})")
 _BARE_NUMBER_PATTERN = re.compile(r"^([A-Z]{0,3}\d{1,4})$")
 
 
+def _enhance_for_ocr(crop: Image.Image) -> Image.Image:
+    """Upscale and unsharp-mask the number strip before OCR.
+
+    Measured over 39 real rectified phone scans, counting a read as correct only when
+    it matches the card's true collector number:
+
+        plain 3x upscale (previous)   21 correct,  6 wrong
+        5x upscale                    19 correct,  6 wrong
+        CLAHE + 4x                    22 correct,  6 wrong
+        sharpen + 4x (this)           24 correct,  3 wrong
+        taller strip + 4x             24 correct, 12 wrong
+
+    A wrong number is worse than none, because fusion may act on it — which is why the
+    taller strip lost despite matching on correct reads.
+    """
+    import cv2
+
+    array = cv2.resize(np.array(crop), None, fx=4, fy=4, interpolation=cv2.INTER_CUBIC)
+    blurred = cv2.GaussianBlur(array, (0, 0), 3)
+    return Image.fromarray(cv2.addWeighted(array, 1.6, blurred, -0.6, 0))
+
+
 def parse_number_text(text: str) -> tuple[str | None, str | None]:
     """Extract (collector_number, printed_total) from an OCR fragment."""
     if not text:
@@ -100,8 +122,7 @@ class CollectorNumberReader:
         crop = rectified.crop(
             (int(width * left), int(height * top), int(width * right), int(height * bottom))
         )
-        # Upscale: the number is small, and OCR accuracy improves markedly with size.
-        crop = crop.resize((crop.width * 3, crop.height * 3), Image.LANCZOS)
+        crop = _enhance_for_ocr(crop)
 
         try:
             results, _ = self._get_engine()(np.array(crop))

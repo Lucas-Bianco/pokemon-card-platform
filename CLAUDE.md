@@ -25,6 +25,7 @@ C:\ClaudeKnowledge\backend\.venv\Scripts\pip.exe install -e "C:\ClaudeKnowledge\
 - Coverage: `C:\ClaudeKnowledge\backend\.venv\Scripts\python.exe -m pytest --cov=cardplatform --cov-report=term-missing`
 - Sync the card catalog: `C:\ClaudeKnowledge\backend\.venv\Scripts\cardplatform.exe sync-catalog` (idempotent, resumable)
 - Fetch prices: `C:\ClaudeKnowledge\backend\.venv\Scripts\cardplatform.exe refresh-prices base1-4 hgss4-1`
+- Accrue price history: `C:\ClaudeKnowledge\backend\.venv\Scripts\cardplatform.exe refresh-collection-prices` (run on a schedule; Phase 2 charts need repeated runs)
 - Build the recognition index: `C:\ClaudeKnowledge\backend\.venv\Scripts\cardplatform.exe build-index` (downloads ~20k images; re-runs skip cached)
 - Evaluate recognition accuracy: `C:\ClaudeKnowledge\backend\.venv\Scripts\python.exe backend/scripts/evaluate_recognition.py --sample 500`
 

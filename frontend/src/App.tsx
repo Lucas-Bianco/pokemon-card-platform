@@ -56,17 +56,20 @@ export default function App() {
     [lastImage, runRecognition],
   );
 
-  const handleConfirm = useCallback(async () => {
-    if (result?.card) {
-      await addToCollection(result.card.id, VARIANT).catch(() => null);
-      setNote(`Added ${result.card.name} to your collection.`);
-    }
-    if (scanId !== null) await confirmScan(scanId).catch(() => null);
-  }, [result, scanId]);
+  const handleConfirm = useCallback(
+    async (acquiredPrice: number | null) => {
+      if (result?.card) {
+        await addToCollection(result.card.id, VARIANT, acquiredPrice).catch(() => null);
+        setNote(`Added ${result.card.name} to your collection.`);
+      }
+      if (scanId !== null) await confirmScan(scanId).catch(() => null);
+    },
+    [result, scanId],
+  );
 
   const handlePick = useCallback(
-    async (cardId: string) => {
-      await addToCollection(cardId, VARIANT).catch(() => null);
+    async (cardId: string, acquiredPrice: number | null) => {
+      await addToCollection(cardId, VARIANT, acquiredPrice).catch(() => null);
       if (scanId !== null) await correctScan(scanId, cardId).catch(() => null);
       setNote("Thanks — that correction helps the next scan.");
     },

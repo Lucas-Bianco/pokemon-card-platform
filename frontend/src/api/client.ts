@@ -78,11 +78,22 @@ export async function correctScan(scanId: number, cardId: string): Promise<Scan>
   );
 }
 
-export async function addToCollection(cardId: string, variant: string): Promise<void> {
+export async function addToCollection(
+  cardId: string,
+  variant: string,
+  acquiredPrice?: number | null,
+): Promise<void> {
+  // acquired_price is what makes profit/loss possible later. Omitted rather than sent
+  // as 0 when unknown: the backend counts an item with no cost basis as contributing
+  // nothing to cost, whereas a literal 0 would claim the card was free.
+  const body: Record<string, unknown> = { card_id: cardId, variant, quantity: 1 };
+  if (acquiredPrice !== undefined && acquiredPrice !== null && !Number.isNaN(acquiredPrice)) {
+    body.acquired_price = acquiredPrice;
+  }
   const response = await fetch(`${BASE}/collection`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ card_id: cardId, variant, quantity: 1 }),
+    body: JSON.stringify(body),
   });
   if (!response.ok) {
     throw new Error(`request failed: ${response.status}`);

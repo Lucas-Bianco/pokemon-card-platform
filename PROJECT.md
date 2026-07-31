@@ -256,6 +256,64 @@ proposals** and was removed. Real card detections measure 0.15–0.44 of the fra
 - A corner-adjusted retry writes a second scan row, mildly deflating measured coverage.
 - Sleeve glare remains unquantified.
 
+## Where recognition actually stands (measured 2026-07-30)
+
+Replaying all 101 saved real scans through the current pipeline:
+
+| | coverage | regressions |
+|---|---|---|
+| before Phase 1c | 31% | — |
+| after multi-strategy detection | 61% | 0 |
+| after OCR sharpening | **63%** | **0** |
+
+**And on the 40 labelled scans, the true card ranks:**
+
+| position | cumulative |
+|---|---|
+| rank 1 | **88%** |
+| top 3 | **98%** |
+| not in top 5 | 1 scan |
+
+So with the candidate picker, nearly every scan is resolvable by the user even when the pipeline
+declines to commit. Precision when it does commit remains 100%.
+
+### OCR preprocessing, measured over 39 real rectified crops
+
+A read counts as correct only if it matches the card's true collector number. A *wrong* number is
+worse than none, because fusion may act on it:
+
+| variant | correct | wrong |
+|---|---|---|
+| plain 3× upscale (previous) | 21 | 6 |
+| 5× upscale | 19 | 6 |
+| CLAHE + 4× | 22 | 6 |
+| **sharpen + 4× (shipped)** | **24** | **3** |
+| taller strip + 4× | 24 | 12 |
+
+### The remaining gap
+
+34 scans are `ambiguous` — detected, but not confidently matched. Diagnosed: **OCR read a number in
+only 5 of 11** sampled, with a mean visual margin of 0.023 against a 0.05 threshold. These are narrow
+visual calls a collector number would settle. OCR reliability, not the encoder, is the next lever.
+
+## Phase 2 is blocked, and on what
+
+The portfolio tracker needs data that does not exist yet. Measured 2026-07-30:
+
+- **0 of 37 collection items have a cost basis** → P/L would show 100% profit on everything.
+- **0 price series have more than one date** → every price chart would be a single dot.
+
+Both are now unblocked but need time to accrue:
+
+- The scan flow asks "what you paid" (optional) when adding a card, so cost basis starts
+  accumulating from the next scan onward.
+- `cardplatform refresh-collection-prices` re-fetches every collection card; run it on a schedule
+  and history builds up. Snapshots dedupe on the source's own timestamp, so running it more often
+  than the source updates costs requests but writes nothing.
+
+**Phase 2 becomes buildable once a few weeks of daily refreshes have run.** Building it sooner means
+charting single dots.
+
 ## Carried into Phase 1 (from the final Phase 0 review)
 
 Verified against the real 20,444-card database — resolve these when planning Phase 1:

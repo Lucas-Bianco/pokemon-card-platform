@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 import type { RecognizeResponse } from "../api/types";
 import { statusLabel } from "../lib/format";
 import CandidatePicker from "./CandidatePicker";
@@ -6,8 +8,8 @@ import PriceLine from "./PriceLine";
 interface Props {
   result: RecognizeResponse;
   variant: string;
-  onConfirm: () => void;
-  onPick: (cardId: string) => void;
+  onConfirm: (acquiredPrice: number | null) => void;
+  onPick: (cardId: string, acquiredPrice: number | null) => void;
   onReject: () => void;
   onRescan: () => void;
 }
@@ -21,6 +23,10 @@ export default function ScanResult({
   onRescan,
 }: Props) {
   const { card, status } = result;
+  // Optional. Without a cost basis there is no profit/loss to compute later, but
+  // guessing one would be worse than leaving it unknown.
+  const [paid, setPaid] = useState("");
+  const acquiredPrice = paid.trim() === "" ? null : Number(paid);
 
   return (
     <section className="result">
@@ -47,9 +53,24 @@ export default function ScanResult({
         <p className="ocr-note">Read card number: {result.collector_number_read}</p>
       )}
 
+      {(status === "confident" || status === "ambiguous") && (
+        <label className="paid">
+          <span>What you paid (optional)</span>
+          <input
+            type="number"
+            inputMode="decimal"
+            min="0"
+            step="0.01"
+            placeholder="—"
+            value={paid}
+            onChange={(event) => setPaid(event.target.value)}
+          />
+        </label>
+      )}
+
       {status === "confident" && (
         <div className="actions">
-          <button className="primary" onClick={onConfirm}>
+          <button className="primary" onClick={() => onConfirm(acquiredPrice)}>
             Correct — add to collection
           </button>
           <button onClick={onReject}>Wrong card</button>
@@ -57,7 +78,11 @@ export default function ScanResult({
       )}
 
       {status === "ambiguous" && (
-        <CandidatePicker candidates={result.candidates} onPick={onPick} onReject={onReject} />
+        <CandidatePicker
+          candidates={result.candidates}
+          onPick={(cardId) => onPick(cardId, acquiredPrice)}
+          onReject={onReject}
+        />
       )}
 
       {status === "not_found" && (
