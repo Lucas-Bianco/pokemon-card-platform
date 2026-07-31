@@ -131,6 +131,7 @@ describe("recordScan", () => {
     price: null,
     candidates: [],
     collector_number_read: "4",
+    centering: null,
   };
 
   it("sends the predicted card and the ocr reading", async () => {
