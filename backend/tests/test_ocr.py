@@ -146,3 +146,63 @@ def test_wide_band_rescues_a_number_below_the_tight_strip(monkeypatch):
 
     assert reading.collector_number == "106"
     assert reading.printed_total == "181"
+
+
+def test_low_confidence_reads_are_discarded(monkeypatch):
+    """rapidocr's confidence was previously ignored. Measured over 39 real crops,
+    gating at 0.85 took wrong reads from 4 to 0 while gaining one correct read."""
+    from PIL import Image
+
+    from cardplatform.recognition.ocr import CollectorNumberReader
+
+    class FakeEngine:
+        def __call__(self, _array):
+            box = [[0, 0], [1, 0], [1, 1], [0, 1]]
+            return [(box, "95", 0.42), (box, "35/159", 0.97)], None
+
+    reader = CollectorNumberReader()
+    reader._engine = FakeEngine()
+
+    reading = reader.read(Image.new("RGB", (600, 825)))
+
+    assert reading.collector_number == "35", "a 0.42-confidence misread must not win"
+    assert "95" not in reading.raw_regions
+
+
+def test_a_confident_read_is_kept(monkeypatch):
+    from PIL import Image
+
+    from cardplatform.recognition.ocr import CollectorNumberReader
+
+    class FakeEngine:
+        def __call__(self, _array):
+            box = [[0, 0], [1, 0], [1, 1], [0, 1]]
+            return [(box, "116/159", 0.93)], None
+
+    reader = CollectorNumberReader()
+    reader._engine = FakeEngine()
+
+    reading = reader.read(Image.new("RGB", (600, 825)))
+
+    assert reading.collector_number == "116"
+    assert reading.printed_total == "159"
+
+
+def test_everything_below_threshold_reads_as_nothing(monkeypatch):
+    """Silence is the safe outcome: the visual match then decides alone."""
+    from PIL import Image
+
+    from cardplatform.recognition.ocr import CollectorNumberReader
+
+    class FakeEngine:
+        def __call__(self, _array):
+            box = [[0, 0], [1, 0], [1, 1], [0, 1]]
+            return [(box, "716/159", 0.31)], None
+
+    reader = CollectorNumberReader()
+    reader._engine = FakeEngine()
+
+    reading = reader.read(Image.new("RGB", (600, 825)))
+
+    assert reading.collector_number is None
+    assert reading.raw_regions == ()

@@ -56,7 +56,7 @@ images*, which flattered it badly.
 | | value |
 |---|---|
 | **Precision when the pipeline commits** | **100%** (29/29, zero confident errors) |
-| **Coverage** (scans producing a confident answer) | **64%** (was 31% before Phase 1c) |
+| **Coverage** (scans producing a confident answer) | **65%** (was 31% before Phase 1c) |
 | True card at rank 1 | **88%** |
 | True card in top 3 | **98%** |
 
@@ -247,13 +247,23 @@ Two fixes shipped, both measured:
 - **A wider fallback band, accepting only a full `N/M` reading.** The wide band also contains rules
   text and copyright lines, so a bare number found there is usually not the collector number.
 
-Result: 24 → **27 correct** reads, wrong held at 4. Rejected after measurement: an `S`→`5`
-confusion repair, which added 2 wrong reads for 0 correct, and allowing bare numbers in the wide
-band, which doubled wrong reads from 4 to 8.
+Then a third fix, from a signal that had been discarded entirely:
+- **Gate on rapidocr's confidence score at 0.85.** It returns one per read and nothing was using it.
 
-End-to-end that was worth **+1 confident answer** (63% → 64% coverage, 0 regressions) — OCR only
-arbitrates when its reading uniquely matches one shortlisted candidate, so extra correct reads do
-not convert one-for-one.
+Cumulative over the 39 crops: **24 → 28 correct, 4 → 0 wrong.** Strictly better on both axes. The
+gate *gains* a read rather than only suppressing bad ones, because discarding a low-confidence
+misread lets the wide-band fallback run and find the real number underneath it. The extra silences
+are the safe outcome — with no OCR the visual match decides alone, and that is rank-1 correct 88% of
+the time.
+
+Rejected after measurement: an `S`→`5` confusion repair (+2 wrong, +0 correct); allowing bare
+numbers in the wide band (4 → 8 wrong); and multi-scale voting across 3/4/6× (no gain).
+
+End-to-end: **63% → 65% coverage, 0 regressions.** The lift is smaller than the read-count gain
+because OCR only arbitrates when its reading uniquely matches one shortlisted candidate.
+
+`_MIN_OCR_CONFIDENCE` is calibrated on 39 samples — re-check with `evaluate_detection.py` if the OCR
+engine or preprocessing changes.
 
 *Done 2026-07-30: the PWA now has a collection view. It shows holdings and a valuation summary, and
 renders unrealised P/L as an em dash when no cost basis exists rather than reporting market value as

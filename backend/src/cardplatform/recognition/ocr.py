@@ -51,6 +51,25 @@ _BARE_NUMBER_PATTERN = re.compile(rf"^({_TOKEN})$")
 _TIGHT_REGION = (0.88, 1.0)
 _WIDE_REGION = (0.78, 1.0)
 
+# rapidocr returns a confidence per read, and ignoring it was leaving free accuracy on
+# the table. Measured over the same 39 real crops:
+#
+#     no gate (previous)   27 correct, 4 wrong, 8 silent
+#     conf >= 0.70         27 correct, 3 wrong, 9 silent
+#     conf >= 0.85         28 correct, 0 wrong, 11 silent   <- shipped
+#
+# Strictly better on both axes that matter. It gains a read rather than merely losing
+# bad ones because discarding a low-confidence misread lets the wide-band fallback run
+# and find the real number underneath it.
+#
+# The extra silences are the safe outcome: with no OCR the visual match decides alone,
+# and that is rank-1 correct 88% of the time. A wrong number is the dangerous case,
+# because fusion can act on it.
+#
+# Calibrated on 39 samples — re-check with backend/scripts/evaluate_detection.py if the
+# OCR engine or the preprocessing changes.
+_MIN_OCR_CONFIDENCE = 0.85
+
 
 def _enhance_for_ocr(crop: Image.Image) -> Image.Image:
     """Upscale and unsharp-mask the number strip before OCR.
@@ -137,7 +156,10 @@ class CollectorNumberReader:
         return self._engine
 
     def _read_band(self, rectified: Image.Image, band: tuple[float, float]) -> tuple[str, ...]:
-        """OCR one horizontal band of a rectified card. Never raises."""
+        """OCR one horizontal band of a rectified card, keeping only confident reads.
+
+        Never raises.
+        """
         width, height = rectified.size
         top, bottom = band
         crop = _enhance_for_ocr(
@@ -148,7 +170,11 @@ class CollectorNumberReader:
         except Exception as exc:  # noqa: BLE001 - OCR engines raise broadly
             logger.warning("ocr failed: %s", exc)
             return ()
-        return tuple(str(text) for _, text, _ in (results or []))
+        return tuple(
+            str(text)
+            for _, text, confidence in (results or [])
+            if float(confidence) >= _MIN_OCR_CONFIDENCE
+        )
 
     def read(self, rectified: Image.Image) -> OcrReading:
         """Find the collector number on a rectified card. Never raises.
