@@ -205,15 +205,29 @@ can chart anything real.** Building it sooner means charting single dots.
 
 ## 7. The most useful next levers
 
-1. **Rectification vertical alignment — the real remaining OCR blocker.** OCR was improved on
-   2026-07-31 (see below), but diagnosis of the residual failures showed the crop itself is often
-   at fault: several rectified cards put the *weakness / resistance / retreat* row inside the bottom
-   12% strip, meaning the detected quad extends below the card and the whole card content sits too
-   high. That is a detector-precision problem, not an OCR one, and no amount of preprocessing fixes
-   it. Fixing the quad would help both OCR and the embedding.
-2. **Phase 3 (grade predictor).** Needs the rectified card images the pipeline now produces reliably.
+1. **Phase 3 (grade predictor).** Needs the rectified card images the pipeline now produces reliably.
    The hard part is training data: graded cards with known PSA/CGC grades.
-3. **Phase 2**, once price history has accrued — see §6.
+2. **Phase 2**, once price history has accrued — see §6.
+3. **A different OCR engine**, if OCR is revisited. See the dead ends below: cropping and
+   preprocessing are exhausted, so the remaining gain would have to come from the recogniser itself
+   (PaddleOCR, or Tesseract with a digit whitelist) or from higher-resolution capture.
+
+### OCR dead ends — measured and disproved, do not repeat
+
+Two plausible-sounding theories were tested against the real scans and **both were wrong**:
+
+- **"The quad is misaligned, cutting off the bottom of the card."** Disproved. Detected quads
+  measured a median aspect of 1.396 where OCR succeeded and **1.381 where it failed** — both
+  essentially a real card's 1.400. Zero failing quads were shorter than 1.35. Padding the quad
+  downward made things *worse* (4 → 2 recovered). This theory was briefly recorded here as the top
+  lever; it is not.
+- **"The number is too small a target inside a wide strip."** Disproved. Tight bottom-left and
+  bottom-right corner crops at 8× upscale scored 24 correct / 7 wrong against the shipped 27 / 4,
+  and as a *fallback* recovered nothing the existing path missed.
+
+Visual inspection settled it: the number is present, correctly positioned, and legible to a human —
+rapidocr simply misreads small blurry digits (`035/159` → `95`, `116/159` → `716`). That is a limit
+of the recogniser and the source photo, not of the crop.
 
 ### OCR work done 2026-07-31
 
