@@ -55,12 +55,49 @@ front. A systematic 2.6% error is more than half that entire tolerance band — 
 10 into a reported 9, or the reverse. **The measurement is not usable until this is resolved**, which
 is why Task 1 does nothing but settle it.
 
-Two candidate explanations, both open:
-1. The renders genuinely are slightly off-centre — they derive from real print files.
-2. The run-detection has a directional bias.
+### Task 1 answered this — and the premise was wrong
 
-Ruled out already: image resizing. The `_hires` images are already 600×825, and measuring native
-versus resized gave identical results to the decimal.
+**Settled 2026-07-31. There is no bug, and there is no bias.**
+
+- Synthetic cards with centering exact by construction measured **0.00% error** at every border
+  thickness from 6px to 60px.
+- Mirror-equivariance holds on the real renders: flipping swaps the two sides exactly. Every stage of
+  the algorithm is per-pixel or an order-independent aggregation, so a directional bias provably
+  cannot originate in the code.
+- **The left/top skew was small-sample noise.** At n=79 it *inverts* horizontally — left-wider 16,
+  right-wider 51.
+- **The 52.6% is largely an artifact of the summary statistic.** Worst-axis is a `max()` over four
+  shares, so it is ≥50 by construction and cannot average to 50 under any noise. A matched null model
+  (each card perfectly centred at its own border width, ±1px quantisation) predicts a median of
+  51.28% against the observed 52.27%. About one of the 2.6 points is genuine render variation.
+
+### The real finding: resolution, not bias
+
+At a 20px border **one pixel is ±2.5 share points**, and the entire PSA 10→9 band (55→60) is 5 points
+wide:
+
+| true border | ±1px in share points | null median worst-axis |
+|---|---|---|
+| 13 px | ±3.85 | 52.00% |
+| 20 px | ±2.50 | 51.28% |
+| 30 px | ±1.67 | 50.85% |
+
+**So this measurement cannot reliably separate a PSA 10 from a 9 on these inputs.** That is not a
+reason to abandon it — a card measuring 70/30 is unambiguously not a 10 — but it *is* a reason the
+output must carry an error bar and decline near boundaries, exactly as the recognition pipeline
+already declines on a narrow visual margin.
+
+Two further constraints from Task 1:
+- **11 of 90 renders were detector failures, not measurements.** Full-art and e-card layouts have no
+  uniform outer border (`ecard2-H8` read left=67 vs right=21). Without a guard these manufacture a
+  fake off-centre signal. Note the sample's mean was 59.33% against a median of 52.27% — outliers
+  distort badly here.
+- **PSA's thresholds are not hard cutoffs.** The published standard says grade 10 is "not to exceed
+  *approximately* 55/45", with a Centering Note allowing grader discretion. Grades 5 and 4 share
+  85/15, so front centering alone cannot separate them.
+
+Ruled out earlier: image resizing. The `_hires` images are already 600×825, and native versus resized
+matched to the decimal.
 
 ---
 

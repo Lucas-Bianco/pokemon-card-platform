@@ -44,6 +44,29 @@ def synthetic_card(
     return Image.fromarray(cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB))
 
 
+def speckled_border_card(
+    border: int = 20,
+    purity: float = 0.70,
+    size: tuple[int, int] = (600, 825),
+    seed: int = 7,
+) -> Image.Image:
+    """A centred card whose border is speckled instead of flat.
+
+    Mimics the modern Scarlet & Violet / Mega Evolution frames: the border is
+    still the dominant colour, so the run detector still walks the full 20 px and
+    every width/ratio guard passes -- but it never saturates. At purity 0.70 the
+    profile sits just above the 0.6 run threshold, which is exactly the regime
+    where the measured edge is noise rather than geometry.
+    """
+    array = np.array(synthetic_card(border, border, border, border, size))
+    height, width = array.shape[:2]
+    outside_interior = np.ones((height, width), dtype=bool)
+    outside_interior[border : height - border, border : width - border] = False
+    speckle = outside_interior & (np.random.default_rng(seed).random((height, width)) > purity)
+    array[speckle] = (20, 40, 90)  # RGB, far from the yellow border in hue
+    return Image.fromarray(array)
+
+
 # ---------------------------------------------------------------------------
 # The measurement itself
 # ---------------------------------------------------------------------------
@@ -119,6 +142,34 @@ def test_grossly_asymmetric_border_is_rejected():
 def test_asymmetric_vertical_border_is_rejected_too():
     """The guard is per-axis, not horizontal-only."""
     assert measure_centering(synthetic_card(20, 20, 67, 21)) is None
+
+
+def test_textured_border_is_rejected():
+    """The modern SV/ME frame failure: a border that never reads as a flat colour.
+
+    Eight cards in a 90-render sample shared one signature -- top=24 against
+    bottom=8, a legal 3.00 ratio -- and were handed psa_cap=6 off a reading that
+    was not centering at all. Their borders peak at 0.68-0.77 purity where a real
+    flat border saturates at 1.000.
+
+    Without the purity guard this fixture passes every other gate and returns a
+    confident 50/50, because the speckled border still clears the 0.6 run
+    threshold on all four sides.
+    """
+    assert measure_centering(speckled_border_card(purity=0.70)) is None
+
+
+def test_a_clean_border_from_the_same_fixture_is_accepted():
+    """Pairs with the textured test: at purity 1.0 the fixture is an ordinary card.
+
+    Only the speckling differs, so the guard is discriminating on border quality
+    and not on some incidental property of how the fixture is built.
+    """
+    result = measure_centering(speckled_border_card(purity=1.0))
+
+    assert result is not None
+    assert result.border_pixels == (20, 20, 20, 20)
+    assert result.worst_axis == pytest.approx(50.0, abs=1.0)
 
 
 def test_a_genuine_miscut_inside_the_ratio_gate_is_still_measured():

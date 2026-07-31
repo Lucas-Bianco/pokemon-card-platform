@@ -24,6 +24,18 @@ that interval straddles a grade boundary -- the same calibrated-uncertainty rule
 the recognition pipeline follows for narrow visual margins. Declining beats a
 confidently wrong answer.
 
+Known limitation -- modern textured frames cannot be measured by this method at
+all. The approach assumes a flat, uniform outer border, so that unequal side
+widths imply a miscut. Classic frames satisfy that exactly: all six clean-bordered
+reference renders peak at 1.000 border-fraction on every side. Scarlet & Violet
+and Mega Evolution era frames do not -- their outer band is textured, the colour
+classifier never captures more than ~0.68-0.77 of any row, and the run detector
+then stops wherever noise happens to cross its 0.6 threshold. Eight such cards in
+a 90-render sample all read top=24 against bottom=8 and were assigned a PSA cap of
+6 off a number that was not centering in any sense. `MIN_BORDER_PURITY` rejects
+them. Do not try to recover these by lowering the run threshold; the premise of
+the measurement, not its tuning, is what fails on a non-uniform border.
+
 Pure module: an image goes in, numbers come out. No I/O, no database, no models.
 """
 
@@ -87,6 +99,28 @@ MAX_TOTAL_BORDER_FRACTION = 0.6
 # so the module takes the side that never answers wrongly.
 MAX_SIDE_RATIO = 3.0
 
+# The textured-frame guard, and the reason `MAX_SIDE_RATIO` alone was not enough.
+# A flat border saturates the classifier: every clean reference render peaks at
+# exactly 1.000 border-fraction on all four sides. A textured one never can, so the
+# 0.6 run threshold ends up decided by noise rather than by an edge.
+#
+# The two populations are bimodal with an empty band between them. Peak purity
+# along the leading run, measured over 90 catalog renders:
+#
+#     textured SV / ME frames    0.68 - 0.82
+#     (nothing in between)
+#     clean flat borders         0.99 - 1.00
+#
+# 0.90 sits in the middle of that gap. The choice is deliberately insensitive:
+# every threshold from 0.85 to 0.98 rejects the same 42-43 of the 90 renders, so
+# nothing here is balanced on the constant.
+#
+# This is orthogonal to the ratio gate, and both are needed. `ecard1-122` (l=68,
+# r=22) and `ecard3-108` (l=67, r=19) have perfectly clean 1.000 borders and are
+# caught only by the ratio; the SV cluster sits at a legal 3.00 ratio and is caught
+# only by the purity.
+MIN_BORDER_PURITY = 0.90
+
 # The border-colour classifier, ported verbatim from the calibration harness.
 # Do not "improve" these: they are the constants the 0.00%-error result was scored
 # against.
@@ -129,12 +163,18 @@ def psa_cap_for(worst_axis: float) -> int | None:
     return None
 
 
-def _border_widths(rectified: Image.Image) -> tuple[int, int, int, int]:
-    """Border thickness in pixels as (left, right, top, bottom).
+def _border_scan(
+    rectified: Image.Image,
+) -> tuple[tuple[int, int, int, int], tuple[float, float, float, float]]:
+    """Border thickness in pixels and peak purity, each as (left, right, top, bottom).
 
     Samples the frame's outermost pixels for the border colour, marks every pixel
     within tolerance of it, then walks inward from each side while the row or
     column is still >=60% border. Ported verbatim from the calibration harness.
+
+    Purity is the highest border-fraction reached anywhere along that run -- the
+    cleanest the border ever gets on that side. It falls out of the same profile
+    the run walk already consumes, so it costs nothing to collect.
     """
     bgr = cv2.cvtColor(np.array(rectified.convert("RGB")), cv2.COLOR_RGB2BGR)
     height, width = bgr.shape[:2]
@@ -163,25 +203,32 @@ def _border_widths(rectified: Image.Image) -> tuple[int, int, int, int]:
         & (np.abs(hsv[:, :, 2].astype(np.int16) - border_val) < _VAL_TOLERANCE)
     )
 
-    def leading_run(profile: np.ndarray) -> int:
+    def leading_run(profile: np.ndarray) -> tuple[int, float]:
         count = 0
+        peak = 0.0
         for value in profile:
             if value < _RUN_THRESHOLD:
                 break
+            peak = max(peak, float(value))
             count += 1
-        return count
+        return count, peak
 
     rows_border = is_border.mean(axis=1)
     cols_border = is_border.mean(axis=0)
-    return (
+    sides = (
         leading_run(cols_border),
         leading_run(cols_border[::-1]),
         leading_run(rows_border),
         leading_run(rows_border[::-1]),
     )
+    widths = tuple(width for width, _ in sides)
+    purities = tuple(purity for _, purity in sides)
+    return widths, purities  # type: ignore[return-value]
 
 
-def _axis_is_usable(near: int, far: int, extent: int) -> bool:
+def _axis_is_usable(
+    near: int, far: int, near_purity: float, far_purity: float, extent: int
+) -> bool:
     total = near + far
     if total < MIN_TOTAL_BORDER_PX:
         return False
@@ -190,22 +237,28 @@ def _axis_is_usable(near: int, far: int, extent: int) -> bool:
     smaller, larger = min(near, far), max(near, far)
     if smaller == 0 or larger > smaller * MAX_SIDE_RATIO:
         return False
+    # Both sides must be flat enough for the run to have found an edge rather than
+    # a noise crossing. One clean side does not rescue a textured opposite side --
+    # the share is a ratio, so either endpoint being unlocatable spoils it.
+    if min(near_purity, far_purity) < MIN_BORDER_PURITY:
+        return False
     return True
 
 
 def measure_centering(rectified: Image.Image) -> CenteringResult | None:
     """Measure centering on a rectified card, or return None if no border is usable.
 
-    None is the honest answer for a full-art layout, a borderless crop or a frame
-    the detector never found the card in. Nothing downstream should have to guess
-    which of those it got -- it just gets no measurement.
+    None is the honest answer for a full-art layout, a textured modern frame, a
+    borderless crop or a frame the detector never found the card in. Nothing
+    downstream should have to guess which of those it got -- it just gets no
+    measurement.
     """
     width, height = rectified.size
-    left, right, top, bottom = _border_widths(rectified)
+    (left, right, top, bottom), (pl, pr, pt, pb) = _border_scan(rectified)
 
-    if not _axis_is_usable(left, right, width):
+    if not _axis_is_usable(left, right, pl, pr, width):
         return None
-    if not _axis_is_usable(top, bottom, height):
+    if not _axis_is_usable(top, bottom, pt, pb, height):
         return None
 
     horizontal_total = left + right
