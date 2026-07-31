@@ -40,6 +40,22 @@ export interface RecognizeResponse {
   collector_number_read: string | null;
 }
 
+export interface CollectionItem {
+  id: number;
+  card_id: string;
+  card_name: string;
+  variant: string;
+  quantity: number;
+  acquired_price: number | null;
+}
+
+export interface Valuation {
+  market_value: number;
+  cost_basis: number;
+  unrealized: number;
+  unpriced_items: number;
+}
+
 export interface Scan {
   id: number;
   status: string;

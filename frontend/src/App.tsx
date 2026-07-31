@@ -3,6 +3,7 @@ import { useCallback, useState } from "react";
 import { addToCollection, confirmScan, correctScan, recognize, recordScan } from "./api/client";
 import type { RecognizeResponse } from "./api/types";
 import CameraCapture from "./components/CameraCapture";
+import CollectionView from "./components/CollectionView";
 import CornerAdjust from "./components/CornerAdjust";
 import ScanResult from "./components/ScanResult";
 
@@ -18,6 +19,7 @@ export default function App() {
   // than making the user take the photo again.
   const [lastImage, setLastImage] = useState<Blob | null>(null);
   const [adjusting, setAdjusting] = useState(false);
+  const [showCollection, setShowCollection] = useState(false);
 
   // Shared by the initial capture and the corner re-submission, so a corner-adjusted
   // scan is logged exactly like any other — the scan log is the project's only source
@@ -92,9 +94,22 @@ export default function App() {
   const canAdjust =
     lastImage !== null && (result?.status === "not_found" || result?.status === "ambiguous");
 
+  if (showCollection) {
+    return (
+      <main className="app">
+        <CollectionView onBack={() => setShowCollection(false)} />
+      </main>
+    );
+  }
+
   return (
     <main className="app">
-      <h1>Card Scanner</h1>
+      <header className="app-head">
+        <h1>Card Scanner</h1>
+        <button className="link" onClick={() => setShowCollection(true)}>
+          Collection
+        </button>
+      </header>
 
       {!result && <CameraCapture onCapture={handleCapture} busy={busy} />}
 

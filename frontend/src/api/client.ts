@@ -1,4 +1,10 @@
-import type { Price, RecognizeResponse, Scan } from "./types";
+import type {
+  CollectionItem,
+  Price,
+  RecognizeResponse,
+  Scan,
+  Valuation,
+} from "./types";
 
 // Always relative: the Vite dev server proxies /api to the backend. Calling the
 // backend's origin directly from this HTTPS page would be mixed content and blocked.
@@ -76,6 +82,14 @@ export async function correctScan(scanId: number, cardId: string): Promise<Scan>
   return expectJson<Scan>(
     await fetch(`${BASE}/scans/${scanId}/correct?${params}`, { method: "POST" }),
   );
+}
+
+export async function getCollection(): Promise<CollectionItem[]> {
+  return expectJson<CollectionItem[]>(await fetch(`${BASE}/collection`));
+}
+
+export async function getValuation(): Promise<Valuation> {
+  return expectJson<Valuation>(await fetch(`${BASE}/collection/valuation`));
 }
 
 export async function addToCollection(
