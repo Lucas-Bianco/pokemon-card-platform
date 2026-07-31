@@ -205,13 +205,17 @@ can chart anything real.** Building it sooner means charting single dots.
 
 ## 7. The most useful next levers
 
-1. **Collection view in the PWA.** 37 cards are in the database with no way to see them. `GET
-   /collection` and `/collection/valuation` already work; nothing calls them.
-2. **OCR reliability.** ~34 scans sit at `ambiguous` — detected but not confidently matched. OCR read
+1. **OCR reliability.** ~34 scans sit at `ambiguous` — detected but not confidently matched. OCR read
    a number in only 5 of 11 sampled, with a mean visual margin of 0.023 against a 0.05 threshold.
    These are narrow calls a collector number would settle. This is a better lever than encoder
    fine-tuning, which lacks training data.
-3. **Phase 3 (grade predictor).** Needs the rectified card images the pipeline now produces reliably.
+2. **Phase 3 (grade predictor).** Needs the rectified card images the pipeline now produces reliably.
+   The hard part is training data: graded cards with known PSA/CGC grades.
+3. **Phase 2**, once price history has accrued — see §6.
+
+*Done 2026-07-30: the PWA now has a collection view. It shows holdings and a valuation summary, and
+renders unrealised P/L as an em dash when no cost basis exists rather than reporting market value as
+pure profit.*
 
 ---
 
