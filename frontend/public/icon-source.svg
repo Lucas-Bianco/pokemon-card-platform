@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Grading Lab Pokeball">
+  <rect width="512" height="512" fill="#0b0d12"/>
+  <g stroke="#e8eaf0" stroke-width="6">
+    <path d="M256 96 a160 160 0 0 1 0 320" fill="#ffcb05"/>
+    <path d="M256 96 a160 160 0 0 0 0 320" fill="#141821"/>
+    <circle cx="256" cy="256" r="160" fill="none"/>
+    <rect x="96" y="231" width="320" height="50" fill="#0b0d12"/>
+    <line x1="96" y1="231" x2="416" y2="231"/>
+    <line x1="96" y1="281" x2="416" y2="281"/>
+  </g>
+  <circle cx="256" cy="256" r="32" fill="#e8eaf0"/>
+  <circle cx="256" cy="256" r="20" fill="#0b0d12"/>
+</svg>

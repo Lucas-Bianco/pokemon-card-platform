@@ -4,7 +4,23 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#0b0d12" />
+    <meta name="description" content="Scan a Pokémon card, get a grade ceiling and market price, and track your portfolio." />
     <link rel="manifest" href="/manifest.webmanifest" />
+
+    <!-- iOS / PWA chrome polish. viewport-fit=cover (above) lets these insets show. -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Card Scan" />
+    <meta name="application-name" content="Card Scan" />
+
+    <!-- Icons. The maskable PNG is referenced so iOS home-screen installs get a
+         full-bleed dark tile rather than a white letterboxed square. -->
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png" />
+    <link rel="apple-touch-icon" href="/icon-maskable-512.png" />
+    <link rel="mask-icon" href="/icon-source.svg" color="#0b0d12" />
+
     <title>Card Scanner</title>
   </head>
   <body>

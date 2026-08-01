@@ -46,7 +46,7 @@ export default function CenteringPanel({ centering }: Props) {
           <dt>Top / bottom</dt>
           <dd>{ratio(top_bottom)}</dd>
         </div>
-        <div>
+        <div className="axis-worst">
           <dt>Worst axis</dt>
           <dd>
             {worst_axis.toFixed(1)} ± {uncertainty.toFixed(1)}

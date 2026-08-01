@@ -206,4 +206,34 @@ describe("PortfolioView", () => {
     });
     expect(container.querySelector("polyline")).not.toBeNull();
   });
+
+  it("renders the responsive table with data-labels on every holding cell", async () => {
+    // The responsive layout switches presentation via CSS media queries on ONE
+    // DOM; jsdom has no layout engine, so we assert the enabling structure —
+    // each holding cell carries a data-label that the stacked-card CSS turns
+    // into its key. This is what makes the mobile layout work without a second
+    // DOM tree.
+    stubFetch(portfolio());
+
+    const { container } = render(<PortfolioView onBack={() => {}} />);
+
+    await waitFor(() => {
+      expect(container.querySelector(".portfolio-table")).not.toBeNull();
+    });
+
+    const rows = container.querySelectorAll(".portfolio-table .holding-row");
+    expect(rows.length).toBe(2);
+
+    const firstRow = rows[0];
+    const labelled = firstRow.querySelectorAll("td[data-label]");
+    // Eight columns: Qty, Card, Variant, Set, Paid, Market, Unrealised, Actions.
+    expect(labelled.length).toBe(8);
+    const labels = [...labelled].map((cell) => cell.getAttribute("data-label"));
+    expect(labels).toEqual(
+      expect.arrayContaining(["Qty", "Card", "Variant", "Set", "Paid", "Market", "Unrealised", "Actions"]),
+    );
+
+    // The wrapper provides the overflow-x fallback guard.
+    expect(container.querySelector(".portfolio-table-wrap")).not.toBeNull();
+  });
 });
