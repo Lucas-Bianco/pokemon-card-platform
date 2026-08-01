@@ -175,7 +175,11 @@ class GradingLabel(Base):
         ForeignKey("scan_logs.id"), unique=True
     )  # one label per scan
     card_id: Mapped[str] = mapped_column(ForeignKey("cards.id"), index=True)
-    variant: Mapped[str] = mapped_column(String)
+    # Nullable: a scan that never picked a variant is honestly None, not a
+    # fabricated "normal". T1 originally created this NOT NULL; T3 relaxed it
+    # (see _ensure_grading_labels_variant_nullable in migrations) so a label can
+    # carry the same absence the scan does, without inventing a variant.
+    variant: Mapped[str | None] = mapped_column(String, default=None)
     # PSA grades are whole numbers; BGS/CGC may use .5 increments (e.g. 9.5).
     # Float covers both; stored this way up front to avoid a later migration.
     grade: Mapped[float] = mapped_column(Float)

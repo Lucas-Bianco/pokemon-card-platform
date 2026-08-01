@@ -28,6 +28,8 @@ import logging
 from sqlalchemy import Engine, inspect, text
 from sqlalchemy.exc import OperationalError
 
+from cardplatform.db.models import GradingLabel
+
 logger = logging.getLogger(__name__)
 
 # Registry of additive column migrations. Append here in future tasks. Each
@@ -76,3 +78,36 @@ def run_migrations(engine: Engine) -> None:
                 # Transient (locked DB, disk full): log and continue so the next
                 # startup retries rather than hard-failing the whole migration.
                 logger.warning("migrations: failed to add %s.%s: %s", table, column, exc)
+
+        _ensure_grading_labels_variant_nullable(conn, engine, actual_tables)
+
+
+def _ensure_grading_labels_variant_nullable(conn, engine, actual_tables: set[str]) -> None:
+    """One-time fix-up for T1's `grading_labels.variant` NOT NULL column.
+
+    T3 stores None there: a scan that never picked a variant is honestly
+    unlabelled, not a fabricated "normal". T1 created the column NOT NULL, and
+    SQLite cannot ALTER COLUMN, so on DBs that already built the table NOT NULL
+    we rebuild it from the (now-nullable) model. Safe only because the table is
+    empty until T3's endpoint populates it — a non-empty table is left untouched
+    and logged rather than risk dropping real labels.
+    """
+    if "grading_labels" not in actual_tables:
+        # create_all will build it nullable from the current model on this start.
+        return
+    info = conn.execute(text("PRAGMA table_info(grading_labels)")).fetchall()
+    # PRAGMA table_info columns: (cid, name, type, notnull, dflt_value, pk)
+    variant_row = next((r for r in info if r[1] == "variant"), None)
+    if variant_row is None or not variant_row[3]:
+        return  # already nullable (or absent, which create_all will handle)
+    count = conn.execute(text("SELECT COUNT(*) FROM grading_labels")).scalar()
+    if count:
+        logger.warning(
+            "migrations: grading_labels.variant is NOT NULL with %d rows; "
+            "leaving as-is to avoid dropping labels",
+            count,
+        )
+        return
+    conn.execute(text("DROP TABLE grading_labels"))
+    GradingLabel.__table__.create(conn)
+    logger.info("migrations: rebuilt empty grading_labels with nullable variant")

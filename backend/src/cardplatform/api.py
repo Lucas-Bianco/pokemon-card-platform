@@ -21,7 +21,8 @@ from cardplatform.collection.store import (
     PortfolioSummary,
 )
 from cardplatform.grading.centering import CenteringResult, psa_cap_for
-from cardplatform.db.models import Card, CollectionItem, PriceSnapshot, ScanLog
+from cardplatform.grading.store import GradingLabelStore
+from cardplatform.db.models import Card, CollectionItem, GradingLabel, PriceSnapshot, ScanLog
 from cardplatform.db.session import Database
 from cardplatform.prices.service import PriceService
 from cardplatform.scans.store import ScanStore
@@ -225,6 +226,40 @@ class ScanAccuracyOut(BaseModel):
     precision: float
     coverage: float
     by_status: dict[str, int]
+
+
+class GradingLabelIn(BaseModel):
+    """What a user sends back when they have graded a card in hand.
+
+    `card_id` and `variant` are NOT accepted here: they are resolved from the
+    scan (corrected_card_id over predicted_card_id; scan.variant as recorded).
+    A label must describe the card the scan identified, not a card the caller
+    types in — that would let the training set be poisoned with wishful ids.
+    """
+
+    grade: float
+    grader: str
+    cert_number: str | None = None
+    notes: str | None = None
+
+
+class GradingLabelOut(BaseModel):
+    """A third-party grade attached to one scan.
+
+    `variant` is nullable: a scan that never picked a variant carries an honest
+    None, never a fabricated "normal". One label per scan — re-grading updates
+    the same row, so `id` is stable across corrections.
+    """
+
+    id: int
+    scan_id: int
+    card_id: str
+    variant: str | None
+    grade: float
+    grader: str
+    cert_number: str | None
+    notes: str | None
+    created_at: datetime
 
 
 class CollectionItemIn(BaseModel):
@@ -505,6 +540,70 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=404, detail="unknown scan")
         return _scan_out(scan)
 
+    @app.post("/scans/{scan_id}/grade-label", response_model=GradingLabelOut, status_code=201)
+    def record_grade_label(
+        scan_id: int,
+        payload: GradingLabelIn,
+        session: Session = Depends(get_session),
+    ) -> GradingLabelOut:
+        """Record the grade a user received back from PSA/CGC/BGS for this scan.
+
+        This is the project's only honest source of labelled graded-card data —
+        a phone photo the user actually mailed in and got a verdict on. The
+        store resolves card_id/variant from the scan itself (never the request
+        body) so the label always describes the card the scan identified.
+
+        Upserts: re-grading the same scan updates the one existing row rather
+        than inserting a second, so one scan yields one label.
+        """
+        store = GradingLabelStore(session)
+        try:
+            row = store.label(
+                scan_id,
+                grade=payload.grade,
+                grader=payload.grader,
+                cert_number=payload.cert_number,
+                notes=payload.notes,
+            )
+        except ValueError as exc:
+            # Bad grade/grader, or a scan that named no card: client mistake, 400.
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if row is None:
+            raise HTTPException(status_code=404, detail="scan not found")
+        return _grading_label_out(row)
+
+    @app.get("/scans/{scan_id}/grade-label", response_model=GradingLabelOut)
+    def get_grade_label(
+        scan_id: int,
+        session: Session = Depends(get_session),
+    ) -> GradingLabelOut:
+        """The label attached to a scan, or 404 if none.
+
+        "No label yet" is the common case (most scans are never mailed in), but
+        it is distinct from "the scan does not exist" — both read as 404 here
+        rather than returning a bare null, matching how /scans/{id}/confirm
+        treats an unknown scan.
+        """
+        row = GradingLabelStore(session).for_scan(scan_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="no grade label for this scan")
+        return _grading_label_out(row)
+
+    @app.get("/grading/labels", response_model=list[GradingLabelOut])
+    def list_grade_labels(
+        card_id: str | None = Query(default=None),
+        grader: str | None = Query(default=None),
+        session: Session = Depends(get_session),
+    ) -> list[GradingLabelOut]:
+        """Labels, newest first. Both filters optional; empty list if none.
+
+        Never 404: an empty result set is a valid answer (nothing graded yet),
+        not a missing resource. `grader` matches case-insensitively server-side
+        via func.lower()==, never ilike.
+        """
+        rows = GradingLabelStore(session).list_labels(card_id=card_id, grader=grader)
+        return [_grading_label_out(r) for r in rows]
+
     @app.post("/recognize", response_model=RecognizeOut)
     async def recognize(
         file: UploadFile = File(),
@@ -752,6 +851,27 @@ def _scan_out(scan: ScanLog) -> ScanOut:
         collector_number_read=scan.collector_number_read,
         rectified_path=scan.rectified_path,
         variant=scan.variant,
+    )
+
+
+def _grading_label_out(row: GradingLabel) -> GradingLabelOut:
+    """GradingLabel -> wire model, in one place so variant's None survives.
+
+    A scan that never picked a variant stores NULL and must surface NULL here,
+    not a defaulted "normal" — the frontend distinguishes "no variant" from a
+    chosen one, and a predictor trained on these labels must not read a
+    fabricated variant.
+    """
+    return GradingLabelOut(
+        id=row.id,
+        scan_id=row.scan_id,
+        card_id=row.card_id,
+        variant=row.variant,
+        grade=row.grade,
+        grader=row.grader,
+        cert_number=row.cert_number,
+        notes=row.notes,
+        created_at=row.created_at,
     )
 
 
