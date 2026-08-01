@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import dataclasses
 import logging
+import uuid
 
 import numpy as np
 from PIL import Image
@@ -134,9 +136,34 @@ class RecognitionService:
 
         reading = self.reader.read(crop)
         result = fuse(candidates, reading, catalog_numbers, config=self.fusion_config)
+        # The rectified crop is the canonical input Phase 3's grader needs, and the
+        # only signal worth re-measuring centering on. Persist it once, here, on the
+        # winning crop — the not_found path with no proposals returns before this and
+        # keeps rectified_path=None. Fail-soft: a save error never breaks recognition.
+        rectified_path = (
+            self._persist_rectified_crop(crop) if result.status != "not_found" else None
+        )
+        result = dataclasses.replace(result, rectified_path=rectified_path)
         # Measured once, on the winning crop only — the losing proposals were never
         # the card, so measuring them would be pure waste.
         return result, measure_centering(crop)
+
+    def _persist_rectified_crop(self, crop: Image.Image) -> str | None:
+        """Write the rectified crop to the configured dir, returning its relative path.
+
+        Returns None on any error so the caller can continue without a persisted crop
+        rather than failing the scan. The relative path mirrors `scan_logs.image_path`'s
+        `"scans/{name}"` convention so the same `data_dir / path` resolution works.
+        """
+        try:
+            directory = self.settings.rectified_image_dir
+            directory.mkdir(parents=True, exist_ok=True)
+            name = f"{uuid.uuid4().hex}.png"
+            crop.save(directory / name, "PNG")
+            return f"rectified/{name}"
+        except Exception:
+            logger.warning("failed to persist rectified crop", exc_info=True)
+            return None
 
     def _collector_numbers(self, card_ids: list[str]) -> dict[str, str]:
         if not card_ids:

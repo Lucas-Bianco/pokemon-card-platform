@@ -54,6 +54,8 @@ class ScanStore:
         confidence: float | None = None,
         visual_margin: float | None = None,
         collector_number_read: str | None = None,
+        rectified_path: str | None = None,
+        variant: str | None = None,
     ) -> ScanLog:
         # uuid rather than a counter: two scans in the same second must not collide,
         # and the filename should not depend on database state.
@@ -67,6 +69,8 @@ class ScanStore:
             confidence=confidence,
             visual_margin=visual_margin,
             collector_number_read=collector_number_read,
+            rectified_path=rectified_path,
+            variant=variant,
         )
         self.session.add(scan)
         self.session.commit()

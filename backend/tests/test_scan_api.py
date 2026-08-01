@@ -35,10 +35,11 @@ def client(seeded, tmp_path):
     return TestClient(app)
 
 
-def _record(client, status="confident", predicted="base1-4"):
+def _record(client, status="confident", predicted="base1-4", **extra):
     params = {"status": status, "confidence": 0.97}
     if predicted is not None:
         params["predicted_card_id"] = predicted
+    params.update(extra)
     return client.post("/scans", params=params, files={"file": ("scan.png", _png(), "image/png")})
 
 
@@ -48,6 +49,27 @@ def test_recording_a_scan_returns_its_id(client):
     assert response.status_code == 201
     assert isinstance(response.json()["id"], int)
     assert response.json()["confirmed"] is False
+
+
+def test_record_scan_persists_rectified_path_and_variant(client):
+    """Phase 3b: the recognize endpoint surfaces rectified_path; the frontend passes
+    it and the request variant back through /scans, and they land on the row."""
+    response = _record(
+        client, rectified_path="rectified/abc.png", variant="normal"
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["rectified_path"] == "rectified/abc.png"
+    assert body["variant"] == "normal"
+
+
+def test_record_scan_defaults_rectified_path_and_variant_to_none(client):
+    """Omitting the new params keeps existing behaviour: nulls, not errors."""
+    body = _record(client).json()
+
+    assert body["rectified_path"] is None
+    assert body["variant"] is None
 
 
 def test_a_not_found_scan_can_be_recorded_without_a_card(client):

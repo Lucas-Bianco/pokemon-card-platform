@@ -47,6 +47,7 @@ def result(
     candidates=(Candidate(card_id="base1-4", visual_score=0.91),),
     ocr=OcrReading(collector_number="4", printed_total="102"),
     visual_margin=0.22,
+    rectified_path=None,
 ):
     return RecognitionResult(
         card_id=card_id,
@@ -55,6 +56,7 @@ def result(
         candidates=tuple(candidates),
         ocr=ocr,
         visual_margin=visual_margin,
+        rectified_path=rectified_path,
     )
 
 
@@ -142,6 +144,22 @@ def test_confident_result_returns_the_card_with_its_priced_source_timestamp(make
     assert body["price"]["variant"] == "normal"
     assert body["price"]["market"] == 800.43
     assert body["price"]["source_updated_at"] == "2026/07/29"
+
+
+def test_rectified_path_is_returned_in_the_response(make_client):
+    """The persisted crop's path is surfaced so the frontend can pass it back to
+    /scans and record it on the scan_logs row for grading."""
+    client = make_client(result(rectified_path="rectified/abc.png"))
+
+    body = upload(client).json()
+
+    assert body["rectified_path"] == "rectified/abc.png"
+
+
+def test_rectified_path_is_null_when_no_crop_was_produced(make_client):
+    client = make_client(not_found_result())
+
+    assert upload(client).json()["rectified_path"] is None
 
 
 def test_collector_number_read_reports_what_ocr_saw(make_client):

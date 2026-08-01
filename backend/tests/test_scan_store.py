@@ -107,6 +107,42 @@ def test_recorded_image_paths_are_unique(db, tmp_path):
     assert first.image_path != second.image_path
 
 
+def test_record_persists_rectified_path_and_variant(db, tmp_path):
+    """Phase 3b: the rectified crop's path and the request variant land on the row so
+    grading can re-measure centering on a clean, normalized input later."""
+    _seed(db)
+    store = ScanStore(db, Settings(data_dir=tmp_path))
+
+    scan = store.record(
+        image_bytes=_png(),
+        predicted_card_id="base1-4",
+        status="confident",
+        rectified_path="rectified/abc.png",
+        variant="normal",
+    )
+
+    assert scan.rectified_path == "rectified/abc.png"
+    assert scan.variant == "normal"
+    row = db.query(ScanLog).filter(ScanLog.id == scan.id).one()
+    assert row.rectified_path == "rectified/abc.png"
+    assert row.variant == "normal"
+
+
+def test_record_defaults_rectified_path_and_variant_to_none(db, tmp_path):
+    """Existing callers that omit the new fields must keep working unchanged."""
+    _seed(db)
+    store = ScanStore(db, Settings(data_dir=tmp_path))
+
+    scan = store.record(
+        image_bytes=_png(),
+        predicted_card_id="base1-4",
+        status="confident",
+    )
+
+    assert scan.rectified_path is None
+    assert scan.variant is None
+
+
 def test_confirm_marks_the_prediction_correct(db, tmp_path):
     _seed(db)
     store = ScanStore(db, Settings(data_dir=tmp_path))

@@ -199,6 +199,9 @@ class RecognizeOut(BaseModel):
     candidates: list[CandidateOut]
     collector_number_read: str | None
     centering: CenteringOut | None
+    # Phase 3b: the persisted rectified crop's relative path, surfaced so the
+    # frontend can pass it back to /scans and record it on the scan_logs row.
+    rectified_path: str | None = None
 
 
 class ScanOut(BaseModel):
@@ -210,6 +213,8 @@ class ScanOut(BaseModel):
     confidence: float | None
     visual_margin: float | None
     collector_number_read: str | None
+    rectified_path: str | None = None
+    variant: str | None = None
 
 
 class ScanAccuracyOut(BaseModel):
@@ -440,6 +445,8 @@ def create_app() -> FastAPI:
         confidence: float | None = Query(default=None),
         visual_margin: float | None = Query(default=None),
         collector_number_read: str | None = Query(default=None),
+        rectified_path: str | None = Query(default=None),
+        variant: str | None = Query(default=None),
         store: ScanStore = Depends(get_scan_store),
     ) -> ScanOut:
         scan = store.record(
@@ -449,6 +456,8 @@ def create_app() -> FastAPI:
             confidence=confidence,
             visual_margin=visual_margin,
             collector_number_read=collector_number_read,
+            rectified_path=rectified_path,
+            variant=variant,
         )
         return _scan_out(scan)
 
@@ -526,6 +535,7 @@ def create_app() -> FastAPI:
             candidates=_candidates_out(session, result.candidates),
             collector_number_read=result.ocr.collector_number,
             centering=_centering_out(centering) if centering is not None else None,
+            rectified_path=result.rectified_path,
         )
 
     @app.post("/collection", response_model=CollectionItemOut, status_code=201)
@@ -740,6 +750,8 @@ def _scan_out(scan: ScanLog) -> ScanOut:
         confidence=scan.confidence,
         visual_margin=scan.visual_margin,
         collector_number_read=scan.collector_number_read,
+        rectified_path=scan.rectified_path,
+        variant=scan.variant,
     )
 
 

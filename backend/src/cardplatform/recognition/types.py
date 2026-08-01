@@ -50,3 +50,7 @@ class RecognitionResult:
     candidates: tuple[Candidate, ...]
     ocr: OcrReading
     visual_margin: float
+    # Phase 3b: relative path to the persisted rectified crop ("rectified/<uuid>.png"),
+    # or None when no crop was produced (not_found) or persistence failed. Optional so
+    # existing callers that construct a result without it stay compatible.
+    rectified_path: str | None = None

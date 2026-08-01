@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
+from cardplatform.config import Settings
 from cardplatform.db.models import Card, CardSet
 from cardplatform.recognition.service import RecognitionService
 from cardplatform.recognition.types import Candidate, OcrReading
@@ -47,6 +48,19 @@ def seeded(db):
     db.add(Card(id="me2pt5-252", set_id="base1", name="Stunfisk ex", number="252"))
     db.commit()
     return db
+
+
+@pytest.fixture(autouse=True)
+def _tmp_default_settings(tmp_path, monkeypatch):
+    """Point the module-level default Settings at tmp_path so recognition's
+    rectified-image persistence never writes into the real data/ directory.
+
+    Tests that pass an explicit `settings=` (the _service_with_tmp_dir helper) still
+    win because `settings or default_settings` prefers the argument.
+    """
+    from cardplatform.recognition import service as service_module
+
+    monkeypatch.setattr(service_module, "default_settings", Settings(data_dir=tmp_path))
 
 
 def _photo():
@@ -310,3 +324,60 @@ def test_manual_corners_bypass_detection(seeded, monkeypatch):
     )
 
     assert result.status == "confident"
+
+
+def _service_with_tmp_dir(seeded, tmp_path, **index_kwargs):
+    """A RecognitionService whose rectified_image_dir lives under tmp_path, so tests
+    can assert the PNG landed there without touching the real data directory."""
+    return RecognitionService(
+        session=seeded,
+        encoder=FakeEncoder(),
+        index=FakeIndex([Candidate("base1-4", 0.9), Candidate("base4-4", 0.6)]),
+        reader=FakeReader(),
+        settings=Settings(data_dir=tmp_path),
+        **index_kwargs,
+    )
+
+
+def test_rectified_crop_is_persisted(seeded, tmp_path):
+    """The crop passed to centering is written to the rectified dir and its relative
+    path is surfaced on the result for the API to record."""
+    service = _service_with_tmp_dir(seeded, tmp_path)
+
+    result, _centering = service.recognize(_photo(), rectify=False)
+
+    assert result.status == "confident"
+    assert result.rectified_path is not None
+    assert result.rectified_path.startswith("rectified/")
+    saved = tmp_path / result.rectified_path
+    assert saved.exists()
+    assert Image.open(saved).size == (600, 825)
+
+
+def test_not_found_leaves_rectified_path_none(seeded, tmp_path, monkeypatch):
+    """No proposals -> no crop -> nothing persisted. The dir must not even be created."""
+    from cardplatform.recognition import service as service_module
+
+    monkeypatch.setattr(service_module, "detect_candidates", lambda image: [])
+    service = _service_with_tmp_dir(seeded, tmp_path)
+
+    result, _centering = service.recognize(
+        Image.new("RGB", (300, 400), (18, 18, 18)), rectify=True
+    )
+
+    assert result.status == "not_found"
+    assert result.rectified_path is None
+    assert not (tmp_path / "rectified").exists()
+
+
+def test_rectified_persistence_failure_is_fail_soft(seeded, tmp_path):
+    """If the rectified dir cannot be written, recognition still succeeds and the
+    path is None — persistence is additive, never load-bearing."""
+    # Place a FILE where the rectified directory would be, so mkdir/save raises.
+    (tmp_path / "rectified").write_bytes(b"")
+    service = _service_with_tmp_dir(seeded, tmp_path)
+
+    result, _centering = service.recognize(_photo(), rectify=False)
+
+    assert result.status == "confident"
+    assert result.rectified_path is None
