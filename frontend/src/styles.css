@@ -94,6 +94,42 @@ h1 { font-size: 1.25rem; margin: 4px 0 16px; }
   pointer-events: none;
 }
 
+/* Clearer guide outline: bright corner brackets on top of the dim border so the
+   alignment target reads instantly even over a busy background. The brackets
+   are a separate overlay so they don't shift the guide's measured rect. */
+.guide-corners {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  height: 78%;
+  aspect-ratio: 2.5 / 3.5;
+  pointer-events: none;
+}
+.guide-corners::before,
+.guide-corners::after {
+  content: "";
+  position: absolute;
+  width: 26px;
+  height: 26px;
+  border: 3px solid var(--accent);
+  pointer-events: none;
+}
+.guide-corners::before {
+  top: -3px;
+  left: -3px;
+  border-right: none;
+  border-bottom: none;
+  border-top-left-radius: 10px;
+}
+.guide-corners::after {
+  bottom: -3px;
+  right: -3px;
+  border-left: none;
+  border-top: none;
+  border-bottom-right-radius: 10px;
+}
+
 .guide-hint {
   position: absolute;
   bottom: 10px;
@@ -105,6 +141,46 @@ h1 { font-size: 1.25rem; margin: 4px 0 16px; }
   color: var(--fg-dim);
   text-shadow: 0 1px 3px #000;
 }
+
+/* "Warming up" overlay shown until onloadedmetadata fires — tells the user the
+   shutter is intentionally inactive rather than broken. */
+.camera-warming {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: rgba(11, 13, 18, 0.55);
+  color: var(--fg);
+  font-size: 0.9rem;
+  pointer-events: none;
+}
+.warming-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: warming-pulse 1s ease-in-out infinite;
+}
+@keyframes warming-pulse {
+  0%, 100% { opacity: 0.35; transform: scale(0.8); }
+  50% { opacity: 1; transform: scale(1.15); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .warming-dot { animation: none; }
+}
+
+/* Capture flash: a white overlay that fades out, giving shutter feedback. */
+.camera-flash {
+  position: absolute;
+  inset: 0;
+  background: #fff;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 160ms ease-out;
+}
+.camera-flash.is-on { opacity: 0.7; transition: none; }
 
 .shutter {
   width: 100%;
@@ -134,9 +210,11 @@ h1 { font-size: 1.25rem; margin: 4px 0 16px; }
 .result-status {
   display: flex;
   justify-content: space-between;
-  padding: 10px 14px;
-  border-radius: 10px 10px 0 0;
+  align-items: baseline;
+  padding: 12px 16px;
+  border-radius: 14px 14px 0 0;
   font-weight: 600;
+  letter-spacing: 0.01em;
   background: var(--surface);
   border: 1px solid var(--line);
   border-bottom: none;
@@ -155,8 +233,18 @@ h1 { font-size: 1.25rem; margin: 4px 0 16px; }
   border: 1px solid var(--line);
 }
 
-.card-detail img { width: 96px; border-radius: 6px; align-self: flex-start; }
-.card-detail h2 { margin: 0 0 4px; font-size: 1.1rem; }
+/* The text column must be allowed to shrink below its content's intrinsic width
+   so long card names wrap instead of overflowing into horizontal scroll. The
+   image is fluid (capped, width-based) so it scales down on narrow screens. */
+.card-detail-text { min-width: 0; flex: 1 1 auto; }
+.card-detail img {
+  width: clamp(72px, 26%, 96px);
+  height: auto;
+  border-radius: 8px;
+  align-self: flex-start;
+  flex: 0 0 auto;
+}
+.card-detail h2 { margin: 0 0 4px; font-size: 1.1rem; line-height: 1.25; word-break: break-word; }
 .card-meta { margin: 0 0 10px; color: var(--fg-dim); font-size: 0.88rem; }
 
 .price { margin: 0; font-size: 1.35rem; }
@@ -215,19 +303,27 @@ h1 { font-size: 1.25rem; margin: 4px 0 16px; }
 .error { background: #3a1418; color: #ffb4ab; }
 .note { background: var(--surface); color: var(--fg-dim); border: 1px solid var(--line); }
 
-.corner-box { position: relative; touch-action: none; user-select: none; }
-.corner-box img { width: 100%; display: block; border-radius: 10px; }
+/* The padded wrapper insets the stage (and thus the 44px handles centered on
+   its edges) from the device bezel / safe-area. The stage itself is the
+   coordinate space the corner fractions map to, so pointer math stays exact. */
+.corner-box { padding: 22px; }
+.corner-stage { position: relative; touch-action: none; user-select: none; }
+.corner-stage img { width: 100%; display: block; border-radius: 10px; }
 .corner-overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+/* 44px drag handles meet the WCAG/Cocoa touch target minimum. The negative
+   margin centers each handle on its corner point; with 22px of .corner-box
+   padding, a handle at fraction 0/1 still fits inside the wrapper. */
 .handle {
   position: absolute;
-  width: 30px;
-  height: 30px;
-  margin: -15px 0 0 -15px;
+  width: 44px;
+  height: 44px;
+  margin: -22px 0 0 -22px;
   border-radius: 50%;
   border: 2px solid #1a1500;
   background: var(--accent);
   padding: 0;
   touch-action: none;
+  box-shadow: var(--shadow-1);
 }
 .corner-adjust .hint { color: var(--fg-dim); font-size: 0.9rem; margin-top: 0; }
 /* Matches .rescan rather than inheriting the browser default: it sits directly under
@@ -330,14 +426,32 @@ h1 { font-size: 1.25rem; margin: 4px 0 16px; }
 .centering-flag { color: var(--warn); font-weight: 600; }
 .centering-sub { margin: 4px 0 0; font-size: 0.78rem; color: var(--fg-dim); }
 
-.centering-axes { margin: 10px 0 0; display: grid; gap: 4px; }
-.centering-axes > div { display: flex; justify-content: space-between; gap: 12px; }
-.centering-axes dt { font-size: 0.82rem; color: var(--fg-dim); }
+.centering-axes {
+  margin: 12px 0 0;
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+}
+.centering-axes > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 2px 0;
+}
+.centering-axes > div + div { border-top: 1px solid var(--line); }
+.centering-axes dt { font-size: 0.8rem; color: var(--fg-dim); }
 .centering-axes dd {
   margin: 0;
-  font-size: 0.82rem;
+  font-size: 0.85rem;
   font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono);
 }
+/* The worst axis drives the cap, so it gets the accent weight. */
+.centering-axes .axis-worst dd { color: var(--accent); font-weight: 600; }
 
 .centering-uncertain {
   margin: 10px 0 0;
@@ -398,13 +512,13 @@ h1 { font-size: 1.25rem; margin: 4px 0 16px; }
 }
 .portfolio-table th {
   text-align: left;
-  padding: 6px 8px;
+  padding: 8px 10px;
   border-bottom: 1px solid var(--line);
   color: var(--fg-dim);
   font-weight: 500;
 }
 .portfolio-table td {
-  padding: 6px 8px;
+  padding: 8px 10px;
   border-bottom: 1px solid var(--line);
   vertical-align: top;
 }
@@ -415,6 +529,17 @@ h1 { font-size: 1.25rem; margin: 4px 0 16px; }
 .portfolio-table .actions button + button { margin-left: 6px; }
 .edit-price { width: 70px; }
 .chart-row .chart-cell { background: var(--surface); }
+
+/* Responsive wrapper: on narrow viewports the table reflows to stacked cards
+   (see the media queries below). This wrapper guards the rare case where a
+   holding's name or set string is too long to wrap at the table breakpoint —
+   it scrolls horizontally instead of blowing out the page. */
+.portfolio-table-wrap {
+  margin-top: 16px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.portfolio-table-wrap .portfolio-table { margin-top: 0; }
 
 /* =========================================================================
    Grading Lab — global responsive foundation
@@ -621,20 +746,82 @@ h1 { font-size: 1.25rem; margin: 4px 0 16px; }
   /* The valuation grid collapses to 2 columns on the smallest phones so each
      tile keeps a readable number. */
   .valuation { grid-template-columns: repeat(2, 1fr); }
-  /* Table is already narrow; let it scroll horizontally inside its own column
-     rather than blowing out the page. */
-  .portfolio-table { display: block; overflow-x: auto; white-space: nowrap; }
-  .portfolio-table thead, .portfolio-table tbody, .portfolio-table tr { display: table; width: 100%; }
   /* Tap targets stay 44px even when the row gets short. */
   .bottom-nav button { min-height: 56px; font-size: 0.7rem; }
 }
 
-@media (max-width: 640px) {
-  /* Hide non-essential table columns on phones to keep each row legible. The
-     Set and Variant columns are secondary; Qty, Card, Paid, Market, Unrealised
-     and Actions stay. */
-  .portfolio-table .col-set,
-  .portfolio-table .col-variant { display: none; }
+/* =========================================================================
+   Portfolio — stacked card layout on phones, real table >=640px.
+   One DOM: the same <table class="portfolio-table"> is restyled in place via
+   data-label attributes on each cell. No duplicate markup; the media query
+   only switches presentation. Keeps .portfolio-table and every asserted
+   string intact (the cells still contain the same text).
+   ========================================================================= */
+@media (max-width: 639px) {
+  .portfolio-table,
+  .portfolio-table tbody,
+  .portfolio-table tr,
+  .portfolio-table td {
+    display: block;
+    width: 100%;
+  }
+  .portfolio-table thead { display: none; }
+
+  .portfolio-table .holding-row {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: var(--sp-3) var(--sp-4);
+    margin-bottom: var(--sp-3);
+    box-shadow: var(--shadow-1);
+  }
+  .portfolio-table .holding-row td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sp-3);
+    padding: 7px 0;
+    border: none;
+    text-align: right;
+  }
+  /* Each cell prepends its data-label as a muted key, so the stacked card still
+     reads as Qty / Card / Paid / Market / … without the table header. */
+  .portfolio-table .holding-row td::before {
+    content: attr(data-label);
+    color: var(--fg-dim);
+    font-size: 0.78rem;
+    text-align: left;
+    margin-right: auto;
+    flex: 0 0 auto;
+  }
+  /* The card name is the row's title — drop its inline label and emphasize it. */
+  .portfolio-table .holding-row td.name {
+    font-weight: 600;
+    font-size: 1rem;
+    padding-bottom: 8px;
+    margin-bottom: 2px;
+    border-bottom: 1px solid var(--line);
+    text-align: left;
+  }
+  .portfolio-table .holding-row td.name::before { content: none; }
+
+  /* Actions wrap and right-align; stacked rows give them room to breathe. */
+  .portfolio-table .actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: var(--sp-2);
+    white-space: normal;
+    padding-top: 10px;
+  }
+  .portfolio-table .actions button + button { margin-left: 0; }
+
+  /* The chart sub-row becomes a plain block under its holding card. */
+  .portfolio-table .chart-row,
+  .portfolio-table .chart-cell {
+    display: block;
+    padding: var(--sp-3) 0 0;
+    background: transparent;
+  }
 }
 
 @media (min-width: 960px) {

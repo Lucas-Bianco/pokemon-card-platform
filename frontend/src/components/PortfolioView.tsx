@@ -189,117 +189,125 @@ export default function PortfolioView(_props: Props) {
       )}
 
       {portfolio !== null && portfolio.items.length > 0 && (
-        <table className="portfolio-table">
-          <thead>
-            <tr>
-              <th>Qty</th>
-              <th>Card</th>
-              <th className="col-variant">Variant</th>
-              <th className="col-set">Set</th>
-              <th>Paid</th>
-              <th>Market</th>
-              <th>Unrealised</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {portfolio.items.map((item) => (
-              <Fragment key={item.id}>
-                <tr>
-                  <td>×{item.quantity}</td>
-                  <td className="name">{item.card_name}</td>
-                  <td className="col-variant">{item.variant}</td>
-                  <td className="muted col-set">{item.set_name}</td>
-                  <td>
-                    {editing === item.id ? (
-                      <input
-                        className="edit-price"
-                        type="number"
-                        step="0.01"
-                        value={editPrice}
-                        onChange={(e) => setEditPrice(e.target.value)}
-                        placeholder="paid"
-                        aria-label={`Paid for ${item.card_name}`}
-                      />
-                    ) : (
-                      formatMoney(item.acquired_price)
-                    )}
-                  </td>
-                  <td>
-                    {item.market_price !== null ? (
-                      <span>
-                        {formatMoney(item.market_price)}
-                        {item.market_source_updated_at && (
-                          <span className="muted small"> as of {item.market_source_updated_at}</span>
-                        )}
-                      </span>
-                    ) : (
-                      <span className="unpriced">
-                        —<span className="muted small"> no market price</span>
-                      </span>
-                    )}
-                  </td>
-                  <td>
-                    {item.unrealized === null ? (
-                      <span className="unknown">—</span>
-                    ) : (
-                      <strong className={item.unrealized >= 0 ? "up" : "down"}>
-                        {item.unrealized >= 0 ? "+" : "−"}
-                        {formatMoney(Math.abs(item.unrealized))}
-                      </strong>
-                    )}
-                  </td>
-                  <td className="actions">
-                    {editing === item.id ? (
-                      <>
-                        <button onClick={() => saveEdit(item)} disabled={saving}>
-                          {saving ? "Saving…" : "Save"}
-                        </button>
-                        <button className="link" onClick={() => setEditing(null)}>
-                          cancel
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <button
-                          className="link"
-                          onClick={() =>
-                            historyFor === item.id ? setHistoryFor(null) : handleHistory(item)
-                          }
-                        >
-                          History
-                        </button>
-                        <button className="link" onClick={() => startEdit(item)}>
-                          Edit
-                        </button>
-                        <button className="link" onClick={() => handleRemove(item)}>
-                          Remove
-                        </button>
-                      </>
-                    )}
-                  </td>
-                </tr>
-                {historyFor === item.id && (
-                  <tr className="chart-row">
-                    <td colSpan={8} className="chart-cell">
-                      {historyError && <p className="error">{historyError}</p>}
-                      {historyPoints === null && !historyError && (
-                        <div className="skeleton skeleton-block" aria-label="Loading price history" />
-                      )}
-                      {historyPoints !== null && (
-                        <PriceChart
-                          points={historyPoints}
-                          variant={item.variant}
-                          onClose={() => setHistoryFor(null)}
+        <div className="portfolio-table-wrap">
+          <table className="portfolio-table">
+            <thead>
+              <tr>
+                <th>Qty</th>
+                <th>Card</th>
+                <th className="col-variant">Variant</th>
+                <th className="col-set">Set</th>
+                <th>Paid</th>
+                <th>Market</th>
+                <th>Unrealised</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {portfolio.items.map((item) => (
+                <Fragment key={item.id}>
+                  <tr className="holding-row">
+                    <td data-label="Qty">×{item.quantity}</td>
+                    <td data-label="Card" className="name">
+                      {item.card_name}
+                    </td>
+                    <td data-label="Variant" className="col-variant">
+                      {item.variant}
+                    </td>
+                    <td data-label="Set" className="muted col-set">
+                      {item.set_name}
+                    </td>
+                    <td data-label="Paid">
+                      {editing === item.id ? (
+                        <input
+                          className="edit-price"
+                          type="number"
+                          step="0.01"
+                          value={editPrice}
+                          onChange={(e) => setEditPrice(e.target.value)}
+                          placeholder="paid"
+                          aria-label={`Paid for ${item.card_name}`}
                         />
+                      ) : (
+                        formatMoney(item.acquired_price)
+                      )}
+                    </td>
+                    <td data-label="Market">
+                      {item.market_price !== null ? (
+                        <span>
+                          {formatMoney(item.market_price)}
+                          {item.market_source_updated_at && (
+                            <span className="muted small"> as of {item.market_source_updated_at}</span>
+                          )}
+                        </span>
+                      ) : (
+                        <span className="unpriced">
+                          —<span className="muted small"> no market price</span>
+                        </span>
+                      )}
+                    </td>
+                    <td data-label="Unrealised">
+                      {item.unrealized === null ? (
+                        <span className="unknown">—</span>
+                      ) : (
+                        <strong className={item.unrealized >= 0 ? "up" : "down"}>
+                          {item.unrealized >= 0 ? "+" : "−"}
+                          {formatMoney(Math.abs(item.unrealized))}
+                        </strong>
+                      )}
+                    </td>
+                    <td data-label="Actions" className="actions">
+                      {editing === item.id ? (
+                        <>
+                          <button onClick={() => saveEdit(item)} disabled={saving}>
+                            {saving ? "Saving…" : "Save"}
+                          </button>
+                          <button className="link" onClick={() => setEditing(null)}>
+                            cancel
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            className="link"
+                            onClick={() =>
+                              historyFor === item.id ? setHistoryFor(null) : handleHistory(item)
+                            }
+                          >
+                            History
+                          </button>
+                          <button className="link" onClick={() => startEdit(item)}>
+                            Edit
+                          </button>
+                          <button className="link" onClick={() => handleRemove(item)}>
+                            Remove
+                          </button>
+                        </>
                       )}
                     </td>
                   </tr>
-                )}
-              </Fragment>
-            ))}
-          </tbody>
-        </table>
+                  {historyFor === item.id && (
+                    <tr className="chart-row">
+                      <td colSpan={8} className="chart-cell">
+                        {historyError && <p className="error">{historyError}</p>}
+                        {historyPoints === null && !historyError && (
+                          <div className="skeleton skeleton-block" aria-label="Loading price history" />
+                        )}
+                        {historyPoints !== null && (
+                          <PriceChart
+                            points={historyPoints}
+                            variant={item.variant}
+                            onClose={() => setHistoryFor(null)}
+                          />
+                        )}
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </section>
   );

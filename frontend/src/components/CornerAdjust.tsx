@@ -39,6 +39,10 @@ export default function CornerAdjust({ image, onSubmit, onCancel }: Props) {
     setPoints((prev) => prev.map((p, i) => (i === index ? [x, y] : p)));
   }, []);
 
+  const endDrag = useCallback(() => {
+    dragging.current = null;
+  }, []);
+
   const submit = useCallback(() => {
     if (!natural) return;
     // Back to source-image pixels — the server rectifies against the original.
@@ -48,43 +52,54 @@ export default function CornerAdjust({ image, onSubmit, onCancel }: Props) {
   return (
     <div className="corner-adjust">
       <p className="hint">Drag the four dots onto the card's corners.</p>
-      <div
-        ref={boxRef}
-        className="corner-box"
-        onPointerMove={move}
-        onPointerUp={() => (dragging.current = null)}
-        onPointerLeave={() => (dragging.current = null)}
-      >
-        {url && (
-          <img
-            src={url}
-            alt=""
-            onLoad={(e) =>
-              setNatural({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })
-            }
-          />
-        )}
-        <svg className="corner-overlay" viewBox="0 0 100 100" preserveAspectRatio="none">
-          <polygon
-            points={points.map(([x, y]) => `${x * 100},${y * 100}`).join(" ")}
-            fill="rgba(255,203,5,0.15)"
-            stroke="var(--accent)"
-            strokeWidth="0.6"
-            vectorEffect="non-scaling-stroke"
-          />
-        </svg>
-        {points.map(([x, y], i) => (
-          <button
-            key={i}
-            className="handle"
-            style={{ left: `${x * 100}%`, top: `${y * 100}%` }}
-            onPointerDown={(e) => {
-              dragging.current = i;
-              e.currentTarget.setPointerCapture(e.pointerId);
-            }}
-            aria-label={`Corner ${i + 1}`}
-          />
-        ))}
+      <div className="corner-box">
+        {/* The stage is the image-bounding box; the surrounding .corner-box
+            padding insets the stage from the device bezel so the 44px handles,
+            centered on the stage edge at fraction 0/1, never collide with the
+            safe-area. Pointer events live on the stage so coordinate mapping
+            stays relative to the image, not the padded wrapper. */}
+        <div
+          ref={boxRef}
+          className="corner-stage"
+          onPointerMove={move}
+          onPointerUp={endDrag}
+          onPointerCancel={endDrag}
+        >
+          {url && (
+            <img
+              src={url}
+              alt=""
+              onLoad={(e) =>
+                setNatural({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })
+              }
+            />
+          )}
+          <svg className="corner-overlay" viewBox="0 0 100 100" preserveAspectRatio="none">
+            <polygon
+              points={points.map(([x, y]) => `${x * 100},${y * 100}`).join(" ")}
+              fill="rgba(255,203,5,0.15)"
+              stroke="var(--accent)"
+              strokeWidth="0.6"
+              vectorEffect="non-scaling-stroke"
+            />
+          </svg>
+          {points.map(([x, y], i) => (
+            <button
+              key={i}
+              className="handle"
+              style={{ left: `${x * 100}%`, top: `${y * 100}%` }}
+              onPointerDown={(e) => {
+                dragging.current = i;
+                // Capture the pointer so move events keep flowing to this element
+                // even if the finger drifts off it, and the drag only ends on a
+                // real up/cancel — not on pointerleave, which used to drop a drag
+                // the moment the handle slid under the cursor.
+                e.currentTarget.setPointerCapture(e.pointerId);
+              }}
+              aria-label={`Corner ${i + 1}`}
+            />
+          ))}
+        </div>
       </div>
       <div className="actions">
         <button className="primary" onClick={submit} disabled={!natural}>

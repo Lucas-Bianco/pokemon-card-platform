@@ -39,7 +39,7 @@ export default function ScanResult({
       {card && (
         <div className="card-detail">
           {card.image_small && <img src={card.image_small} alt={card.name} />}
-          <div>
+          <div className="card-detail-text">
             <h2>{card.name}</h2>
             <p className="card-meta">
               {card.set_name} · #{card.number}
