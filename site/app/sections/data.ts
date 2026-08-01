@@ -81,5 +81,8 @@ export const STACK_BACKEND = ["FastAPI", "CLIP / DINOv2", "FAISS", "PaddleOCR", 
 export const STACK_FRONTEND_BLURB = "Installable PWA — one codebase for phone camera and desktop.";
 export const STACK_BACKEND_BLURB = "Python, deliberately — the CV and ML ecosystem the later phases depend on.";
 
+// The bold lead-in "Runs entirely on your own machine." is rendered separately
+// in Stack.tsx, so this note begins with the supporting sentence to avoid a
+// duplicated lead phrase in the rendered output.
 export const STACK_LOCAL_NOTE =
-  "Runs entirely on your own machine. Compute is local — recognition, embedding, search, and OCR never leave the device. Only the card catalog and price data sync over the network, so scanning still works offline, in a card shop, on bad signal.";
+  "Compute is local — recognition, embedding, search, and OCR never leave the device. Only the card catalog and price data sync over the network, so scanning still works offline, in a card shop, on bad signal.";
