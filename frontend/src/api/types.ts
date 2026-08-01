@@ -71,6 +71,70 @@ export interface Valuation {
   unpriced_items: number;
 }
 
+// One observed price in a history series. source and source_updated_at travel with
+// every point so a chart never presents a number without saying where it came from —
+// the same staleness rule the single-price endpoint follows.
+export interface PricePoint {
+  fetched_at: string;
+  source: string;
+  variant: string;
+  market: number | null;
+  source_updated_at: string;
+}
+
+export interface PriceHistory {
+  card_id: string;
+  variant: string;
+  points: PricePoint[];
+}
+
+// A holding enriched with its resolved market price and unrealized P/L. market_price /
+// unrealized are null when the item is unpriced; unrealized is also null when there is
+// no cost basis, because a price with no purchase cost is not a gain — the UI shows an
+// em dash, never market value dressed up as profit.
+export interface PortfolioItem {
+  id: number;
+  card_id: string;
+  card_name: string;
+  set_id: string;
+  set_name: string;
+  variant: string;
+  quantity: number;
+  acquired_price: number | null;
+  acquired_at: string | null;
+  condition: string | null;
+  notes: string | null;
+  market_price: number | null;
+  market_source: string | null;
+  market_source_updated_at: string | null;
+  unrealized: number | null;
+  priced: boolean;
+}
+
+export interface Allocation {
+  set_id: string;
+  set_name: string;
+  market_value: number;
+  cost_basis: number;
+  item_count: number;
+}
+
+export interface PortfolioSummary {
+  market_value: number;
+  cost_basis: number;
+  unrealized: number;
+  unpriced_items: number;
+  priced_items: number;
+  allocation: Allocation[];
+  top_gainers: PortfolioItem[];
+  top_losers: PortfolioItem[];
+}
+
+export interface Portfolio {
+  summary: PortfolioSummary;
+  items: PortfolioItem[];
+}
+
 export interface Scan {
   id: number;
   status: string;

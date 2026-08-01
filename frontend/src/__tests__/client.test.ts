@@ -4,10 +4,14 @@ import {
   addToCollection,
   confirmScan,
   correctScan,
+  getPriceHistory,
   getResolvedPrice,
+  getPortfolio,
+  patchCollectionItem,
   recognize,
   recordScan,
   refreshPrice,
+  removeFromCollection,
 } from "../api/client";
 import type { RecognizeResponse } from "../api/types";
 
@@ -185,5 +189,98 @@ describe("addToCollection", () => {
       variant: "holofoil",
       quantity: 1,
     });
+  });
+});
+
+describe("getPortfolio", () => {
+  it("calls /api/collection/portfolio", async () => {
+    const spy = mockFetch(200, { summary: { allocation: [] }, items: [] });
+
+    await getPortfolio();
+
+    expect(spy.mock.calls[0][0]).toContain("/api/collection/portfolio");
+  });
+});
+
+describe("patchCollectionItem", () => {
+  it("PATCHes /api/collection/{id} with a json body", async () => {
+    const spy = mockFetch(200, {
+      id: 5,
+      card_id: "base1-4",
+      card_name: "Charizard",
+      variant: "holofoil",
+      quantity: 1,
+      acquired_price: 42.0,
+    });
+
+    await patchCollectionItem(5, { acquired_price: 42.0, notes: "backfill" });
+
+    const [url, init] = spy.mock.calls[0];
+    expect(url).toContain("/api/collection/5");
+    expect(init.method).toBe("PATCH");
+    expect(JSON.parse(init.body)).toEqual({ acquired_price: 42.0, notes: "backfill" });
+  });
+
+  it("throws on a non-ok response", async () => {
+    mockFetch(404);
+
+    await expect(patchCollectionItem(999, { acquired_price: 1.0 })).rejects.toThrow(/404/);
+  });
+});
+
+describe("removeFromCollection", () => {
+  it("DELETEs /api/collection with card_id, variant, quantity", async () => {
+    const spy = mockFetch(204);
+
+    await removeFromCollection("base1-4", "holofoil", 1);
+
+    const [url, init] = spy.mock.calls[0];
+    expect(url).toContain("/api/collection?");
+    expect(url).toContain("card_id=base1-4");
+    expect(url).toContain("variant=holofoil");
+    expect(url).toContain("quantity=1");
+    expect(init.method).toBe("DELETE");
+  });
+});
+
+describe("getPriceHistory", () => {
+  it("calls /api/cards/{id}/prices/history?variant=&days=", async () => {
+    const spy = mockFetch(200, { card_id: "base1-4", variant: "holofoil", points: [] });
+
+    await getPriceHistory("base1-4", "holofoil", 30);
+
+    const url = spy.mock.calls[0][0] as string;
+    expect(url).toContain("/api/cards/base1-4/prices/history");
+    expect(url).toContain("variant=holofoil");
+    expect(url).toContain("days=30");
+  });
+
+  it("omits days when not given", async () => {
+    const spy = mockFetch(200, { card_id: "base1-4", variant: "holofoil", points: [] });
+
+    await getPriceHistory("base1-4", "holofoil");
+
+    expect(spy.mock.calls[0][0]).not.toContain("days");
+  });
+
+  it("returns the points array on 200", async () => {
+    mockFetch(200, {
+      card_id: "base1-4",
+      variant: "holofoil",
+      points: [
+        {
+          fetched_at: "2026-07-29T12:00:00Z",
+          source: "tcgplayer",
+          variant: "holofoil",
+          market: 100.0,
+          source_updated_at: "2026/07/29",
+        },
+      ],
+    });
+
+    const history = await getPriceHistory("base1-4", "holofoil");
+
+    expect(history.points).toHaveLength(1);
+    expect(history.points[0].market).toBe(100.0);
   });
 });

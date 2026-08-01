@@ -1,6 +1,8 @@
 import type {
   CollectionItem,
+  Portfolio,
   Price,
+  PriceHistory,
   RecognizeResponse,
   Scan,
   Valuation,
@@ -112,4 +114,61 @@ export async function addToCollection(
   if (!response.ok) {
     throw new Error(`request failed: ${response.status}`);
   }
+}
+
+export async function getPortfolio(): Promise<Portfolio> {
+  // Priced holdings + summary in one round trip; all valuation is server-side, so the
+  // client never resolves 'the latest price' itself.
+  return expectJson<Portfolio>(await fetch(`${BASE}/collection/portfolio`));
+}
+
+export async function patchCollectionItem(
+  id: number,
+  update: {
+    acquired_price?: number | null;
+    acquired_at?: string | null;
+    condition?: string | null;
+    notes?: string | null;
+  },
+): Promise<CollectionItem> {
+  const response = await fetch(`${BASE}/collection/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(update),
+  });
+  if (!response.ok) {
+    throw new Error(`request failed: ${response.status}`);
+  }
+  return (await response.json()) as CollectionItem;
+}
+
+export async function removeFromCollection(
+  cardId: string,
+  variant: string,
+  quantity = 1,
+): Promise<void> {
+  const params = new URLSearchParams({
+    card_id: cardId,
+    variant,
+    quantity: String(quantity),
+  });
+  const response = await fetch(`${BASE}/collection?${params}`, { method: "DELETE" });
+  // 204 covers both a real removal and a no-op (nothing held); only a real error throws.
+  if (!response.ok) {
+    throw new Error(`request failed: ${response.status}`);
+  }
+}
+
+export async function getPriceHistory(
+  cardId: string,
+  variant: string,
+  days?: number,
+): Promise<PriceHistory> {
+  const params = new URLSearchParams({ variant });
+  if (days) {
+    params.set("days", String(days));
+  }
+  return expectJson<PriceHistory>(
+    await fetch(`${BASE}/cards/${cardId}/prices/history?${params}`),
+  );
 }
