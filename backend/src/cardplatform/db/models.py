@@ -153,3 +153,67 @@ class ScanLog(Base):
     )
     confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=_utcnow)
+    # Phase 3b: the rectified crop (a deskewed, border-cropped image produced by
+    # T2 on recognize) and the variant the user picked for it. Nullable so the
+    # 101 existing rows get NULL; added via run_migrations, not create_all.
+    rectified_path: Mapped[str | None] = mapped_column(String, default=None)
+    variant: Mapped[str | None] = mapped_column(String, default=None)
+
+
+class GradingLabel(Base):
+    """A third-party grading verdict attached to one scan (one label per scan).
+
+    Phase 3b stores the label a user received back from PSA/CGC/BGS alongside
+    the scan it grades; later tasks use it to look up graded prices and compute
+    grading upside vs. raw market price.
+    """
+
+    __tablename__ = "grading_labels"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    scan_id: Mapped[int] = mapped_column(
+        ForeignKey("scan_logs.id"), unique=True
+    )  # one label per scan
+    card_id: Mapped[str] = mapped_column(ForeignKey("cards.id"), index=True)
+    variant: Mapped[str] = mapped_column(String)
+    grade: Mapped[int] = mapped_column(Integer)  # 1-10
+    grader: Mapped[str] = mapped_column(String)  # "PSA" | "CGC" | "BGS"
+    cert_number: Mapped[str | None] = mapped_column(String, default=None)
+    notes: Mapped[str | None] = mapped_column(String, default=None)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=_utcnow)
+
+
+class GradedPriceSnapshot(Base):
+    """Immutable point-in-time graded-price observation, mirroring PriceSnapshot.
+
+    Rows are never updated; history accrues so T5 can chart graded-vs-raw spread
+    over time. Dedupes on (card_id, grader, grade, variant, source_updated_at)
+    using the same empty-string sentinel trick as PriceSnapshot: NULLs are
+    distinct under a unique constraint, so a missing source timestamp is stored
+    as "" to collide correctly instead of silently duplicating.
+    """
+
+    __tablename__ = "graded_price_snapshots"
+    __table_args__ = (
+        UniqueConstraint(
+            "card_id", "grader", "grade", "variant", "source_updated_at",
+            name="uq_graded_snapshot",
+        ),
+        Index(
+            "ix_graded_snapshot_lookup", "card_id", "variant", "grader", "grade", "fetched_at"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    card_id: Mapped[str] = mapped_column(ForeignKey("cards.id"), index=True)
+    grader: Mapped[str] = mapped_column(String, index=True)  # "PSA" | "CGC" | "BGS"
+    grade: Mapped[int] = mapped_column(Integer, index=True)
+    variant: Mapped[str] = mapped_column(String, index=True)
+    low: Mapped[float | None] = mapped_column(Float, default=None)
+    mid: Mapped[float | None] = mapped_column(Float, default=None)
+    high: Mapped[float | None] = mapped_column(Float, default=None)
+    market: Mapped[float | None] = mapped_column(Float, default=None)
+    source: Mapped[str] = mapped_column(String)  # e.g. "pkmnprices"
+    # See PriceSnapshot: '' collides under the unique constraint; NULL would not.
+    source_updated_at: Mapped[str] = mapped_column(String, default="", server_default="")
+    fetched_at: Mapped[datetime] = mapped_column(UtcDateTime, default=_utcnow)

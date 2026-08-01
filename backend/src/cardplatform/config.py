@@ -47,6 +47,11 @@ class Settings(BaseSettings):
     rectified_size: tuple[int, int] = Field(default=(600, 825))
     visual_top_k: int = Field(default=5)
 
+    # --- grading (Phase 3b) ---
+    # PSA bulk ~$25 per card. T5 uses this as the cost basis when computing the
+    # "grading upside" spread (graded market price minus raw price minus fee).
+    grading_fee: float = Field(default=25.0)
+
     @property
     def db_path(self) -> Path:
         return self.data_dir / "cardplatform.sqlite3"
@@ -66,6 +71,11 @@ class Settings(BaseSettings):
     @property
     def scan_image_dir(self) -> Path:
         return self.data_dir / "scans"
+
+    @property
+    def rectified_image_dir(self) -> Path:
+        """Deskewed, border-cropped scan crops written by T2's recognize flow."""
+        return self.data_dir / "rectified"
 
     @property
     def index_path(self) -> Path:

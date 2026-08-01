@@ -9,6 +9,7 @@ from sqlalchemy import Engine, create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
 
 from cardplatform.config import Settings, settings as default_settings
+from cardplatform.db.migrations import run_migrations
 from cardplatform.db.models import Base
 
 
@@ -27,6 +28,10 @@ class Database:
 
     def create_all(self) -> None:
         Base.metadata.create_all(self.engine)
+        # create_all only ADDs new tables; it never ALTERs existing ones, so a
+        # populated DB cannot gain columns between releases. run_migrations
+        # closes that gap idempotently.
+        run_migrations(self.engine)
 
     @contextmanager
     def session(self) -> Iterator[Session]:
