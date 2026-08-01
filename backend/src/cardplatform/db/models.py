@@ -176,7 +176,9 @@ class GradingLabel(Base):
     )  # one label per scan
     card_id: Mapped[str] = mapped_column(ForeignKey("cards.id"), index=True)
     variant: Mapped[str] = mapped_column(String)
-    grade: Mapped[int] = mapped_column(Integer)  # 1-10
+    # PSA grades are whole numbers; BGS/CGC may use .5 increments (e.g. 9.5).
+    # Float covers both; stored this way up front to avoid a later migration.
+    grade: Mapped[float] = mapped_column(Float)
     grader: Mapped[str] = mapped_column(String)  # "PSA" | "CGC" | "BGS"
     cert_number: Mapped[str | None] = mapped_column(String, default=None)
     notes: Mapped[str | None] = mapped_column(String, default=None)
@@ -207,13 +209,15 @@ class GradedPriceSnapshot(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     card_id: Mapped[str] = mapped_column(ForeignKey("cards.id"), index=True)
     grader: Mapped[str] = mapped_column(String, index=True)  # "PSA" | "CGC" | "BGS"
-    grade: Mapped[int] = mapped_column(Integer, index=True)
+    # PSA grades are whole numbers; BGS/CGC may use .5 increments (e.g. 9.5).
+    # Float covers both; stored this way up front to avoid a later migration.
+    grade: Mapped[float] = mapped_column(Float, index=True)
     variant: Mapped[str] = mapped_column(String, index=True)
     low: Mapped[float | None] = mapped_column(Float, default=None)
     mid: Mapped[float | None] = mapped_column(Float, default=None)
     high: Mapped[float | None] = mapped_column(Float, default=None)
     market: Mapped[float | None] = mapped_column(Float, default=None)
-    source: Mapped[str] = mapped_column(String)  # e.g. "pkmnprices"
+    source: Mapped[str] = mapped_column(String, index=True)  # e.g. "pkmnprices"
     # See PriceSnapshot: '' collides under the unique constraint; NULL would not.
     source_updated_at: Mapped[str] = mapped_column(String, default="", server_default="")
     fetched_at: Mapped[datetime] = mapped_column(UtcDateTime, default=_utcnow)
