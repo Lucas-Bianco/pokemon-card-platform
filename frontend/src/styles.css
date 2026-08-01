@@ -38,15 +38,31 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--fg);
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-family: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
+  /* Mono used inline where numbers/grades appear; tokenized so later phases can wire it. */
+  --font-mono: "JetBrains Mono Variable", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  /* No horizontal page scroll: the shell clips anything a child lets bleed, and the
+     body itself refuses to overflow horizontally. Notch insets are handled per-edge
+     on the shell/header/nav below. */
+  overflow-x: clip;
 }
 
 .app {
   max-width: 560px;
   margin: 0 auto;
-  padding: 16px;
+  /* Top padding is owned by the persistent header (it carries the top safe-area
+     inset so the title clears a notch). Side insets live here so content never
+     disappears under a left/right notch on landscape phones. */
+  padding: 0 16px;
+  padding-left: max(16px, env(safe-area-inset-left));
+  padding-right: max(16px, env(safe-area-inset-right));
   padding-bottom: max(16px, env(safe-area-inset-bottom));
+  overflow-x: clip;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
 }
 
 h1 { font-size: 1.25rem; margin: 4px 0 16px; }
@@ -399,3 +415,238 @@ h1 { font-size: 1.25rem; margin: 4px 0 16px; }
 .portfolio-table .actions button + button { margin-left: 6px; }
 .edit-price { width: 70px; }
 .chart-row .chart-cell { background: var(--surface); }
+
+/* =========================================================================
+   Grading Lab — global responsive foundation
+   Additive layer: persistent app chrome, bottom nav, touch targets, safe-area
+   handling, breakpoints, loading skeletons. No existing selector above is
+   overridden in a way that changes its meaning; this only adds new structure
+   the refactored App.tsx wires up.
+   ========================================================================= */
+
+/* Flex text columns must be able to shrink below their content's intrinsic
+   width, otherwise long card names / set strings blow out the row and trigger
+   horizontal scroll. Apply via .minw-0 or directly on flex children. */
+.minw-0, .candidate-text, .collection-text { min-width: 0; }
+
+/* Any flex child that holds text and sits in a row should also get this. We
+   scope it narrowly to avoid changing layout of non-text flex items. */
+.app-content > * { min-width: 0; }
+
+/* ----- Persistent header ------------------------------------------------- */
+/* Stays mounted across scan/portfolio views so the title and the portfolio
+   toggle never re-mount or flicker when the content area swaps. Top padding
+   is the notch safe-area inset so a PWA installed on a notched phone keeps the
+   title below the status bar / Dynamic Island. */
+.persistent-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding-top: max(var(--sp-3), env(safe-area-inset-top));
+  padding-bottom: var(--sp-3);
+  /* Translucent surface so content scrolls under it with a hint of separation,
+     matching the premium dark vibe. */
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--line);
+  /* Margins negative so the bar spans the full shell width including the
+     side safe-area gutters; padding restored inside. */
+  margin-left: calc(-1 * max(16px, env(safe-area-inset-left)));
+  margin-right: calc(-1 * max(16px, env(safe-area-inset-right)));
+  padding-left: max(16px, env(safe-area-inset-left));
+  padding-right: max(16px, env(safe-area-inset-right));
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+.app-header h1 { margin: 0; font-size: 1.15rem; font-weight: 600; letter-spacing: -0.01em; }
+.app-header .header-actions { display: flex; gap: var(--sp-2); align-items: center; }
+
+/* The toggle button in the header (Portfolio / Scan). Styled like .link but
+   sized to the touch-target rule below. */
+.header-toggle {
+  background: none;
+  border: 1px solid var(--line);
+  color: var(--fg-dim);
+  padding: 8px 14px;
+  border-radius: 10px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  min-height: 36px;
+}
+.header-toggle[aria-pressed="true"] {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+/* ----- Content area (the only thing that swaps) ------------------------- */
+.app-content {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  /* Pad the top so content never tucks under the sticky header's blur band. */
+  padding-top: var(--sp-3);
+}
+
+/* ----- Bottom nav (PWA installed state) --------------------------------- */
+/* Two-tab nav fixed to the viewport bottom. Hidden by default (the header
+   toggle covers navigation in-browser); revealed when the app is running
+   standalone via the .standalone class on the shell, set by App from
+   display-mode: standalone. Bottom padding is the safe-area inset so the
+   bar clears the home-indicator on iOS. */
+.bottom-nav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 30;
+  display: none;
+  justify-content: space-around;
+  align-items: stretch;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-top: 1px solid var(--line);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.app.standalone .bottom-nav { display: flex; }
+/* When the bottom nav is visible, add bottom padding to the content so the
+   last row is not hidden behind the bar. */
+.app.standalone .app-content { padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
+
+.bottom-nav button {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 4px;
+  min-height: 56px;
+  background: none;
+  border: none;
+  color: var(--fg-dim);
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+.bottom-nav button[aria-current="true"] { color: var(--accent); }
+.bottom-nav .nav-glyph {
+  width: 22px;
+  height: 22px;
+  display: block;
+}
+/* Simple glyph + label arrangement; the label is the text node. */
+.bottom-nav button .nav-glyph + span { line-height: 1; }
+
+/* ----- Touch targets ---------------------------------------------------- */
+/* 44px is the WCAG / iOS minimum comfortable touch target. We do not force
+   every control to 44px (that would distort dense table rows); instead we set
+   a min-height on the primary action controls and let padding do the rest.
+   Links/buttons used for navigation get the full treatment. */
+.shutter,
+.header-toggle,
+.bottom-nav button,
+.adjust-offer,
+.reject,
+.rescan,
+.link,
+.collection-head button,
+.actions button,
+.candidates button {
+  min-height: 44px;
+}
+/* Inputs are not tap-targets in the same sense, but their hit area should not
+   collapse below 40px on mobile. */
+.paid input, .edit-price { min-height: 40px; }
+
+/* ----- Loading skeletons ------------------------------------------------ */
+/* Replaces the bare "Loading…" text in PortfolioView / history rows with a
+   restrained shimmer block. Kept optional: the honest empty-state text still
+   renders when there is nothing to load; this only dresses the in-flight
+   state. */
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  min-height: 20px;
+}
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--fg) 6%, transparent),
+    transparent
+  );
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+}
+.skeleton-line { height: 12px; margin: 6px 0; border-radius: 6px; }
+.skeleton-line.short { width: 45%; }
+.skeleton-line.med { width: 70%; }
+.skeleton-block { height: 92px; }
+@keyframes skeleton-shimmer {
+  100% { transform: translateX(100%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton::after { animation: none; opacity: 0; }
+}
+
+/* ----- Responsive breakpoints ------------------------------------------- */
+/* Breakpoint rationale: 480px is the small-phone / PWA-portrait floor; 640px
+   is the large-phone / small-tablet where the 560px shell starts to feel
+   cramped and the table can widen; 960px is where we relax into a wider
+   two-column-ish layout for tablets/desktop. The shell max-width stays 560px
+   for the scan flow (a camera view is phone-shaped) but the portfolio table
+   and valuation get more room at >=960px. */
+
+@media (max-width: 480px) {
+  .app-header h1 { font-size: 1.05rem; }
+  /* The valuation grid collapses to 2 columns on the smallest phones so each
+     tile keeps a readable number. */
+  .valuation { grid-template-columns: repeat(2, 1fr); }
+  /* Table is already narrow; let it scroll horizontally inside its own column
+     rather than blowing out the page. */
+  .portfolio-table { display: block; overflow-x: auto; white-space: nowrap; }
+  .portfolio-table thead, .portfolio-table tbody, .portfolio-table tr { display: table; width: 100%; }
+  /* Tap targets stay 44px even when the row gets short. */
+  .bottom-nav button { min-height: 56px; font-size: 0.7rem; }
+}
+
+@media (max-width: 640px) {
+  /* Hide non-essential table columns on phones to keep each row legible. The
+     Set and Variant columns are secondary; Qty, Card, Paid, Market, Unrealised
+     and Actions stay. */
+  .portfolio-table .col-set,
+  .portfolio-table .col-variant { display: none; }
+}
+
+@media (min-width: 960px) {
+  /* On tablet/desktop the shell can grow a little and the valuation row can
+     stretch. The scan camera stays phone-aspect; only the portfolio surface
+     widens. */
+  .app { max-width: 720px; }
+  .valuation { grid-template-columns: repeat(4, 1fr); }
+  .portfolio-table { font-size: 0.9rem; }
+}
+
+/* Honor reduced motion globally for the chrome's sticky/blur and skeletons. */
+@media (prefers-reduced-motion: reduce) {
+  .persistent-header { backdrop-filter: none; -webkit-backdrop-filter: none; }
+}

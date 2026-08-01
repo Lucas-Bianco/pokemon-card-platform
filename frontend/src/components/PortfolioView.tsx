@@ -11,10 +11,14 @@ import { formatMoney } from "../lib/format";
 import PriceChart from "./PriceChart";
 
 interface Props {
-  onBack: () => void;
+  /** Vestigial after the app-chrome refactor: navigation back to the scan view
+   *  is now owned by the persistent header toggle / bottom nav in App. Kept on
+   *  the interface so existing callers and tests that pass it still type-check. */
+  onBack?: () => void;
 }
 
-export default function PortfolioView({ onBack }: Props) {
+// Underscore-prefixed so noUnusedParameters permits the now-unused prop.
+export default function PortfolioView(_props: Props) {
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
   const [error, setError] = useState<string | null>(null);
   // The holding row whose "History" chart is open, plus its fetched points.
@@ -92,11 +96,6 @@ export default function PortfolioView({ onBack }: Props) {
 
   return (
     <section className="portfolio">
-      <header className="collection-head">
-        <h2>Your portfolio</h2>
-        <button onClick={onBack}>Back to scanning</button>
-      </header>
-
       {error && <p className="error">{error}</p>}
 
       {summary && (
@@ -181,7 +180,9 @@ export default function PortfolioView({ onBack }: Props) {
         </div>
       )}
 
-      {portfolio === null && !error && <p className="muted">Loading…</p>}
+      {portfolio === null && !error && (
+        <div className="skeleton skeleton-block" aria-label="Loading portfolio" />
+      )}
 
       {portfolio !== null && portfolio.items.length === 0 && (
         <p className="muted">Nothing here yet. Scan a card and tap “add to collection”.</p>
@@ -193,8 +194,8 @@ export default function PortfolioView({ onBack }: Props) {
             <tr>
               <th>Qty</th>
               <th>Card</th>
-              <th>Variant</th>
-              <th>Set</th>
+              <th className="col-variant">Variant</th>
+              <th className="col-set">Set</th>
               <th>Paid</th>
               <th>Market</th>
               <th>Unrealised</th>
@@ -207,8 +208,8 @@ export default function PortfolioView({ onBack }: Props) {
                 <tr>
                   <td>×{item.quantity}</td>
                   <td className="name">{item.card_name}</td>
-                  <td>{item.variant}</td>
-                  <td className="muted">{item.set_name}</td>
+                  <td className="col-variant">{item.variant}</td>
+                  <td className="muted col-set">{item.set_name}</td>
                   <td>
                     {editing === item.id ? (
                       <input
@@ -283,7 +284,7 @@ export default function PortfolioView({ onBack }: Props) {
                     <td colSpan={8} className="chart-cell">
                       {historyError && <p className="error">{historyError}</p>}
                       {historyPoints === null && !historyError && (
-                        <p className="muted">Loading…</p>
+                        <div className="skeleton skeleton-block" aria-label="Loading price history" />
                       )}
                       {historyPoints !== null && (
                         <PriceChart
