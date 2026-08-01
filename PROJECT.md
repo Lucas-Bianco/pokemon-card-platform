@@ -42,7 +42,7 @@ Each phase ships independently usable functionality and gets its own spec → pl
 | 1a | Recognition engine — photo → identified, valued card (API) | **Complete** |
 | 1b | Scan PWA — camera capture, top-3 picker, scan logging | **Complete** |
 | 1c | Robust card detection — coverage 31% → 61%, 0 regressions | **Complete** |
-| 2 | Portfolio tracker — cost basis, P/L, price charts | Planned |
+| 2 | Portfolio tracker — cost basis, P/L, price charts | **Complete** — ships correct, useful as data accrues |
 | 3 | Grade Predictor — CV centering/corner scoring + grading EV | Planned |
 | 4 | Bulk cataloger — detect every card in one photo | Planned |
 | 5 | Deal sniper + sealed EV — listings vs. sold comps, rip-vs-flip | Planned |
@@ -296,23 +296,60 @@ worse than none, because fusion may act on it:
 only 5 of 11** sampled, with a mean visual margin of 0.023 against a 0.05 threshold. These are narrow
 visual calls a collector number would settle. OCR reliability, not the encoder, is the next lever.
 
-## Phase 2 is blocked, and on what
+## Phase 2 — shipped
 
-The portfolio tracker needs data that does not exist yet. Measured 2026-07-30:
+Portfolio tracker, built 2026-08-01
+([plan](docs/superpowers/plans/2026-08-01-phase-2-portfolio.md)). **276 backend tests, 47 frontend
+tests.** Turns the collection from a flat holdings list into a portfolio: per-item market value and
+unrealised P/L, an allocation-by-set + top-movers summary, cost-basis editing and removal, and a
+price-history chart.
 
-- **0 of 37 collection items have a cost basis** → P/L would show 100% profit on everything.
-- **0 price series have more than one date** → every price chart would be a single dot.
+### Measured findings the build rested on (verified 2026-08-01)
 
-Both are now unblocked but need time to accrue:
+- `CollectionItem` already had `acquired_price`, `acquired_at`, `notes`, `condition`, `variant`,
+  `quantity` — the columns existed but were unused by the store/API. No migration needed.
+- `CollectionStore.add` merged rows on `(card_id, variant)` and never stamped `acquired_at`; the 37
+  existing rows had `acquired_at IS NULL` and could not be backfilled through `add`.
+- The append-only `PriceSnapshot` table was already shaped for history (`uq_snapshot(card_id, source,
+  variant, source_updated_at)`); only the query was missing.
+- **0 of 37 collection items have a cost basis; 0 price series have more than one distinct
+  `source_updated_at`.** The data has not yet accrued — so the build's job is to be *correct now* and
+  become useful as data lands, not to fabricate trends.
 
-- The scan flow asks "what you paid" (optional) when adding a card, so cost basis starts
-  accumulating from the next scan onward.
-- `cardplatform refresh-collection-prices` re-fetches every collection card; run it on a schedule
-  and history builds up. Snapshots dedupe on the source's own timestamp, so running it more often
-  than the source updates costs requests but writes nothing.
+### Endpoints shipped
 
-**Phase 2 becomes buildable once a few weeks of daily refreshes have run.** Building it sooner means
-charting single dots.
+- `GET /collection/portfolio` — priced holdings + summary (allocation, top movers, priced/unpriced
+  counts) in one round trip. All valuation is server-side via `PriceService.latest_price`; the client
+  never resolves "the latest price" itself.
+- `GET /cards/{id}/prices/history?variant=&days=` — one point per `source_updated_at`,
+  tcgplayer-preferred, each point carrying its own `source` + `source_updated_at`. Never blends
+  sources into one canonical number.
+- `PATCH /collection/{id}` — cost basis / `acquired_at` / `condition` / `notes`.
+- `DELETE /collection?card_id=&variant=&quantity=` — decrements, deletes the row at zero.
+- `add` now stamps `acquired_at` on new rows only (a top-up is not a new purchase).
+
+### The honest-empty-states decision
+
+This is the same "never fake missing data" value the em-dash-for-missing-cost-basis already encoded,
+generalised across the portfolio:
+
+- A chart with one snapshot renders a **single dot** and says "need more history to draw a trend" —
+  never a fabricated trend line.
+- P/L with no cost basis renders an **em dash**, never `+$0.00` and never market value dressed up as
+  profit.
+- An unpriced holding shows `—` + "no market price", never `$0.00`.
+- A series observed but never priced says "Unpriced" — never a flat zero line that would imply the
+  card is worthless.
+- The chart is hand-rolled inline SVG (zero chart libraries), matching the project's minimal-deps
+  ethos.
+
+### Out of scope (deliberately deferred)
+
+- **Lot-level collection model** — re-adding the same `(card, variant)` still tops up one row and
+  ignores the new `acquired_price`; a per-purchase lot model is deferred.
+- **Source blending** — each history point carries its own `source`; the chart plots the
+  tcgplayer-preferred resolved point per date but never invents a blended "market price" number.
+- **Predictive trends / projections** — the chart plots observed points only.
 
 ## Carried into Phase 1 (from the final Phase 0 review)
 
