@@ -220,3 +220,126 @@ def test_limit_is_honored_and_capped(client, seeded):
     assert [card["name"] for card in limited] == ["Charizard", "Charizard EX"]
 
     assert client.get("/cards", params={"name": "char", "limit": 101}).status_code == 422
+
+
+def test_portfolio_endpoint_returns_items_with_market_price_and_summary(client, seeded):
+    snapshot(seeded, market=100.0, source_updated_at="2026/07/28", fetched_at=NOW)
+    client.post(
+        "/collection",
+        json={"card_id": "base1-4", "variant": "holofoil", "quantity": 2, "acquired_price": 60.0},
+    )
+
+    body = client.get("/collection/portfolio").json()
+
+    assert body["summary"]["market_value"] == 200.0
+    assert body["summary"]["cost_basis"] == 120.0
+    assert body["summary"]["unrealized"] == 80.0
+    assert body["summary"]["priced_items"] == 1
+    assert body["summary"]["unpriced_items"] == 0
+    assert body["summary"]["allocation"][0]["set_id"] == "base1"
+    assert body["items"][0]["card_name"] == "Charizard"
+    assert body["items"][0]["set_name"] == "Base"
+    assert body["items"][0]["market_price"] == 100.0
+    assert body["items"][0]["market_source"] == "tcgplayer"
+    assert body["items"][0]["unrealized"] == 80.0
+    assert body["items"][0]["priced"] is True
+    assert "acquired_at" in body["items"][0]
+
+
+def test_portfolio_item_with_no_cost_basis_has_null_unrealized(client, seeded):
+    """A price without a purchase cost is not a gain: the wire must carry null so the UI
+    renders an em dash, never market value dressed up as profit."""
+    snapshot(seeded, market=100.0, source_updated_at="2026/07/28", fetched_at=NOW)
+    client.post("/collection", json={"card_id": "base1-4", "variant": "holofoil", "quantity": 1})
+
+    item = client.get("/collection/portfolio").json()["items"][0]
+
+    assert item["market_price"] == 100.0
+    assert item["unrealized"] is None
+    assert item["priced"] is True
+
+
+def test_price_history_endpoint_returns_points_oldest_first(client, seeded):
+    snapshot(seeded, market=80.0, source_updated_at="2026/07/01", fetched_at=NOW - timedelta(days=28))
+    snapshot(seeded, market=100.0, source_updated_at="2026/07/29", fetched_at=NOW)
+
+    body = client.get("/cards/base1-4/prices/history", params={"variant": "holofoil"}).json()
+
+    assert body["card_id"] == "base1-4"
+    assert body["variant"] == "holofoil"
+    assert [p["market"] for p in body["points"]] == [80.0, 100.0]
+    assert body["points"][0]["source"] == "tcgplayer"
+    assert body["points"][0]["source_updated_at"] == "2026/07/01"
+
+
+def test_price_history_days_filter_excludes_older(client, seeded, monkeypatch):
+    """Pin 'now' so the days window is deterministic regardless of when the suite runs."""
+    from cardplatform.prices import service as service_module
+
+    snapshot(seeded, market=80.0, source_updated_at="2026/07/01", fetched_at=NOW - timedelta(days=30))
+    snapshot(seeded, market=100.0, source_updated_at="2026/07/29", fetched_at=NOW)
+
+    class FakeDateTime:
+        @staticmethod
+        def now(tz=None):
+            return NOW
+
+    monkeypatch.setattr(service_module, "datetime", FakeDateTime)
+
+    body = client.get(
+        "/cards/base1-4/prices/history", params={"variant": "holofoil", "days": 14}
+    ).json()
+    assert [p["market"] for p in body["points"]] == [100.0]
+
+
+def test_price_history_empty_returns_empty_points(client, seeded):
+    body = client.get("/cards/base1-4/prices/history", params={"variant": "holofoil"}).json()
+    assert body["points"] == []
+
+
+def test_price_history_unknown_card_returns_404(client, seeded):
+    resp = client.get("/cards/no-such-card/prices/history", params={"variant": "holofoil"})
+    assert resp.status_code == 404
+
+
+def test_patch_collection_item_updates_cost_basis(client, seeded):
+    item = client.post(
+        "/collection", json={"card_id": "base1-4", "variant": "holofoil", "quantity": 1}
+    ).json()
+
+    resp = client.patch(
+        f"/collection/{item['id']}", json={"acquired_price": 42.0, "notes": "backfill"}
+    )
+
+    assert resp.status_code == 200
+    assert resp.json()["acquired_price"] == 42.0
+    # notes persist and surface on the portfolio endpoint (CollectionItemOut omits them)
+    port = client.get("/collection/portfolio").json()
+    assert port["items"][0]["notes"] == "backfill"
+    assert port["items"][0]["acquired_price"] == 42.0
+
+
+def test_patch_unknown_item_returns_404(client, seeded):
+    assert client.patch("/collection/999", json={"acquired_price": 1.0}).status_code == 404
+
+
+def test_delete_collection_decrements_quantity(client, seeded):
+    client.post("/collection", json={"card_id": "base1-4", "variant": "holofoil", "quantity": 3})
+
+    resp = client.delete(
+        "/collection", params={"card_id": "base1-4", "variant": "holofoil", "quantity": 1}
+    )
+
+    assert resp.status_code == 204
+    assert client.get("/collection").json()[0]["quantity"] == 2
+
+
+def test_delete_removing_all_deletes_the_row(client, seeded):
+    client.post("/collection", json={"card_id": "base1-4", "variant": "holofoil", "quantity": 1})
+
+    resp = client.delete(
+        "/collection", params={"card_id": "base1-4", "variant": "holofoil", "quantity": 1}
+    )
+
+    assert resp.status_code == 204
+    assert client.get("/collection").json() == []
