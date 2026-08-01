@@ -1,8 +1,39 @@
+from datetime import datetime, timedelta, timezone
+
 import pytest
 
 from cardplatform.db.models import Card, CardSet, PriceSnapshot
 from cardplatform.prices.provider import PriceQuote
 from cardplatform.prices.service import PriceService
+
+NOW = datetime(2026, 7, 29, 12, 0, tzinfo=timezone.utc)
+
+
+def snapshot(
+    session,
+    card_id="base1-4",
+    source="tcgplayer",
+    variant="holofoil",
+    market=10.0,
+    source_updated_at="2026/07/28",
+    fetched_at=NOW,
+):
+    """Insert a PriceSnapshot directly — mirrors the helper in test_api/test_collection.
+
+    fetched_at is controlled explicitly because price_history orders and filters on
+    the observation time, not on the free-text source_updated_at stamp.
+    """
+    session.add(
+        PriceSnapshot(
+            card_id=card_id,
+            source=source,
+            variant=variant,
+            market=market,
+            source_updated_at=source_updated_at,
+            fetched_at=fetched_at,
+        )
+    )
+    session.commit()
 
 
 class FakeProvider:
@@ -152,3 +183,104 @@ def test_latest_price_works_without_a_provider(seeded):
 
     assert latest is not None
     assert latest.market == 9.71
+
+
+def test_price_history_returns_snapshots_ordered_oldest_first(seeded):
+    snapshot(seeded, market=80.0, source_updated_at="2026/07/01", fetched_at=NOW - timedelta(days=28))
+    snapshot(seeded, market=100.0, source_updated_at="2026/07/29", fetched_at=NOW)
+
+    history = PriceService(seeded).price_history("base1-4", "holofoil")
+
+    assert [s.market for s in history] == [80.0, 100.0]
+    assert [s.source_updated_at for s in history] == ["2026/07/01", "2026/07/29"]
+
+
+def test_price_history_prefers_tcgplayer_when_both_sources_share_a_date(seeded):
+    """A chart needs one point per date. tcgplayer and cardmarket both covering a date
+    must collapse to the tcgplayer point — the same resolution latest_price uses, so the
+    chart line and the headline price agree on what 'the price' is."""
+    snapshot(seeded, source="tcgplayer", variant="holofoil", market=100.0,
+             source_updated_at="2026/07/15", fetched_at=NOW)
+    snapshot(seeded, source="cardmarket", variant="aggregate", market=90.0,
+             source_updated_at="2026/07/15", fetched_at=NOW)
+
+    history = PriceService(seeded).price_history("base1-4", "holofoil")
+
+    assert len(history) == 1
+    assert history[0].source == "tcgplayer"
+    assert history[0].market == 100.0
+
+
+def test_price_history_keeps_cardmarket_only_dates(seeded):
+    """tcgplayer-preference must not erase dates only cardmarket covers — those are still
+    real observations and the chart would lie about coverage by omitting them."""
+    snapshot(seeded, source="cardmarket", variant="aggregate", market=50.0,
+             source_updated_at="2026/07/01", fetched_at=NOW - timedelta(days=28))
+    snapshot(seeded, source="tcgplayer", variant="holofoil", market=100.0,
+             source_updated_at="2026/07/29", fetched_at=NOW)
+
+    history = PriceService(seeded).price_history("base1-4", "holofoil")
+
+    assert [s.source for s in history] == ["cardmarket", "tcgplayer"]
+    assert [s.market for s in history] == [50.0, 100.0]
+
+
+def test_price_history_resolves_normal_variant_via_cardmarket_aggregate(seeded):
+    """A normal-variant card priced only by cardmarket (no tcgplayer 'normal' row) must
+    still produce history — the aggregate fallback latest_price relies on."""
+    snapshot(seeded, source="cardmarket", variant="aggregate", market=50.0,
+             source_updated_at="2026/07/01", fetched_at=NOW)
+
+    history = PriceService(seeded).price_history("base1-4", "normal")
+
+    assert len(history) == 1
+    assert history[0].source == "cardmarket"
+    assert history[0].market == 50.0
+
+
+def test_price_history_excludes_other_variants(seeded):
+    """Asking for holofoil history must not pull in reverseHolofoil snapshots — a variant
+    series mixed with another variant's prices is not a series of one price."""
+    snapshot(seeded, source="tcgplayer", variant="holofoil", market=100.0,
+             source_updated_at="2026/07/29", fetched_at=NOW)
+    snapshot(seeded, source="tcgplayer", variant="reverseHolofoil", market=20.0,
+             source_updated_at="2026/07/29", fetched_at=NOW)
+
+    history = PriceService(seeded).price_history("base1-4", "holofoil")
+
+    assert len(history) == 1
+    assert history[0].market == 100.0
+
+
+def test_price_history_since_filter_excludes_older(seeded):
+    snapshot(seeded, market=80.0, source_updated_at="2026/07/01", fetched_at=NOW - timedelta(days=28))
+    snapshot(seeded, market=100.0, source_updated_at="2026/07/29", fetched_at=NOW)
+
+    cutoff = NOW - timedelta(days=14)
+    history = PriceService(seeded).price_history("base1-4", "holofoil", since=cutoff)
+
+    assert [s.market for s in history] == [100.0]
+
+
+def test_price_history_days_filter_excludes_older_than_days(seeded, monkeypatch):
+    """days is a convenience over since = now - days. Pin 'now' so the window is
+    deterministic regardless of when the suite runs."""
+    from cardplatform.prices import service as service_module
+
+    snapshot(seeded, market=80.0, source_updated_at="2026/07/01", fetched_at=NOW - timedelta(days=30))
+    snapshot(seeded, market=100.0, source_updated_at="2026/07/29", fetched_at=NOW)
+
+    class FakeDateTime:
+        @staticmethod
+        def now(tz=None):
+            return NOW
+
+    monkeypatch.setattr(service_module, "datetime", FakeDateTime)
+
+    history = PriceService(seeded).price_history("base1-4", "holofoil", days=14)
+
+    assert [s.market for s in history] == [100.0]
+
+
+def test_price_history_empty_when_no_snapshots(seeded):
+    assert PriceService(seeded).price_history("base1-4", "holofoil") == []

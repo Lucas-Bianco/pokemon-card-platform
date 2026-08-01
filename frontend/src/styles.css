@@ -318,3 +318,62 @@ h1 { font-size: 1.25rem; margin: 4px 0 16px; }
   color: var(--fg-dim);
 }
 .centering-caveats li + li { margin-top: 2px; }
+
+/* Price history chart — hand-rolled SVG, no chart library. */
+.price-chart {
+  margin: 8px 0 0;
+  padding: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.price-chart svg { width: 100%; height: auto; display: block; }
+.chart-line { stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.chart-dot { fill: var(--accent); }
+.chart-point { fill: var(--accent); }
+.chart-note { margin: 6px 0 2px; }
+.chart-labels {
+  margin: 6px 0 2px;
+  display: flex;
+  gap: 12px;
+  font-size: 0.78rem;
+  color: var(--fg-dim);
+}
+.chart-labels .current { color: var(--fg); font-weight: 600; }
+.chart-caption { margin: 0; }
+.chart-close { margin-top: 6px; }
+
+/* Portfolio view — supersedes .collection. Reuses .valuation/.muted/.up/.down/.unknown. */
+.portfolio .valuation { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }
+.allocation, .movers { margin-top: 14px; }
+.allocation h3, .movers h3 { font-size: 0.9rem; margin: 0 0 6px; color: var(--fg-dim); }
+.allocation ul, .movers ul { list-style: none; margin: 0; padding: 0; }
+.allocation li { padding: 2px 0; }
+.movers li { padding: 2px 0; }
+.movers .up { color: var(--ok); }
+.movers .down { color: #ff8f84; }
+.portfolio-table {
+  width: 100%;
+  margin-top: 16px;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+.portfolio-table th {
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line);
+  color: var(--fg-dim);
+  font-weight: 500;
+}
+.portfolio-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+.portfolio-table .name { font-weight: 600; }
+.portfolio-table .unpriced { color: var(--fg-dim); }
+.portfolio-table .unknown { color: var(--fg-dim); }
+.portfolio-table .actions { white-space: nowrap; }
+.portfolio-table .actions button + button { margin-left: 6px; }
+.edit-price { width: 70px; }
+.chart-row .chart-cell { background: var(--surface); }

@@ -7,7 +7,7 @@
 > **Keep it current.** Update this file after any change that alters architecture, measured
 > results, or the roadmap. A stale onboarding doc is worse than none, because it is trusted.
 >
-> Last updated: **2026-07-31**
+> Last updated: **2026-08-01**
 
 ---
 
@@ -39,14 +39,14 @@ Site: https://lucas-bianco.github.io/pokemon-card-platform/
 | 1a | Recognition engine: rectify → embed → OCR → fuse | ✅ Complete |
 | 1b | Scan PWA: camera, candidate picker, scan logging | ✅ Complete |
 | 1c | Robust detection: multi-strategy chain | ✅ Complete |
-| 2 | Portfolio tracker: cost basis, P/L, charts | ⛔ Blocked on data — see §6 |
+| 2 | Portfolio tracker: cost basis, P/L, charts | ✅ Complete — ships correct, becomes useful as data accrues (§6) |
 | 3 | Grade predictor: CV grading + grading EV | Planned |
 | 4 | Bulk cataloger: many cards per photo | Planned |
 | 5 | Deal sniper + sealed EV | Planned |
 | 6 | Set-completion optimizer | Planned |
 | 7 | Counterfeit detector | Planned |
 
-**Tests:** 207 backend (pytest) + 22 frontend (vitest).
+**Tests:** 276 backend (pytest) + 47 frontend (vitest).
 
 ### Measured recognition performance — on real phone photos of physical cards
 
@@ -103,14 +103,20 @@ backend/src/cardplatform/
   config.py          Settings (env prefix CARDPLATFORM_)
   db/                models.py, session.py
   catalog/           dump.py (GitHub JSON), loader.py (idempotent upsert)
-  prices/            provider.py (protocol), pokemontcg.py, service.py
-  collection/        store.py — add/remove/list/valuation
+  prices/            provider.py (protocol), pokemontcg.py, service.py — latest_price + price_history
+  collection/        store.py — add/remove/list/valuation + portfolio/summary/set_cost_basis
   recognition/       detectors.py, rectify.py, encoder.py, index.py, ocr.py, fusion.py, service.py
   scans/             store.py — logs every scan as ground truth
   api.py             FastAPI, cli.py  CLI
 backend/scripts/     evaluate_recognition.py, evaluate_detection.py, spot_check.py
 frontend/src/        api/, lib/, components/  (CameraCapture, ScanResult, CandidatePicker,
-                     PriceLine, CornerAdjust)
+                     PriceLine, CornerAdjust, PortfolioView, PriceChart)
+api.py Phase 2 endpoints: GET /collection/portfolio (items + summary in one round trip,
+                     all valuation server-side via latest_price), PATCH /collection/{id}
+                     (cost basis / acquired_at / condition / notes), DELETE /collection
+                     (?card_id=&variant=&quantity=), GET /cards/{id}/prices/history
+                     (?variant=&days=). Each history point carries its own source +
+                     source_updated_at — never blend sources into one canonical number.
 data/                GITIGNORED — 20,391 card images, 40 MB FAISS index, SQLite db, 101 real scans
 ```
 
@@ -193,20 +199,27 @@ python backend/scripts/evaluate_recognition.py --sample 500
 
 ## 6. What is blocked, and on what
 
-**Phase 2 (portfolio tracker) is blocked on DATA, not code.** Measured 2026-07-30:
-- 0 of 37 collection items had a cost basis → P/L would report 100% profit on everything
-- 0 price series had more than one date → every chart would be a single dot
+**Phase 2 (portfolio tracker) shipped 2026-08-01 — code correct now, useful as data accrues.** The
+ship decision is the same "never fake missing data" value the rest of the app follows: a chart with
+one snapshot renders a single dot and says "need more history to draw a trend"; P/L with no cost
+basis renders an em dash, never `+$0.00` and never market value dressed up as profit. Measured
+2026-08-01, the data has not yet accrued:
+- 0 of 37 collection items have a cost basis → every holding shows an em dash for unrealised P/L
+- 0 price series have more than one distinct `source_updated_at` → every chart is the single-dot state
 
-Both causes are now fixed — the scan flow asks "what you paid" (optional), and
-`refresh-collection-prices` accrues history. **Phase 2 needs a few weeks of scheduled runs before it
-can chart anything real.** Building it sooner means charting single dots.
+Both causes are unblocked in code — the scan flow asks "what you paid" (optional), `PATCH
+/collection/{id}` backfills cost basis on existing holdings, and `refresh-collection-prices` accrues
+history. **The honest empty/single states are the feature, not a workaround.** Re-measure both counts
+after a few weeks of scheduled refresh runs; the UI turns the em dashes and single dots into real
+trends on its own as data lands.
 
 ---
 
 ## 7. The most useful next levers
 
 1. **Fix centering's coverage on real photos — it is built but only 4% usable.** See §9.
-2. **Phase 2**, once price history has accrued — see §6.
+2. **Phase 3 full grading** (corners, edges, surface, grading EV) — blocked on labelled graded-card
+   data and graded-card prices. Centering is the one sub-grade measurable without it.
 3. **A different OCR engine**, if OCR is revisited. See the dead ends below: cropping and
    preprocessing are exhausted, so the remaining gain would have to come from the recogniser itself
    (PaddleOCR, or Tesseract with a digit whitelist) or from higher-resolution capture.
@@ -267,6 +280,13 @@ engine or preprocessing changes.
 *Done 2026-07-30: the PWA now has a collection view. It shows holdings and a valuation summary, and
 renders unrealised P/L as an em dash when no cost basis exists rather than reporting market value as
 pure profit.*
+
+*Done 2026-08-01: Phase 2 portfolio tracker shipped. `PortfolioView` supersedes that collection view
+— per-item market price and unrealised P/L, allocation by set, top movers, cost-basis editing and
+removal, and a hand-rolled SVG `PriceChart` (no chart library) that renders a single dot as "need
+more history" rather than faking a trend. All valuation stays server-side via `latest_price`; the
+client never resolves "the latest price" itself. Code is correct now and turns honest empty states
+into real charts as cost basis and price history accrue.*
 
 ---
 

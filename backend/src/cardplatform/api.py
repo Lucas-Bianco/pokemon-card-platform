@@ -13,7 +13,13 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from cardplatform.collection.store import CollectionStore
+from cardplatform.collection.store import (
+    Allocation,
+    CollectionStore,
+    Portfolio,
+    PortfolioItem,
+    PortfolioSummary,
+)
 from cardplatform.grading.centering import CenteringResult, psa_cap_for
 from cardplatform.db.models import Card, CollectionItem, PriceSnapshot, ScanLog
 from cardplatform.db.session import Database
@@ -222,6 +228,7 @@ class CollectionItemIn(BaseModel):
     quantity: int = Field(default=1, ge=1)
     acquired_price: float | None = None
     condition: str | None = None
+    notes: str | None = None
 
 
 class CollectionItemOut(BaseModel):
@@ -232,6 +239,77 @@ class CollectionItemOut(BaseModel):
     quantity: int
     acquired_price: float | None
     condition: str | None
+
+
+class CollectionItemUpdate(BaseModel):
+    """Partial update to a holding's purchase details. Every field is optional; a field
+    that is absent (None) is left untouched, except acquired_price which is set
+    unconditionally (pass None to clear a cost basis)."""
+
+    acquired_price: float | None = None
+    acquired_at: datetime | None = None
+    condition: str | None = None
+    notes: str | None = None
+
+
+class PortfolioItemOut(BaseModel):
+    id: int
+    card_id: str
+    card_name: str
+    set_id: str
+    set_name: str
+    variant: str
+    quantity: int
+    acquired_price: float | None
+    acquired_at: datetime | None
+    condition: str | None
+    notes: str | None
+    market_price: float | None
+    market_source: str | None
+    market_source_updated_at: str | None
+    unrealized: float | None
+    priced: bool
+
+
+class AllocationOut(BaseModel):
+    set_id: str
+    set_name: str
+    market_value: float
+    cost_basis: float
+    item_count: int
+
+
+class PortfolioSummaryOut(BaseModel):
+    market_value: float
+    cost_basis: float
+    unrealized: float
+    unpriced_items: int
+    priced_items: int
+    allocation: list[AllocationOut]
+    top_gainers: list[PortfolioItemOut]
+    top_losers: list[PortfolioItemOut]
+
+
+class PortfolioOut(BaseModel):
+    summary: PortfolioSummaryOut
+    items: list[PortfolioItemOut]
+
+
+class PricePointOut(BaseModel):
+    """One observed price in a history series. source and source_updated_at travel with
+    every point so a chart never presents a number without saying where it came from."""
+
+    fetched_at: datetime
+    source: str
+    variant: str
+    market: float | None
+    source_updated_at: str
+
+
+class PriceHistoryOut(BaseModel):
+    card_id: str
+    variant: str
+    points: list[PricePointOut]
 
 
 class ValuationOut(BaseModel):
@@ -286,6 +364,38 @@ def create_app() -> FastAPI:
         for snapshot in snapshots:
             latest.setdefault((snapshot.source, snapshot.variant), snapshot)
         return [_price_out(s) for s in latest.values()]
+
+    @app.get("/cards/{card_id}/prices/history", response_model=PriceHistoryOut)
+    def card_price_history(
+        card_id: str,
+        variant: str = Query(default="normal"),
+        days: int | None = Query(default=None, ge=1),
+        session: Session = Depends(get_session),
+    ) -> PriceHistoryOut:
+        """The price series for one card and variant, oldest first.
+
+        One point per source_updated_at, tcgplayer-preferred — the same resolution
+        latest_price uses, so a chart line and the headline price agree on what 'the
+        price' is. Each point carries its source and source_updated_at; the API never
+        blends sources into one number. `days` windows the series to the last N days of
+        observations.
+        """
+        _require_card(session, card_id)
+        points = PriceService(session).price_history(card_id, variant, days=days)
+        return PriceHistoryOut(
+            card_id=card_id,
+            variant=variant,
+            points=[
+                PricePointOut(
+                    fetched_at=p.fetched_at,
+                    source=p.source,
+                    variant=p.variant,
+                    market=p.market,
+                    source_updated_at=p.source_updated_at,
+                )
+                for p in points
+            ],
+        )
 
     @app.get("/cards/{card_id}/price")
     def resolved_price(
@@ -430,6 +540,7 @@ def create_app() -> FastAPI:
                 quantity=payload.quantity,
                 acquired_price=payload.acquired_price,
                 condition=payload.condition,
+                notes=payload.notes,
             )
         except ValueError as exc:
             # An id the catalog has never heard of is a client mistake, not a server
@@ -450,6 +561,56 @@ def create_app() -> FastAPI:
             unrealized=valuation.unrealized,
             unpriced_items=valuation.unpriced_items,
         )
+
+    # Declared before PATCH /collection/{item_id}: a literal path must be registered
+    # ahead of the parameterised one, or "portfolio" is captured as an item_id.
+    @app.get("/collection/portfolio", response_model=PortfolioOut)
+    def collection_portfolio(session: Session = Depends(get_session)) -> PortfolioOut:
+        """Priced holdings plus a summary in one round trip.
+
+        Per-item market_price/unrealized/priced are computed server-side via
+        PriceService.latest_price — the frontend never resolves 'the latest price'
+        itself. The summary carries allocation by set and top gainers/losers.
+        """
+        portfolio = CollectionStore(session).portfolio()
+        return PortfolioOut(
+            summary=_summary_out(portfolio.summary),
+            items=[_portfolio_item_out(i) for i in portfolio.items],
+        )
+
+    @app.patch("/collection/{item_id}", response_model=CollectionItemOut)
+    def patch_collection_item(
+        item_id: int,
+        payload: CollectionItemUpdate,
+        session: Session = Depends(get_session),
+    ) -> CollectionItemOut:
+        """Backfill or correct a holding's purchase details (cost basis, acquired date,
+        condition, notes) so portfolio P/L can be computed for items added before the
+        scan flow started asking 'what you paid'."""
+        store = CollectionStore(session)
+        try:
+            item = store.set_cost_basis(
+                item_id,
+                acquired_price=payload.acquired_price,
+                acquired_at=payload.acquired_at,
+                condition=payload.condition,
+                notes=payload.notes,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return _item_out(item)
+
+    @app.delete("/collection")
+    def delete_collection_item(
+        card_id: str = Query(...),
+        variant: str = Query(...),
+        quantity: int = Query(default=1, ge=1),
+        session: Session = Depends(get_session),
+    ) -> Response:
+        """Remove copies of a holding. Removing more than held, or a card never held, is
+        a no-op; clearing the row returns 204 either way."""
+        CollectionStore(session).remove(card_id, variant=variant, quantity=quantity)
+        return Response(status_code=204)
 
     return app
 
@@ -598,6 +759,50 @@ def _item_out(item: CollectionItem) -> CollectionItemOut:
         quantity=item.quantity,
         acquired_price=item.acquired_price,
         condition=item.condition,
+    )
+
+
+def _portfolio_item_out(item: PortfolioItem) -> PortfolioItemOut:
+    return PortfolioItemOut(
+        id=item.id,
+        card_id=item.card_id,
+        card_name=item.card_name,
+        set_id=item.set_id,
+        set_name=item.set_name,
+        variant=item.variant,
+        quantity=item.quantity,
+        acquired_price=item.acquired_price,
+        acquired_at=item.acquired_at,
+        condition=item.condition,
+        notes=item.notes,
+        market_price=item.market_price,
+        market_source=item.market_source,
+        market_source_updated_at=item.market_source_updated_at,
+        unrealized=item.unrealized,
+        priced=item.priced,
+    )
+
+
+def _allocation_out(a: Allocation) -> AllocationOut:
+    return AllocationOut(
+        set_id=a.set_id,
+        set_name=a.set_name,
+        market_value=a.market_value,
+        cost_basis=a.cost_basis,
+        item_count=a.item_count,
+    )
+
+
+def _summary_out(s: PortfolioSummary) -> PortfolioSummaryOut:
+    return PortfolioSummaryOut(
+        market_value=s.market_value,
+        cost_basis=s.cost_basis,
+        unrealized=s.unrealized,
+        unpriced_items=s.unpriced_items,
+        priced_items=s.priced_items,
+        allocation=[_allocation_out(a) for a in s.allocation],
+        top_gainers=[_portfolio_item_out(i) for i in s.top_gainers],
+        top_losers=[_portfolio_item_out(i) for i in s.top_losers],
     )
 
 
