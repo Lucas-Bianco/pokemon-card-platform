@@ -318,3 +318,27 @@ h1 { font-size: 1.25rem; margin: 4px 0 16px; }
   color: var(--fg-dim);
 }
 .centering-caveats li + li { margin-top: 2px; }
+
+/* Price history chart — hand-rolled SVG, no chart library. */
+.price-chart {
+  margin: 8px 0 0;
+  padding: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.price-chart svg { width: 100%; height: auto; display: block; }
+.chart-line { stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.chart-dot { fill: var(--accent); }
+.chart-point { fill: var(--accent); }
+.chart-note { margin: 6px 0 2px; }
+.chart-labels {
+  margin: 6px 0 2px;
+  display: flex;
+  gap: 12px;
+  font-size: 0.78rem;
+  color: var(--fg-dim);
+}
+.chart-labels .current { color: var(--fg); font-weight: 600; }
+.chart-caption { margin: 0; }
+.chart-close { margin-top: 6px; }
