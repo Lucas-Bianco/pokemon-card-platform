@@ -46,7 +46,28 @@ Site: https://lucas-bianco.github.io/pokemon-card-platform/
 | 6 | Set-completion optimizer | Planned |
 | 7 | Counterfeit detector | Planned |
 
-**Tests:** 276 backend (pytest) + 47 frontend (vitest).
+**Tests:** 276 backend (pytest) + 52 frontend (vitest).
+
+### UI — "Grading Lab" (2026-08-01)
+
+Both public surfaces share one Grading Lab design language (dark `#0b0d12`, restrained Pokémon-yellow
+`#ffcb05` accents, Inter + JetBrains Mono, premium motion).
+
+- **Marketing site** is now a **Next.js 15 static-export app in `site/`** (App Router, `output:'export'`,
+  `basePath:'/pokemon-card-platform'`, `images.unoptimized`), built and copied into `docs/` for GitHub
+  Pages (which serves `docs/`; no CI workflow). Scroll-scrubbed 3D hero card flip (GSAP + CSS 3D, **no
+  WebGL**), scroll-scrubbed pipeline assembly, interactive roadmap with count-ups, stack + footer.
+  `prefers-reduced-motion` respected; all content renders with JS off. `docs/superpowers/` (specs +
+  plans) is preserved across every deploy — the footer links to it raw. Source of truth for site copy +
+  roadmap rows: `site/app/sections/data.ts`.
+- **Scanner** stayed on Vite + React 19 + basic-ssl + PWA (no stack migration) but was redesigned
+  mobile-first: `CameraCapture` now **captures only the guide-box region** (cover-crop fix — what you
+  align is what gets sent) with a metadata ready-gate + capture flash; `CornerAdjust` has 44px handles
+  with robust pointer logic; `PortfolioView` is responsive (table on desktop, stacked cards on mobile,
+  `.portfolio-table` class + asserted text preserved); global CSS breakpoints, safe-area insets, 44px
+  touch targets, app chrome + bottom nav; real PWA 192/512/maskable icons + apple meta + enriched
+  manifest. Honest empty states unchanged. New: `frontend/src/lib/cameraCrop.ts` (pure guide-crop
+  math, tested), `frontend/scripts/gen-icons.py`.
 
 ### Measured recognition performance — on real phone photos of physical cards
 
@@ -109,8 +130,13 @@ backend/src/cardplatform/
   scans/             store.py — logs every scan as ground truth
   api.py             FastAPI, cli.py  CLI
 backend/scripts/     evaluate_recognition.py, evaluate_detection.py, spot_check.py
-frontend/src/        api/, lib/, components/  (CameraCapture, ScanResult, CandidatePicker,
-                     PriceLine, CornerAdjust, PortfolioView, PriceChart)
+frontend/src/        api/, lib/ (format, cameraCrop), components/  (CameraCapture, ScanResult,
+                     CandidatePicker, PriceLine, CornerAdjust, PortfolioView, PriceChart)
+frontend/public/     manifest.webmanifest, icon-192/512/icon-maskable-512.png, icon-source.svg
+frontend/scripts/    gen-icons.py (rasterize icon-source.svg → PNGs)
+site/                Next.js 15 marketing app — app/sections/ (Hero, Problem, Pipeline, Roadmap,
+                     Stack, Footer), app/sections/data.ts (copy + roadmap rows), providers.tsx
+                     (Lenis + GSAP ScrollTrigger), next.config.mjs (static export + basePath)
 api.py Phase 2 endpoints: GET /collection/portfolio (items + summary in one round trip,
                      all valuation server-side via latest_price), PATCH /collection/{id}
                      (cost basis / acquired_at / condition / notes), DELETE /collection
