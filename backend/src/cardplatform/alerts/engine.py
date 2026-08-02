@@ -1,0 +1,345 @@
+"""Alert evaluation engine for Phase 3c.
+
+`AlertEngine.check_alerts()` runs one tick: every active `Watch` is evaluated
+against the latest listing state (via `ListingsService`) and/or the clock, and
+fired alerts are written as immutable `AlertEvent` rows. The engine NEVER raises
+out of `check_alerts()` — one bad watch (or a failing notifier) is logged and
+skipped so a single corrupt row cannot silence the rest of the tick.
+
+CRITICAL design decision — baselines live on the WATCH, not the snapshot table:
+
+With immutable `ListingSnapshot` rows and no fetch-record table, an *empty*
+fetch inserts no rows, so it is invisible to `ListingsService.previous_listing_ids`
+(the prior snapshot). Restock/new_listing idempotency therefore MUST use
+`Watch.last_seen_listing_ids` (a JSON-encoded list of the listing_ids this watch
+last observed) as the authoritative per-watch baseline. We do NOT use
+`previous_listing_ids` as the baseline for restock/new_listing — it cannot
+observe the empty -> stocked transition because empty fetches leave no trace.
+`latest_listings` is still the source of the CURRENT listing set.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+from datetime import datetime, timedelta, timezone
+from typing import Callable, Optional
+
+from sqlalchemy.orm import Session
+
+from cardplatform.db.models import AlertEvent, Card, Watch
+
+log = logging.getLogger(__name__)
+
+
+class AlertEngine:
+    """Evaluates active watches each tick and writes AlertEvent rows.
+
+    All collaborators are optional/injectable so tests can drive deterministic
+    ticks without touching the network or the wall clock. The engine commits
+    exactly once per tick (at the end) and never raises.
+    """
+
+    def __init__(
+        self,
+        session: Session,
+        listings_service=None,
+        notifier=None,
+        settings=None,
+        clock: Optional[Callable[[], datetime]] = None,
+    ) -> None:
+        self.session = session
+        self._listings = listings_service
+        self._notifier = notifier
+        self._settings = settings
+        # Never call datetime.now() directly — always self._now() so tests
+        # control time via the injected clock.
+        self._clock = clock if clock is not None else (lambda: datetime.now(timezone.utc))
+
+    # ----------------------------------------------------------- helpers
+
+    def _now(self) -> datetime:
+        return self._clock()
+
+    def _cooldown_min(self) -> int:
+        """alert_cooldown_min from settings, default 60. T4 owns config; we
+        only read, never add."""
+        if self._settings is None:
+            return 60
+        return getattr(self._settings, "alert_cooldown_min", 60)
+
+    def _card_name(self, card_id) -> Optional[str]:
+        """Card.name lookup; falls back to None on miss/failure (never raises)."""
+        if card_id is None:
+            return None
+        try:
+            card = self.session.query(Card).filter(Card.id == card_id).first()
+            if card is not None:
+                return card.name
+        except Exception:
+            log.warning("card lookup failed for card_id=%s", card_id, exc_info=True)
+        return None
+
+    def _display(self, w: Watch, subject_first: bool = False) -> str:
+        """Human-readable subject for messages. Listing-based alerts prefer the
+        card name; drop_time prefers the subject_label (per contract). Falls
+        back gracefully so a missing card never raises."""
+        card_name = self._card_name(w.card_id)
+        if subject_first:
+            return w.subject_label or card_name or str(w.card_id)
+        return card_name or w.subject_label or str(w.card_id)
+
+    def _current_listings(self, w: Watch):
+        """Refresh + return latest listings for the watch's card+variant, or
+        None if there is no listings_service (caller skips silently)."""
+        if self._listings is None:
+            return None
+        variant = w.variant or ""
+        # Ignore the returned count; refresh just populates snapshots.
+        self._listings.refresh_listings(w.card_id, variant)
+        return self._listings.latest_listings(w.card_id, variant)
+
+    def _fire(self, w: Watch, message: str, context: str) -> None:
+        """Insert one immutable AlertEvent row and dispatch the notifier if any.
+
+        `session.flush()` makes the row queryable (and gives it an id) before
+        the tick's commit, so intra-tick idempotency checks and the notifier
+        both see it. A notifier failure is logged and swallowed so a broken
+        delivery channel never blocks the in-app event row.
+        """
+        event = AlertEvent(
+            watch_id=w.id,
+            card_id=w.card_id,
+            alert_type=w.alert_type,
+            message=message,
+            context=context,
+            delivered_inapp=True,
+            delivered_push=False,
+            delivered_email=False,
+            read_at=None,
+        )
+        self.session.add(event)
+        self.session.flush()
+        if self._notifier is not None:
+            try:
+                self._notifier.dispatch(event)
+            except Exception:
+                log.warning("notifier dispatch failed", exc_info=True)
+
+    # ----------------------------------------------------------- main loop
+
+    def check_alerts(self) -> int:
+        """Evaluate every active Watch, write AlertEvent rows, commit once.
+        Returns the count of events created this tick. Never raises."""
+        count = 0
+        watches = (
+            self.session.query(Watch)
+            .filter(Watch.active == True)  # noqa: E712  -- SQLAlchemy filter
+            .order_by(Watch.id)
+            .all()
+        )
+        for w in watches:
+            try:
+                count += self._eval(w)
+            except Exception:
+                # One bad watch must not silence the rest of the tick.
+                log.warning("watch %s evaluation failed", w.id, exc_info=True)
+        self.session.commit()
+        return count
+
+    def _eval(self, w: Watch) -> int:
+        now = self._now()
+        atype = w.alert_type
+        if atype == "restock":
+            return self._eval_restock(w, now)
+        if atype == "new_listing":
+            return self._eval_new_listing(w, now)
+        if atype == "price_target":
+            return self._eval_price_target(w, now)
+        if atype == "auction_ending":
+            return self._eval_auction_ending(w, now)
+        if atype == "drop_time":
+            return self._eval_drop_time(w, now)
+        log.warning("unknown alert_type %r for watch %s", atype, w.id)
+        return 0
+
+    # ----------------------------------------------------------- restock
+
+    def _eval_restock(self, w: Watch, now: datetime) -> int:
+        if w.card_id is None:
+            log.debug("restock watch %s has no card_id; skipping", w.id)
+            return 0
+        curr = self._current_listings(w)
+        if curr is None:
+            return 0
+        curr_ids = {s.listing_id for s in curr}
+        prev_ids = (
+            set(json.loads(w.last_seen_listing_ids)) if w.last_seen_listing_ids else None
+        )
+        # First poll: establish baseline, never fire.
+        if prev_ids is None:
+            w.last_seen_listing_ids = json.dumps(sorted(curr_ids))
+            return 0
+        fired = 0
+        # Restock fires iff previously observed EMPTY and now stocked.
+        if not prev_ids and bool(curr_ids):
+            msg = f"{self._display(w)}: back in stock"
+            ctx = json.dumps({"listing_ids": sorted(curr_ids), "source": "ebay"})
+            self._fire(w, msg, ctx)
+            fired += 1
+        # Always advance the baseline (even when curr is empty) so the
+        # empty -> stocked transition is observable on a later tick.
+        w.last_seen_listing_ids = json.dumps(sorted(curr_ids))
+        return fired
+
+    # ------------------------------------------------------- new_listing
+
+    def _eval_new_listing(self, w: Watch, now: datetime) -> int:
+        if w.card_id is None:
+            log.debug("new_listing watch %s has no card_id; skipping", w.id)
+            return 0
+        curr = self._current_listings(w)
+        if curr is None:
+            return 0
+        curr_ids = {s.listing_id for s in curr}
+        prev_ids = (
+            set(json.loads(w.last_seen_listing_ids)) if w.last_seen_listing_ids else None
+        )
+        if prev_ids is None:
+            w.last_seen_listing_ids = json.dumps(sorted(curr_ids))
+            return 0
+        new_ids = curr_ids - prev_ids
+        fired = 0
+        if new_ids:
+            msg = f"{self._display(w)}: {len(new_ids)} new listing(s)"
+            ctx = json.dumps(
+                {
+                    "new_listing_ids": sorted(new_ids),
+                    "count": len(new_ids),
+                    "source": "ebay",
+                }
+            )
+            self._fire(w, msg, ctx)
+            fired += 1
+        w.last_seen_listing_ids = json.dumps(sorted(curr_ids))
+        return fired
+
+    # ------------------------------------------------------- price_target
+
+    def _eval_price_target(self, w: Watch, now: datetime) -> int:
+        if w.target_price is None:
+            log.warning("price_target watch %s has no target_price; skipping", w.id)
+            return 0
+        if w.card_id is None or self._listings is None:
+            return 0
+        variant = w.variant or ""
+        self._listings.refresh_listings(w.card_id, variant)
+        low = self._listings.lowest_price(w.card_id, variant)
+        if low is None:
+            # No priced listings. Do NOT reset last_fired_at here — keep state.
+            return 0
+        cooldown = self._cooldown_min()
+        # Price rose above target -> re-arm (next crossing fires fresh).
+        if low > w.target_price:
+            w.last_fired_at = None
+            return 0
+        # low <= target: fire iff not in cooldown.
+        if w.last_fired_at is None or (now - w.last_fired_at) >= timedelta(minutes=cooldown):
+            # Currency comes from the lowest-priced current listing.
+            currency = None
+            for s in self._listings.latest_listings(w.card_id, variant):
+                if s.price == low:
+                    currency = s.currency
+                    break
+            msg = (
+                f"{self._display(w)}: price hit target "
+                f"(${low:.2f} ≤ ${w.target_price:.2f})"
+            )
+            ctx = json.dumps(
+                {"price": low, "target": w.target_price, "currency": currency}
+            )
+            self._fire(w, msg, ctx)
+            w.last_fired_at = now
+            return 1
+        return 0
+
+    # ----------------------------------------------------- auction_ending
+
+    def _eval_auction_ending(self, w: Watch, now: datetime) -> int:
+        if w.card_id is None:
+            log.debug("auction_ending watch %s has no card_id; skipping", w.id)
+            return 0
+        curr = self._current_listings(w)
+        if curr is None:
+            return 0
+        window = w.auction_window_min or 30
+        fired = 0
+        horizon = now + timedelta(minutes=window)
+        for s in curr:
+            if s.listing_type != "auction":
+                continue
+            if s.auction_end_at is None:
+                continue
+            if not (now <= s.auction_end_at <= horizon):
+                continue
+            # Idempotency: one AlertEvent per (watch, listing_id). The schema's
+            # `context` is a JSON-encoded String, so a LIKE match on the
+            # serialized listing_id is the pragmatic dedupe — this mirrors the
+            # codebase's func.lower().like text-search convention adapted to a
+            # JSON string. A structured column would be cleaner but is out of
+            # scope for T3's schema.
+            already = (
+                self.session.query(AlertEvent)
+                .filter(
+                    AlertEvent.watch_id == w.id,
+                    AlertEvent.alert_type == "auction_ending",
+                    AlertEvent.context.like(f'%"listing_id": "{s.listing_id}"%'),
+                )
+                .first()
+            )
+            if already is not None:
+                continue
+            mins = int((s.auction_end_at - now).total_seconds() // 60)
+            msg = f"{self._display(w)}: auction ends in {mins} min"
+            ctx = json.dumps(
+                {
+                    "listing_id": s.listing_id,
+                    "auction_end_at": s.auction_end_at.isoformat(),
+                    "url": s.url,
+                }
+            )
+            self._fire(w, msg, ctx)
+            fired += 1
+        # Do NOT update last_seen_listing_ids for auction_ending.
+        return fired
+
+    # --------------------------------------------------------- drop_time
+
+    def _eval_drop_time(self, w: Watch, now: datetime) -> int:
+        if w.drop_at is None:
+            log.warning("drop_time watch %s has no drop_at; skipping", w.id)
+            return 0
+        lead = w.lead_time_min or 0
+        fire_window_start = w.drop_at - timedelta(minutes=lead)
+        # Two fires: lead-time reminder, then the drop itself. First fire when
+        # last_fired_at is None and now is within the lead window. Second fire
+        # when last_fired_at is the lead-time fire (strictly < drop_at) and now
+        # has reached drop_at. After the drop fire last_fired_at >= drop_at so
+        # it cannot fire again. (The contract's formula used `< drop_at - lead`
+        # in the second clause, which would block the drop fire entirely; the
+        # prose and tests require `< drop_at`, which is what's implemented.)
+        should_fire = now >= fire_window_start and (
+            w.last_fired_at is None
+            or (w.last_fired_at < w.drop_at and now >= w.drop_at)
+        )
+        if not should_fire:
+            return 0
+        if now < w.drop_at:
+            mins = int((w.drop_at - now).total_seconds() // 60)
+            msg = f"{self._display(w, subject_first=True)}: drop in {mins} min"
+        else:
+            msg = f"{self._display(w, subject_first=True)}: dropping now"
+        ctx = json.dumps({"drop_at": w.drop_at.isoformat(), "lead_time_min": lead})
+        self._fire(w, msg, ctx)
+        w.last_fired_at = now
+        return 1
