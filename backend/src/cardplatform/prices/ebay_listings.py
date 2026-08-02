@@ -38,7 +38,7 @@ Auth caveat (documented follow-up, NOT solved here):
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable, Protocol
+from typing import Any, Protocol
 from datetime import datetime, timezone
 
 import httpx
@@ -73,7 +73,7 @@ class EbayListingsProvider:
     def __init__(
         self,
         settings: Settings | None = None,
-        catalog: Callable[[str], tuple[str, str, str] | None] | None = None,
+        catalog: _CatalogLookup | None = None,
     ) -> None:
         self.settings = settings or default_settings
         self.catalog = catalog

@@ -20,8 +20,8 @@ class ListingQuote:
     """One marketplace listing observation for one (card, variant) tuple.
 
     Mirrors GradedPriceQuote's shape but per-listing instead of per-grade-bucket.
-    `price`/`currency` are the asking/bid price any the source does not publish
-    are None rather than fabricated. `listing_type` is "fixed_price" or
+    `price`/`currency` are the asking/bid price, and any field the source does
+    not publish, are None rather than fabricated. `listing_type` is "fixed_price" or
     "auction". `auction_end_at` is the tz-aware UTC auction end, or None for
     fixed-price listings. `source` is REQUIRED (no default) — matches the
     GradedPriceQuote convention. `source_updated_at` is the source's own

@@ -235,3 +235,95 @@ def test_refresh_no_key_returns_zero(seeded):
 
     assert written == 0
     assert seeded.query(ListingSnapshot).count() == 0
+
+
+def test_previous_listing_ids_tie_merges_same_timestamp_fetches(seeded):
+    """Two real fetches share the SAME fetched_at (Windows ~15ms clock tie
+    between a baseline refresh and an immediate poll). Without a per-fetch id
+    column, the two commits are data-indistinguishable from one merged
+    multi-row fetch — so `previous_listing_ids` treats them as a single
+    "latest" snapshot and returns set() (no prior distinct fetched_at). This
+    documents the known limitation: T3 must ensure baseline and first poll land
+    in distinct clock ticks (e.g. stamp fetched_at per-call) if strict
+    tied-fetch separation is required. A future fetch_id column would let us
+    split them; for now this is the honest empty state, NOT a fabricated prior.
+
+    This test locks in the fetched_at-grouping discipline: the `id.desc()`
+    tiebreak on the latest-row resolution is honored but does not split a
+    shared fetched_at into two fetch groups.
+    """
+    t = datetime(2026, 8, 1, 12, 0, tzinfo=timezone.utc)
+    # "Baseline" fetch — two rows committed first (lower ids).
+    seeded.add(
+        ListingSnapshot(
+            card_id="base1-4", variant="normal", source="ebay", listing_id="A",
+            price=10.0, currency="USD", source_updated_at="", fetched_at=t,
+        )
+    )
+    seeded.add(
+        ListingSnapshot(
+            card_id="base1-4", variant="normal", source="ebay", listing_id="B",
+            price=20.0, currency="USD", source_updated_at="", fetched_at=t,
+        )
+    )
+    # "Poll" fetch — one row committed second (higher id), SAME fetched_at.
+    seeded.add(
+        ListingSnapshot(
+            card_id="base1-4", variant="normal", source="ebay", listing_id="C",
+            price=30.0, currency="USD", source_updated_at="v2", fetched_at=t,
+        )
+    )
+    seeded.commit()
+
+    prior = ListingsService(seeded).previous_listing_ids("base1-4", "normal")
+
+    # Shared fetched_at → one merged "latest" fetch → no prior fetch → set().
+    # (NOT {A,B}: that would require splitting a shared-timestamp fetch, which
+    # needs a per-fetch id column we don't have in T2's schema.)
+    assert prior == set()
+
+    # And latest_listings returns all three merged rows (the latest fetch).
+    latest = ListingsService(seeded).latest_listings("base1-4", "normal")
+    assert {r.listing_id for r in latest} == {"A", "B", "C"}
+
+    # With a genuinely older fetch present, the prior is the older fetch.
+    t_old = t - timedelta(hours=1)
+    seeded.add(
+        ListingSnapshot(
+            card_id="base1-4", variant="normal", source="ebay", listing_id="D",
+            price=5.0, currency="USD", source_updated_at="", fetched_at=t_old,
+        )
+    )
+    seeded.commit()
+    prior2 = ListingsService(seeded).previous_listing_ids("base1-4", "normal")
+    assert prior2 == {"D"}
+
+
+def test_latest_listings_orders_null_price_last(seeded):
+    """In the newest snapshot, a priced row must sort BEFORE a None-price row
+    (NULLS LAST) so the UI shows priced listings first. Locks in the
+    `price.is_(None)` ordering branch."""
+    t = datetime(2026, 8, 1, 12, 0, tzinfo=timezone.utc)
+    seeded.add(
+        ListingSnapshot(
+            card_id="base1-4", variant="normal", source="ebay", listing_id="priced",
+            price=30.0, currency="USD", source_updated_at="", fetched_at=t,
+        )
+    )
+    seeded.add(
+        ListingSnapshot(
+            card_id="base1-4", variant="normal", source="ebay", listing_id="unpriced",
+            price=None, currency=None, source_updated_at="", fetched_at=t,
+        )
+    )
+    seeded.add(
+        ListingSnapshot(
+            card_id="base1-4", variant="normal", source="ebay", listing_id="cheap",
+            price=10.0, currency="USD", source_updated_at="", fetched_at=t,
+        )
+    )
+    seeded.commit()
+
+    rows = ListingsService(seeded).latest_listings("base1-4", "normal")
+
+    assert [r.listing_id for r in rows] == ["cheap", "priced", "unpriced"]

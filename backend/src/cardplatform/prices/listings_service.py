@@ -137,32 +137,64 @@ class ListingsService:
     def previous_listing_ids(self, card_id: str, variant: str) -> set[str]:
         """The listing_ids from the snapshot strictly older than the latest
         fetched_at (i.e. the prior fetch). Returns set() if there is no prior
-        fetch — used by the T3 new-listing diff to find what dropped out."""
-        # Newest fetched_at
-        latest_fetched = self.session.scalars(
-            select(ListingSnapshot.fetched_at)
+        fetch — used by the T3 new-listing diff to find what dropped out.
+
+        A "fetch" is identified by its DISTINCT fetched_at value: all rows
+        sharing a fetched_at are one fetch (mirrors `latest_listings` and the
+        spec's "rows from the newest fetched_at snapshot"). The latest row is
+        resolved with `order_by(fetched_at.desc(), id.desc())` so the id
+        tiebreak matches latest_graded's Windows-clock-tie discipline, but the
+        fetched_at value is what defines the fetch group. The prior fetch is
+        the rows with the second-newest distinct fetched_at.
+
+        Known limitation: if two real fetches share the EXACT same fetched_at
+        (Windows ~15ms clock tie between a baseline refresh and an immediate
+        poll), they are indistinguishable from one merged multi-row fetch and
+        are treated as a single "latest" snapshot — so `previous_listing_ids`
+        returns the fetch BEFORE the tie (or set() if the tie is the only
+        fetch). Splitting tied fetches requires a per-fetch id column
+        (out of scope for T2's schema); T3 should ensure baseline and first
+        poll land in distinct clock ticks (e.g. stamp fetched_at per-call, not
+        per-row) if strict tied-fetch separation is required. See
+        test_previous_listing_ids_tie_merges_same_timestamp_fetches.
+        """
+        # Latest row by (fetched_at desc, id desc) — the id tiebreak matches
+        # latest_graded's discipline; we only consume the fetched_at value.
+        latest_row = self.session.scalars(
+            select(ListingSnapshot)
             .where(
                 ListingSnapshot.card_id == card_id,
                 ListingSnapshot.variant == variant,
             )
-            .order_by(ListingSnapshot.fetched_at.desc())
+            .order_by(
+                ListingSnapshot.fetched_at.desc(),
+                ListingSnapshot.id.desc(),
+            )
             .limit(1)
         ).first()
-        if latest_fetched is None:
+        if latest_row is None:
             return set()
-        # Second-newest distinct fetched_at (the prior fetch)
-        prior_fetched = self.session.scalars(
-            select(ListingSnapshot.fetched_at)
+        latest_fetched = latest_row.fetched_at
+        # Prior fetch = the rows with the second-newest DISTINCT fetched_at.
+        # `fetched_at < latest_fetched` selects everything strictly older; we
+        # take the newest of those (again id-tiebroken for consistency) and
+        # use its fetched_at as the prior fetch's stamp.
+        prior_row = self.session.scalars(
+            select(ListingSnapshot)
             .where(
                 ListingSnapshot.card_id == card_id,
                 ListingSnapshot.variant == variant,
                 ListingSnapshot.fetched_at < latest_fetched,
             )
-            .order_by(ListingSnapshot.fetched_at.desc())
+            .order_by(
+                ListingSnapshot.fetched_at.desc(),
+                ListingSnapshot.id.desc(),
+            )
             .limit(1)
         ).first()
-        if prior_fetched is None:
+        if prior_row is None:
             return set()
+        prior_fetched = prior_row.fetched_at
         rows = self.session.scalars(
             select(ListingSnapshot.listing_id).where(
                 ListingSnapshot.card_id == card_id,
