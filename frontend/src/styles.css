@@ -972,3 +972,166 @@ h1 { font-size: 1.25rem; margin: 4px 0 16px; }
 }
 .grading-label-form button:disabled { opacity: 0.55; }
 .grading-label-form .error { margin: 0; }
+
+/* ============================================================ Phase 3c — 5-tab */
+
+/* The bottom nav is always visible now that there are 5 surfaces (Scan/Vault/
+   Alerts/Browse/More). The prior in-browser header toggle did not scale beyond
+   two tabs, and the standalone-only gating is dropped for the shell. */
+.app-shell .bottom-nav { display: flex; }
+.app-shell .app-content { padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
+
+/* Unread badge on the Alerts tab glyph. A small count pill that sits over the
+   bell; 99+ caps the text so a flood does not break the tab width. */
+.nav-glyph-wrap { position: relative; display: inline-flex; }
+.nav-badge {
+  position: absolute;
+  top: -4px;
+  right: -8px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--down);
+  color: #fff;
+  font-size: 0.6rem;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+  letter-spacing: 0;
+}
+
+/* ----- Alerts placeholder (T7 replaces with the live feed) ---------------- */
+.alerts-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: var(--sp-3);
+  padding: var(--sp-7) var(--sp-4);
+  min-height: 50vh;
+}
+.alerts-placeholder .alerts-radar {
+  max-width: 32ch;
+  color: var(--fg-dim);
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+.alerts-placeholder .primary:disabled { opacity: 0.5; }
+
+/* ----- More pane --------------------------------------------------------- */
+.more-pane {
+  padding: var(--sp-5) var(--sp-4);
+  text-align: center;
+}
+
+/* ----- Browse ----------------------------------------------------------- */
+.browse { display: flex; flex-direction: column; gap: var(--sp-3); }
+.browse-input {
+  width: 100%;
+  padding: 12px 14px;
+  min-height: 44px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--fg);
+  font-size: 0.95rem;
+}
+.browse-input:focus { outline: none; border-color: var(--accent); }
+.browse-hint { margin: 0; }
+.browse-empty { margin: 0; }
+.browse-results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+.browse-result {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--surface);
+  border: 1px solid transparent;
+  border-radius: 10px;
+  color: var(--fg);
+  text-align: left;
+  min-height: 44px;
+}
+.browse-result:hover { border-color: var(--line); }
+.browse-result:active { border-color: var(--accent); }
+.browse-thumb {
+  width: 38px;
+  height: 53px;
+  object-fit: contain;
+  border-radius: 4px;
+  flex-shrink: 0;
+  background: var(--bg);
+}
+.browse-thumb.placeholder { background: var(--line); }
+.browse-result-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.browse-result-text strong { font-size: 0.95rem; }
+.watch-scan-link { margin-top: var(--sp-2); }
+
+/* ----- CardDetail ------------------------------------------------------- */
+.card-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  padding-bottom: var(--sp-4);
+}
+.card-back { align-self: flex-start; }
+.card-detail-art { display: flex; justify-content: center; }
+.card-detail-image {
+  max-width: 100%;
+  max-height: 320px;
+  border-radius: 10px;
+  object-fit: contain;
+  background: var(--surface);
+}
+.card-detail-image.placeholder {
+  width: 240px;
+  height: 336px;
+  background: var(--line);
+}
+.card-detail-head h2 { margin: 0; font-size: 1.2rem; }
+.card-detail-head .card-meta { margin: 4px 0 0; color: var(--fg-dim); }
+.card-detail-price { display: flex; flex-direction: column; }
+.card-detail-listings { display: flex; flex-direction: column; gap: var(--sp-2); }
+.card-detail-listings h3 { margin: 0; font-size: 1rem; }
+.listing-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+.listing-row {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.listing-link {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--sp-2) var(--sp-3);
+  color: var(--fg);
+  text-decoration: none;
+  min-height: 44px;
+  justify-content: center;
+}
+.listing-link:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.listing-title { font-size: 0.92rem; }
+.listing-meta { font-size: 0.8rem; }
+.watch-card-btn { margin-top: var(--sp-2); }
+.watch-card-btn:disabled { opacity: 0.5; }

@@ -198,3 +198,41 @@ export interface GradingLabel {
   notes: string | null;
   created_at: string;
 }
+
+// One row from the catalog search endpoint (GET /cards?name=...). The backend
+// returns the full CardOut shape; we type the subset the Browse list renders,
+// so a card with no thumbnail still has a name to tap. Mirrors CardOut.
+export interface CardSearchResult {
+  id: string;
+  name: string;
+  number: string;
+  set_id: string;
+  set_name: string;
+  image_small: string | null;
+  image_large: string | null;
+}
+
+// One marketplace listing from the newest snapshot. `source` is always present
+// (the backend never fabricates a default); every nullable column surfaces as
+// null when the source omits it. Mirrors ListingOut in backend
+// alerts/api_models.py field-for-field.
+export interface Listing {
+  listing_id: string;
+  title: string | null;
+  price: number | null;
+  currency: string | null;
+  listing_type: string | null;
+  auction_end_at: string | null;
+  url: string | null;
+  condition: string | null;
+  source: string;
+  fetched_at: string;
+}
+
+// The POST /cards/{id}/listings?variant= response. `listings_unavailable` is
+// true when no listings provider key is configured (the backend never fakes
+// listings); false means the source was queried, just possibly empty.
+export interface ListingsResponse {
+  listings: Listing[];
+  listings_unavailable: boolean;
+}

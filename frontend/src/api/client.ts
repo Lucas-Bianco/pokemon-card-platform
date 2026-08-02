@@ -1,8 +1,10 @@
 import type {
+  CardSearchResult,
   CollectionItem,
   Grader,
   GradingLabel,
   GradingUpside,
+  ListingsResponse,
   Portfolio,
   Price,
   PriceHistory,
@@ -220,4 +222,46 @@ export async function postGradeLabel(
     body: JSON.stringify(body),
   });
   return expectJson<GradingLabel>(response);
+}
+
+// Catalog search by name. The backend's GET /cards takes a `name` query param
+// (min_length=1) and returns the top N CardOut rows ordered by name; we surface
+// the subset the Browse list needs. Empty query is NOT sent — the backend
+// requires min_length=1, so the caller shows a hint instead.
+export async function searchCards(q: string, limit = 25): Promise<CardSearchResult[]> {
+  const params = new URLSearchParams({ name: q, limit: String(limit) });
+  return expectJson<CardSearchResult[]>(
+    await fetch(`${BASE}/cards?${params}`),
+  );
+}
+
+// Fetch a single card by id. Mirrors GET /cards/{id} → CardOut (typed here as
+// CardSearchResult, which is the same shape subset CardDetail renders).
+export async function getCard(cardId: string): Promise<CardSearchResult> {
+  return expectJson<CardSearchResult>(await fetch(`${BASE}/cards/${cardId}`));
+}
+
+// Refresh + return the latest marketplace listings for a card/variant. The
+// backend returns {listings, listings_unavailable}; an empty key means
+// listings_unavailable=true (never fabricated listings).
+export async function refreshListings(
+  cardId: string,
+  variant?: string,
+): Promise<ListingsResponse> {
+  const params = new URLSearchParams();
+  if (variant) params.set("variant", variant);
+  return expectJson<ListingsResponse>(
+    await fetch(`${BASE}/cards/${cardId}/listings?${params}`, { method: "POST" }),
+  );
+}
+
+// The unread alert count for the Alerts tab badge. Trivial now so the badge
+// works in T6; T7 wires the live feed. Returns {count} → number.
+export async function getUnreadCount(): Promise<number> {
+  const response = await fetch(`${BASE}/alerts/unread-count`);
+  if (!response.ok) {
+    throw new Error(`request failed: ${response.status}`);
+  }
+  const body = (await response.json()) as { count: number };
+  return body.count;
 }
