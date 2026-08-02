@@ -2,9 +2,10 @@
 
 **Owner:** Lucas
 **Started:** 2026-07-28
-**Status:** Phase 0+1 design approved — see
-[design spec](docs/superpowers/specs/2026-07-28-card-recognition-platform-design.md).
-Next: implementation plan.
+**Status:** Phase 3c (watchlist + alerts) shipped 2026-08-02 — see
+[design spec](docs/superpowers/specs/2026-08-02-alerts-watchlist-design.md) +
+[plan](docs/superpowers/plans/2026-08-02-alerts-watchlist.md).
+Next: full Grade predictor (corner/edge/surface + P(grade)), pending labelled-data accrual.
 
 **Shape:** ONE platform built in phases, not seven apps. All modules share a card-recognition core,
 a pricing layer, and a collection store. Responsive PWA (phone + desktop): React/TypeScript
@@ -45,6 +46,7 @@ Each phase ships independently usable functionality and gets its own spec → pl
 | 2 | Portfolio tracker — cost basis, P/L, price charts | **Complete** — ships correct, useful as data accrues |
 | 3a | Card centering — geometric PSA cap from border measurement | **Complete** |
 | 3b | Grading data infrastructure — rectified-crop persistence, grade-label schema + self-annotation, graded-price provider, grading-upside spread | **Complete** |
+| 3c | Watchlist + restock/price/drop/auction alerts — CollectorVault-style 5-tab UI | **Complete** |
 | 3 | Grade Predictor — corner/edge/surface scoring + P(grade) + grading EV | In progress — data infra unblocked (3b); full predictor still planned |
 | 4 | Bulk cataloger — detect every card in one photo | Planned |
 | 5 | Deal sniper + sealed EV — listings vs. sold comps, rip-vs-flip | Planned |
@@ -382,6 +384,46 @@ preserved; raw `PriceSnapshot` and recognition behavior untouched.
   graded-unavailable → the API-key hint, never `$0.00`) + a `ScanResult` self-annotation form.
 - **Site** — new scroll-animated Grading section (Centering lit; Corners/Edges/Surface dimmed with
   "Needs labelled data" tags that never light up) + roadmap row 03b; rebuilt → `docs/`.
+
+## Phase 3c — shipped
+
+Watchlist + notifications, built 2026-08-02
+([spec](docs/superpowers/specs/2026-08-02-alerts-watchlist-design.md) +
+[plan](docs/superpowers/plans/2026-08-02-alerts-watchlist.md)). **443 backend + 90 frontend tests.**
+A CollectorVault-inspired 5-tab app shell (Scan/Vault/Alerts/Browse/More, Alerts-first) over a new
+watchlist + notification engine. The same "never fake missing data" value throughout: the feed never
+invents events, listings degrade honestly when no source key is set, and channels degrade silently
+when unconfigured. 105 real scans preserved; raw price/graded tables and recognition untouched.
+
+- **5 alert types, all idempotent** — `restock`, `new_listing`, `price_target` (cooldown +
+  re-arm), `auction_ending` (per-listing dedupe), `drop_time` (lead reminder + drop, then stops).
+  Restock/new_listing diff off a per-watch `last_seen_listing_ids` JSON baseline — not the listings
+  service — because immutable snapshots make empty fetches invisible. First poll fires nothing.
+- **Never-raise engine** — `AlertEngine.check_alerts()` wraps each watch in a SAVEPOINT so a flush
+  `IntegrityError` is isolated; per-watch try/except + a wrapped final commit. Regression-tested.
+- **Three delivery channels, each degrades independently** — in-app (always on), web push
+  (`pywebpush` + VAPID, prunes 404/410), email (`smtplib`, `timeout=10`, SMTPS 465 / STARTTLS 587 /
+  plaintext 25). `NotificationService.dispatch` never raises.
+- **Listings leg** — `ListingsProvider` Protocol + `EbayListingsProvider` (mirrors the graded-price
+  provider: degrades to `[]`, never raises) + `ListingsService` (immutable `ListingSnapshot` dedupe,
+  `lowest_price` is None not 0.0). Honest `listings_unavailable` flag in the API.
+- **12 endpoints** — watchlist CRUD (422 validation per alert type), alerts feed + read/read-all +
+  unread-count, per-card listings, push subscribe/unsubscribe + vapid-public. A startup poll loop
+  runs the engine every `alert_poll_min` (15) minutes; CLI `check-alerts` for a one-shot run,
+  `gen-vapid` for the VAPID keypair.
+- **Frontend** — `AppShell` 5-tab nav; `CardDetail` reuses GradingUpside + charts with honest listing
+  empty states; `AlertsFeed` (type-filter chips, unread accent, mark-read + deep-link, honest radar
+  empty state); `WatchCardSheet` bottom sheet (5 alert types, conditional fields, client-side
+  validation mirroring the 422 rules); `More` (honest channel cards + watchlist management).
+- **Site** — new scroll-animated Alerts section (5 alert chips, GSAP scrub + Framer reveal,
+  reduced-motion fallback, honest "alerts fire only while a check runs" caption) + roadmap row 05 →
+  in-progress ("…alerts shipped — rip-vs-flip modelling still planned"). Rebuilt → `docs/`.
+
+**Documented follow-ups** — `@app.on_event` poll loop is deprecated-cosmetic (lifespan handler is
+the clean replacement); the eBay listings adapter needs real keyword-search + auth before
+restock/new_listing/auction alerts fire (provider degrades to `[]` until
+`CARDPLATFORM_LISTINGS_API_KEY` is set); `previous_listing_ids` can merge same-clock-tick fetches
+(fine at a 15-min cadence).
 
 ## Carried into Phase 1 (from the final Phase 0 review)
 

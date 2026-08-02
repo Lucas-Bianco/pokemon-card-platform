@@ -7,7 +7,7 @@
 > **Keep it current.** Update this file after any change that alters architecture, measured
 > results, or the roadmap. A stale onboarding doc is worse than none, because it is trusted.
 >
-> Last updated: **2026-08-01**
+> Last updated: **2026-08-02**
 
 ---
 
@@ -31,7 +31,7 @@ Site: https://lucas-bianco.github.io/pokemon-card-platform/
 
 ---
 
-## 2. Current state (2026-07-30)
+## 2. Current state (2026-08-02)
 
 | Phase | What | Status |
 |---|---|---|
@@ -42,12 +42,13 @@ Site: https://lucas-bianco.github.io/pokemon-card-platform/
 | 2 | Portfolio tracker: cost basis, P/L, charts | ✅ Complete — ships correct, becomes useful as data accrues (§6) |
 | 3 | Grade predictor: CV grading + grading EV | In progress — data infrastructure shipped (§10); full predictor still planned |
 | 3b | Grading data infrastructure: rectified-crop persistence, grade-label schema + self-annotation, graded-price provider, grading-upside spread | ✅ Complete |
+| 3c | Watchlist + restock/price/drop/auction alerts (CollectorVault-style 5-tab UI) | ✅ Complete (§11) |
 | 4 | Bulk cataloger: many cards per photo | Planned |
 | 5 | Deal sniper + sealed EV | Planned |
 | 6 | Set-completion optimizer | Planned |
 | 7 | Counterfeit detector | Planned |
 
-**Tests:** 374 backend (pytest) + 65 frontend (vitest).
+**Tests:** 443 backend (pytest) + 90 frontend (vitest).
 
 ### UI — "Grading Lab" (2026-08-01)
 
@@ -127,7 +128,14 @@ backend/src/cardplatform/
   catalog/           dump.py (GitHub JSON), loader.py (idempotent upsert)
   prices/            provider.py (protocol), pokemontcg.py, service.py — latest_price + price_history;
                      graded_provider.py + pkmnprices.py + graded_service.py — graded sold comps
-                     (degrades to [] without CARDPLATFORM_GRADED_PRICE_API_KEY, never raises)
+                     (degrades to [] without CARDPLATFORM_GRADED_PRICE_API_KEY, never raises);
+                     listings_provider.py (Protocol + ListingQuote) + ebay_listings.py
+                     (EbayListingsProvider — mirrors PkmnPricesProvider, degrades to []) +
+                     listings_service.py (ListingsService — immutable ListingSnapshot dedupe,
+                     lowest_price None-not-0.0, previous_listing_ids by fetched_at-grouping)
+  alerts/            engine.py (AlertEngine — 5 alert types, per-watch SAVEPOINT isolation,
+                     never-raises), notify.py (NotificationService — in-app/push/email, degrades
+                     gracefully per channel), api_models.py (Pydantic wire models)
   collection/        store.py — add/remove/list/valuation + portfolio/summary/set_cost_basis
   recognition/       detectors.py, rectify.py, encoder.py, index.py, ocr.py, fusion.py, service.py
                      (persists the rectified crop to data/rectified/ + stamps scan_logs.variant)
@@ -138,7 +146,9 @@ backend/src/cardplatform/
 backend/scripts/     evaluate_recognition.py, evaluate_detection.py, spot_check.py
 frontend/src/        api/, lib/ (format, cameraCrop), components/  (CameraCapture, ScanResult,
                      CandidatePicker, PriceLine, CornerAdjust, PortfolioView, PriceChart,
-                     GradingUpside — the spread panel; ScanResult hosts the self-annotation form)
+                     GradingUpside — the spread panel; ScanResult hosts the self-annotation form;
+                     AppShell — 5-tab nav Scan/Vault/Alerts/Browse/More, Alerts-first; CardDetail,
+                     Browse, AlertsFeed, WatchCardSheet, More — the Phase 3c alert/watchlist UI)
 frontend/public/     manifest.webmanifest, icon-192/512/icon-maskable-512.png, icon-source.svg
 frontend/scripts/    gen-icons.py (rasterize icon-source.svg → PNGs)
 site/                Next.js 15 marketing app — app/sections/ (Hero, Problem, Pipeline, Roadmap,
@@ -154,6 +164,12 @@ api.py Phase 3b endpoints: POST /scans/{id}/grade-label + GET /scans/{id}/grade-
                      GET /grading/labels (self-annotation), GET /cards/{id}/grading-upside
                      (?variant=) — the spread {raw_price, psa9, psa10, grading_fee,
                      upside_to_10 | null, graded_prices_unavailable}. CLI: refresh-graded-prices.
+api.py Phase 3c endpoints: GET/POST/PATCH/DELETE /watchlist (422 validation per alert_type),
+                     GET/PATCH /alerts + POST /alerts/read-all + GET /alerts/unread-count,
+                     GET /cards/{card_id}/listings?variant= (honest listings_unavailable flag),
+                     GET /push/vapid-public, POST/DELETE /push/subscribe. A startup poll loop
+                     runs AlertEngine.check_alerts() every alert_poll_min minutes (skips if <=0).
+                     CLI: check-alerts (one-shot), gen-vapid (VAPID keypair for web push).
 data/                GITIGNORED — 20,391 card images, 40 MB FAISS index, SQLite db, 105 real scans
 ```
 
@@ -226,6 +242,8 @@ npm --prefix C:\ClaudeKnowledge\frontend run dev        # https://<lan-ip>:5173
 cardplatform.exe sync-catalog                  # idempotent, resumable
 cardplatform.exe build-index                   # downloads ~20k images; re-runs skip cached
 cardplatform.exe refresh-collection-prices     # run on a schedule so price history accrues
+cardplatform.exe check-alerts                  # one-shot: run AlertEngine over active watches
+cardplatform.exe gen-vapid                      # print VAPID public/private key env lines for web push
 
 # evaluation — score any recognition/detection change against the 101 real scans
 python backend/scripts/evaluate_detection.py   # fails the run on a single regression
@@ -440,3 +458,92 @@ What shipped (TDD, subagent-driven, two-stage review per task):
 **Sacred constraints held:** no ad-hoc price resolution (only `latest_price`/`latest_graded`);
 snapshots immutable; staleness surfaced; honest empty states unchanged on the scanner; no `data/`
 contents deleted (only additions under `data/rectified/`); `func.lower(...).like` for text search.
+
+---
+
+## 11. Phase 3c — watchlist + restock/price/drop/auction alerts
+
+Shipped 2026-08-02 on `main` (12 commits ahead of `origin/main` before push). **443 backend + 90
+frontend tests.** A CollectorVault-inspired 5-tab app shell (Scan/Vault/Alerts/Browse/More,
+Alerts-first default) over a new watchlist + notification engine. The same "never fake missing data"
+value runs through it: the alert feed never invents events, listings degrade honestly when no source
+key is set, and channels degrade silently when unconfigured. 105 real scans preserved; raw
+`PriceSnapshot`, `GradedPriceSnapshot`, and recognition behavior untouched.
+
+**Alert types (5), all idempotent.** `restock` (prev ids empty → curr non-empty), `new_listing`
+(curr − prev non-empty), `price_target` (lowest listing ≤ target, cooldown via `alert_cooldown_min`,
+re-arms when price climbs back above target), `auction_ending` (per-listing dedupe by `listing_id` in
+`AlertEvent.context`), `drop_time` (fires a lead reminder then the drop, then stops). Idempotency for
+restock/new_listing keys off **`Watch.last_seen_listing_ids`** (a per-watch JSON baseline), not
+`ListingsService.previous_listing_ids` — because immutable snapshots with no fetch-record table make
+empty fetches invisible (they insert no rows), so the per-watch baseline is the only correct diff
+source. First poll (baseline `None`) fires nothing.
+
+**Channels — `NotificationService.dispatch` never raises, each channel degrades independently:**
+- **In-app** — always on; sets `delivered_inapp` defensively (the feed reads `AlertEvent` rows).
+- **Web push** — `pywebpush` + VAPID (`CARDPLATFORM_VAPID_*`); gates on *both* public + private keys;
+  prunes subscriptions on 404/410; success flag set on ≥1 delivery. Payload build wrapped in try/except
+  so a push failure can't poison email.
+- **Email** — `smtplib`, synchronous (testable), `timeout=10` (a missing timeout would block the poll
+  tick forever), SMTP_SSL for 465 / SMTP+starttls for 587 / plaintext 25. `CARDPLATFORM_SMTP_*`.
+
+**Never-raise engine.** `AlertEngine.check_alerts()` wraps each watch in `with session.begin_nested():`
+(a SAVEPOINT) so a flush `IntegrityError` is isolated to that watch; per-watch try/except logs +
+continues; the final commit is wrapped in try/except. A poisoned-session regression
+(`test_flush_failure_does_not_poison_tick`) guards it. `_now()` is injectable for deterministic tests.
+
+What shipped (TDD, subagent-driven; reviews ran inline T5–T8 after a backend usage-limit killed the
+T5 spec-review subagent):
+- **T1 — schema.** 4 new tables in `db/models.py`: `watchlist` (unique on
+  `(card_id,variant,alert_type,target_price,drop_at)`, `last_seen_listing_ids` JSON baseline,
+  `last_fired_at`, `active` default True), `listing_snapshots` (immutable, unique on
+  `(card_id,variant,source,listing_id,source_updated_at)` with `""` sentinel for a missing source
+  timestamp — NULLs are distinct under SQLite so the unique constraint would otherwise allow dups),
+  `alert_events` (unread index on `(read_at,created_at)`, per-channel delivery flags),
+  `push_subscriptions` (endpoint unique).
+- **T2 — listings provider + service.** `prices/listings_provider.py` (`ListingQuote` frozen
+  dataclass + `ListingsProvider` Protocol) + `ebay_listings.py` `EbayListingsProvider` (mirrors
+  `PkmnPricesProvider`: tenacity retry, terminal-one-attempt on 404/401/bad-JSON, `RetryError`→`[]`,
+  parse failure→`[]`, never raises; `source="ebay"`, documented keyword-search + auth caveats) +
+  `listings_service.py` `ListingsService` (immutable dedupe, `lowest_price` returns None not 0.0,
+  `previous_listing_ids` by `fetched_at`-grouping with `id.desc()` tiebreak).
+- **T3 — engine.** `alerts/engine.py` `AlertEngine` — the 5 idempotent alert types above, SAVEPOINT
+  isolation, injectable clock. Drop-time formula uses `last_fired_at < drop_at` (the contract's
+  `… − lead` was a typo that would have blocked the drop fire — caught in review, fixed to match the
+  prose/tests).
+- **T4 — notifier + config + CLI.** `alerts/notify.py` `NotificationService` (the three channels
+  above, no commit inside `dispatch` — the engine commits). `config.py` +10 fields (vapid_*,
+  smtp_*, `alert_poll_min`=15, `alert_cooldown_min`=60). `pyproject.toml` adds `pywebpush>=2.0`.
+  CLI `gen-vapid` (EC P-256 keypair via `py_vapid`, base64url public point + private scalar).
+- **T5 — API + poll loop.** `alerts/api_models.py` (Pydantic v2, `from_attributes=True`, nullables
+  surface as None) + 12 endpoints in `api.py` (additive +283/−3). A startup `@app.on_event("startup")`
+  task runs `check_alerts()` every `alert_poll_min*60` (swallows per-tick exceptions, skips if ≤0;
+  shutdown cancels). CLI `check-alerts` for a one-shot run. *Honest:* `GET /cards/{id}/listings`
+  returns `listings_unavailable: settings.listings_api_key is None`; `GET /push/vapid-public` returns
+  `""` when unconfigured.
+- **T6 — app shell + card detail + browse.** `App.tsx` rewired to `<AppShell/>`; 5-tab bottom nav,
+  Alerts-first default, slim header, unread badge; `CardDetail` reuses `GradingUpside` +
+  `PriceChart`/`PriceLine` with honest listing empty states; `Browse` debounced `GET /cards?name=`.
+- **T7 — alerts feed + watch sheet + more.** `AlertsFeed` (type-filter chips, relative time, unread
+  accent, tap=mark-read+deep-link, honest radar-copy empty state, never fabricates events),
+  `WatchCardSheet` (bottom sheet, 5 radio-type chips, conditional fields, client-side validation
+  mirroring the 422 rules, `expectJsonOrDetail` surfaces backend 422), `More` (honest channel cards:
+  push queryable via `getVapidPublic`, email/listings static "set `CARDPLATFORM_*`" hints, watchlist
+  management toggles). Scan onboarding nudge (localStorage-gated, non-blocking, only for a recognized
+  card with a market price).
+- **T8 — site.** `site/app/sections/data.ts` Phase 05 → in-progress ("Watchlist + restock/price/drop/
+  auction alerts shipped — rip-vs-flip modelling still planned"); new scroll-animated `Alerts.tsx`
+  section (GSAP scrub + Framer reveal, 5 alert chips 📦✨🎯⏳⏰, `prefers-reduced-motion` static fallback,
+  CSS defaults visible JS-off, honest "alerts fire only while a check runs" caption). Rebuilt →
+  `docs/` (`.nojekyll` + `docs/superpowers/` preserved).
+
+**Documented follow-ups (not solved):** the `@app.on_event` poll loop is deprecated-cosmetic
+(lifespan handler is the clean replacement); eBay listings need a real keyword-search + auth adapter
+(the provider degrades to `[]` until then, so restock/new_listing/auction alerts need
+`CARDPLATFORM_LISTINGS_API_KEY` to fire); `previous_listing_ids` can merge two same-clock-tick fetches
+(acceptable at a 15-min poll cadence); numeric `listing_id` assumed for the auction dedupe `LIKE`.
+
+**Sacred constraints held:** no ad-hoc price resolution; snapshots immutable (listings too);
+staleness surfaced; honest empty states (no `$0`, never fabricate events, channels degrade silently);
+no `data/` contents deleted; `func.lower(...).like` for text search; `UtcDateTime` for tz-aware
+columns; `""` sentinel for unique-constraint columns that may lack a source timestamp.
