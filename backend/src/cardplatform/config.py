@@ -59,6 +59,13 @@ class Settings(BaseSettings):
     graded_price_api_key: str | None = Field(default=None)
     graded_price_base_url: str = Field(default="https://api.pkmnprices.com/v1")
 
+    # Listings source (eBay Browse API item_summary/search). Opt-in: when the
+    # key is None (the default) the provider returns [] without touching the
+    # network, so listings are simply unavailable until a key is configured.
+    # Base URL per https://developer.ebay.com/api-docs/buy/browse/resources/item_summary
+    listings_api_key: str | None = Field(default=None)
+    listings_base_url: str = Field(default="https://api.ebay.com/buy/browse/v1")
+
     @property
     def db_path(self) -> Path:
         return self.data_dir / "cardplatform.sqlite3"
