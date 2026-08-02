@@ -5,7 +5,7 @@ export type Phase = {
   n: string;
   title: string;
   subtitle: string;
-  status: "done" | "planned";
+  status: "done" | "progress" | "planned";
   /** Optional count-up stat shown on done phases (e.g. coverage delta). */
   stat?: { label: string; from: string; to: string };
 };
@@ -28,7 +28,20 @@ export const ROADMAP: Phase[] = [
     subtitle: "Geometric PSA cap from border measurement · correct, coverage blocked on real photos",
     status: "done",
   },
-  { n: "03", title: "Grade predictor", subtitle: "CV centering & corner scoring, plus grading EV", status: "planned" },
+  {
+    n: "03b",
+    title: "Grading data infrastructure",
+    subtitle:
+      "Rectified-crop persistence, grade-label schema + self-annotation, graded-price provider, grading-upside spread",
+    status: "done",
+  },
+  {
+    n: "03",
+    title: "Grade predictor",
+    subtitle:
+      "Corner / edge / surface scoring + P(grade) — data infrastructure unblocked, full predictor still planned",
+    status: "progress",
+  },
   { n: "04", title: "Bulk cataloger", subtitle: "Detect and log every card in one photo", status: "planned" },
   { n: "05", title: "Deal sniper & sealed EV", subtitle: "Listings vs. sold comps; rip-vs-flip modelling", status: "planned" },
   { n: "06", title: "Set-completion optimizer", subtitle: "Cheapest path to finishing a set", status: "planned" },

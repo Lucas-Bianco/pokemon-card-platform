@@ -684,6 +684,16 @@ body {
   color: var(--fg-faint);
 }
 
+.status-pill.progress {
+  color: var(--warn);
+  border-color: color-mix(in srgb, var(--warn) 45%, var(--line));
+}
+
+/* In-progress phases are not dimmed (they're active), just badged differently. */
+.phase.is-progress {
+  opacity: 1;
+}
+
 .phase-stat {
   margin: 12px 0 2px;
   font-family: var(--font-jetbrains);
@@ -717,6 +727,176 @@ body {
   color: var(--fg-dim);
   font-size: 0.96rem;
   max-width: 70ch;
+}
+
+/* --- Grading --- */
+.grade-dims {
+  display: grid;
+  gap: 12px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.grade-dim {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px 20px;
+  will-change: opacity, transform;
+}
+
+.grade-dim.is-done {
+  border-color: color-mix(in srgb, var(--ok) 40%, var(--line));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--ok) 18%, transparent);
+}
+
+.grade-dim.is-pending {
+  opacity: 0.6;
+}
+
+.grade-dim .dim-name {
+  font-size: 1.04rem;
+  font-weight: 600;
+}
+
+.grade-dim.is-pending .dim-name {
+  color: var(--fg-dim);
+}
+
+.dim-tag {
+  font-family: var(--font-jetbrains);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 5px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.dim-tag.tag-done {
+  color: var(--ok);
+  border-color: color-mix(in srgb, var(--ok) 45%, var(--line));
+}
+
+.dim-tag.tag-pending {
+  color: var(--fg-faint);
+}
+
+/* The upside spread visual — bars fill on scroll (GSAP), full width without JS. */
+.spread {
+  margin: 56px 0 0;
+  padding: 28px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background:
+    radial-gradient(560px 300px at 80% 0%, rgba(255, 203, 5, 0.06), transparent 70%),
+    var(--surface);
+}
+
+.spread-title {
+  margin: 0 0 6px;
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+.spread-sub {
+  margin: 0 0 22px;
+  color: var(--fg-dim);
+  font-size: 0.96rem;
+  line-height: 1.6;
+}
+
+.spread-sub em {
+  color: var(--accent);
+  font-style: normal;
+  font-weight: 600;
+}
+
+.spread-bars {
+  display: grid;
+  gap: 16px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.spread-row {
+  display: grid;
+  grid-template-columns: 64px 1fr 72px;
+  align-items: center;
+  gap: 14px;
+}
+
+.spread-bar-label {
+  font-family: var(--font-jetbrains);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  color: var(--fg-dim);
+}
+
+.spread-bar-track {
+  position: relative;
+  height: 14px;
+  border-radius: 999px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  overflow: hidden;
+}
+
+.spread-bar-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent-2), var(--accent));
+  will-change: width;
+}
+
+.spread-row:nth-child(3) .spread-bar-fill {
+  /* PSA 10 — the widest bar — gets the full-yellow gradient to read as the prize. */
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 60%, var(--accent-2)), var(--accent));
+}
+
+.spread-bar-value {
+  font-family: var(--font-jetbrains);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: right;
+  color: var(--fg);
+}
+
+.spread-caption {
+  margin: 26px 0 0;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+  color: var(--fg-dim);
+  font-size: 0.94rem;
+  line-height: 1.65;
+  max-width: 72ch;
+}
+
+@media (max-width: 560px) {
+  .spread {
+    padding: 20px;
+  }
+  .spread-row {
+    grid-template-columns: 52px 1fr 64px;
+    gap: 10px;
+  }
+  .grade-dim {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
 }
 
 /* --- Stack --- */
@@ -812,6 +992,13 @@ body {
   }
   .pipe-step {
     opacity: 1 !important;
+    transition: none !important;
+  }
+  .grade-dim {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+  .spread-bar-fill {
     transition: none !important;
   }
   .progress-fill {

@@ -104,7 +104,9 @@ export function Roadmap() {
       <div className="wrap">
         <div className="section-head">
           <p className="eyebrow">Roadmap</p>
-          <h2>Twelve phases. Six shipped.</h2>
+          <h2>
+            {TOTAL_COUNT} phases. {SHIPPED_COUNT} shipped.
+          </h2>
           <p>Each phase ships something usable on its own and builds on the same recognition core.</p>
         </div>
 
@@ -132,7 +134,7 @@ export function Roadmap() {
             return (
               <motion.div
                 key={phase.n}
-                className={`phase ${phase.status === "planned" ? "is-planned" : ""}`}
+                className={`phase${phase.status === "planned" ? " is-planned" : ""}${phase.status === "progress" ? " is-progress" : ""}`}
                 variants={{
                   hidden: { opacity: 0, y: 14 },
                   visible: { opacity: 1, y: 0, transition: { duration: 0.45, ease: [0.22, 1, 0.36, 1] } },
@@ -159,7 +161,9 @@ export function Roadmap() {
                     <span className="phase-detail">
                       {phase.status === "done"
                         ? "Shipped and live. Builds on the same recognition core — no module re-solves a problem an earlier one already solved."
-                        : "Planned. Ships something usable on its own and extends the recognition core into a new capability."}
+                        : phase.status === "progress"
+                          ? "In progress — the data infrastructure is unblocked; the full predictor ships when the labelled dataset is large enough to be honest about a grade."
+                          : "Planned. Ships something usable on its own and extends the recognition core into a new capability."}
                     </span>
                   )}
                 </span>
@@ -168,6 +172,8 @@ export function Roadmap() {
                     <>
                       <span className="check-mark" aria-hidden="true">✓</span> Complete
                     </>
+                  ) : phase.status === "progress" ? (
+                    "In progress"
                   ) : (
                     "Planned"
                   )}
