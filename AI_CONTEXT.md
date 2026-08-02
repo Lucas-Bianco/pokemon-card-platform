@@ -40,13 +40,14 @@ Site: https://lucas-bianco.github.io/pokemon-card-platform/
 | 1b | Scan PWA: camera, candidate picker, scan logging | ✅ Complete |
 | 1c | Robust detection: multi-strategy chain | ✅ Complete |
 | 2 | Portfolio tracker: cost basis, P/L, charts | ✅ Complete — ships correct, becomes useful as data accrues (§6) |
-| 3 | Grade predictor: CV grading + grading EV | Planned |
+| 3 | Grade predictor: CV grading + grading EV | In progress — data infrastructure shipped (§10); full predictor still planned |
+| 3b | Grading data infrastructure: rectified-crop persistence, grade-label schema + self-annotation, graded-price provider, grading-upside spread | ✅ Complete |
 | 4 | Bulk cataloger: many cards per photo | Planned |
 | 5 | Deal sniper + sealed EV | Planned |
 | 6 | Set-completion optimizer | Planned |
 | 7 | Counterfeit detector | Planned |
 
-**Tests:** 276 backend (pytest) + 52 frontend (vitest).
+**Tests:** 374 backend (pytest) + 65 frontend (vitest).
 
 ### UI — "Grading Lab" (2026-08-01)
 
@@ -122,20 +123,26 @@ fuse()                     visual + OCR → confident | ambiguous | not_found
 ```
 backend/src/cardplatform/
   config.py          Settings (env prefix CARDPLATFORM_)
-  db/                models.py, session.py
+  db/                models.py, session.py, migrations.py (idempotent nullable-ALTER helper, no Alembic)
   catalog/           dump.py (GitHub JSON), loader.py (idempotent upsert)
-  prices/            provider.py (protocol), pokemontcg.py, service.py — latest_price + price_history
+  prices/            provider.py (protocol), pokemontcg.py, service.py — latest_price + price_history;
+                     graded_provider.py + pkmnprices.py + graded_service.py — graded sold comps
+                     (degrades to [] without CARDPLATFORM_GRADED_PRICE_API_KEY, never raises)
   collection/        store.py — add/remove/list/valuation + portfolio/summary/set_cost_basis
   recognition/       detectors.py, rectify.py, encoder.py, index.py, ocr.py, fusion.py, service.py
-  scans/             store.py — logs every scan as ground truth
+                     (persists the rectified crop to data/rectified/ + stamps scan_logs.variant)
+  grading/           store.py (GradingLabelStore — self-annotation), upside.py (GradingUpsideService —
+                     the raw/PSA-9/PSA-10 spread, honest nulls, never a prediction)
+  scans/             store.py — logs every scan as ground truth (rectified_path + variant columns)
   api.py             FastAPI, cli.py  CLI
 backend/scripts/     evaluate_recognition.py, evaluate_detection.py, spot_check.py
 frontend/src/        api/, lib/ (format, cameraCrop), components/  (CameraCapture, ScanResult,
-                     CandidatePicker, PriceLine, CornerAdjust, PortfolioView, PriceChart)
+                     CandidatePicker, PriceLine, CornerAdjust, PortfolioView, PriceChart,
+                     GradingUpside — the spread panel; ScanResult hosts the self-annotation form)
 frontend/public/     manifest.webmanifest, icon-192/512/icon-maskable-512.png, icon-source.svg
 frontend/scripts/    gen-icons.py (rasterize icon-source.svg → PNGs)
 site/                Next.js 15 marketing app — app/sections/ (Hero, Problem, Pipeline, Roadmap,
-                     Stack, Footer), app/sections/data.ts (copy + roadmap rows), providers.tsx
+                     Grading, Stack, Footer), app/sections/data.ts (copy + roadmap rows), providers.tsx
                      (Lenis + GSAP ScrollTrigger), next.config.mjs (static export + basePath)
 api.py Phase 2 endpoints: GET /collection/portfolio (items + summary in one round trip,
                      all valuation server-side via latest_price), PATCH /collection/{id}
@@ -143,7 +150,11 @@ api.py Phase 2 endpoints: GET /collection/portfolio (items + summary in one roun
                      (?card_id=&variant=&quantity=), GET /cards/{id}/prices/history
                      (?variant=&days=). Each history point carries its own source +
                      source_updated_at — never blend sources into one canonical number.
-data/                GITIGNORED — 20,391 card images, 40 MB FAISS index, SQLite db, 101 real scans
+api.py Phase 3b endpoints: POST /scans/{id}/grade-label + GET /scans/{id}/grade-label +
+                     GET /grading/labels (self-annotation), GET /cards/{id}/grading-upside
+                     (?variant=) — the spread {raw_price, psa9, psa10, grading_fee,
+                     upside_to_10 | null, graded_prices_unavailable}. CLI: refresh-graded-prices.
+data/                GITIGNORED — 20,391 card images, 40 MB FAISS index, SQLite db, 105 real scans
 ```
 
 ---
@@ -244,8 +255,10 @@ trends on its own as data lands.
 ## 7. The most useful next levers
 
 1. **Fix centering's coverage on real photos — it is built but only 4% usable.** See §9.
-2. **Phase 3 full grading** (corners, edges, surface, grading EV) — blocked on labelled graded-card
-   data and graded-card prices. Centering is the one sub-grade measurable without it.
+2. **Phase 3 full grading** (corners, edges, surface, P(grade)) — the data infrastructure is now
+   unblocked (§10: rectified crops persist, grade-labels + self-annotation collect the only honest
+   labelled dataset, graded-price provider + grading-upside spread are live). What remains is the
+   corner/edge/surface scoring + the P(grade) model, which needs the labelled dataset to grow.
 3. **A different OCR engine**, if OCR is revisited. See the dead ends below: cropping and
    preprocessing are exhausted, so the remaining gain would have to come from the recogniser itself
    (PaddleOCR, or Tesseract with a digit whitelist) or from higher-resolution capture.
@@ -374,3 +387,56 @@ Plausible fixes, none yet tested:
 
 **The feature is correct but not yet earning its place.** Fixing coverage is the next lever, and the
 101 saved scans are the test set to fix it against.
+
+---
+
+## 10. Phase 3b — grading data infrastructure (unblocks the Grade Predictor)
+
+Shipped 2026-08-01 on branch `phase-3b-grading-infra`. **374 backend + 65 frontend tests.** The full
+Grade predictor (corner/edge/surface scoring + P(grade)) is still blocked on *labelled* graded-card
+data — this phase ships the infrastructure to collect it and the graded-price leg, so the predictor is
+buildable as soon as Lucas's own annotated cards accrue. 105 real scans preserved throughout; the raw
+`PriceSnapshot` table and recognition behavior are untouched.
+
+**Why a spread, not a prediction.** P(grade) needs the labelled dataset we don't have. Shipping a
+single "expected value" number would be confidently-wrong. So `GET /cards/{id}/grading-upside` returns
+the *upside spread*: raw latest price, PSA-9 and PSA-10 sold comps, the grading fee, and
+`upside_to_10 = psa10.market − raw.market − fee` (null unless both inputs present). Missing graded
+prices → null fields + `graded_prices_unavailable: true` (never a fake `$0`, never a fake EV).
+
+What shipped (TDD, subagent-driven, two-stage review per task):
+- **T1 — schema + migration helper.** `db/migrations.py` `run_migrations(engine)`: idempotent
+  `PRAGMA table_info` → nullable `ALTER TABLE ADD COLUMN`, called after `Base.metadata.create_all()`
+  (no Alembic). Validates table names loudly; narrows excepts to `OperationalError`. New tables
+  `grading_labels` (unique scan_id, grade Float for half-grades, grader, cert?, notes?) and
+  `graded_price_snapshots` (mirrors PriceSnapshot + grade Float + grader, separate from the sacred
+  raw table, dedupe on `(card_id, grader, grade, variant, source_updated_at)`). New nullable
+  `scan_logs.rectified_path` + `scan_logs.variant`.
+- **T2 — persist the rectified crop.** `recognition/service.py` writes the 600×825 rectified PNG to
+  `data/rectified/<uuid>.png` and stamps `rectified_path` + `variant` on the scan log (fail-soft).
+  This is the normalized input a future corner/edge/surface grader consumes.
+- **T3 — grading-label store + API.** `grading/store.py` `GradingLabelStore`: `label(scan_id, …)`
+  resolves card_id/variant from the scan (never the body), validates grade 1–10 and grader in
+  {PSA,CGC,BGS}, upserts on unique scan_id. Endpoints `POST/GET /scans/{id}/grade-label`,
+  `GET /grading/labels`. The only honest labelled dataset is Lucas's own cards — the self-annotation
+  UI (T6) seeds it.
+- **T4 — graded-price provider + service.** `prices/graded_provider.py` (Protocol) +
+  `pkmnprices.py` `PkmnPricesProvider` (httpx + tenacity, env-keyed
+  `CARDPLATFORM_GRADED_PRICE_API_KEY`; **degrades to `[]` on no key / 404 / transport / parse — never
+  raises**) + `graded_service.py` `GradedPriceService` (immutable dedupe, `latest_graded`). CLI
+  `refresh-graded-prices`. **Documented follow-ups** (not solved): PkmnPrices↔`base1-4` card-id
+  mapping (adapter returns `[]` on mismatch); pagination (first page only).
+- **T5 — grading-upside endpoint.** `grading/upside.py` `GradingUpsideService` → the spread above;
+  uses only `PriceService.latest_price` + `GradedPriceService.latest_graded` (no ad-hoc resolution).
+- **T6 — frontend.** `GradingUpside.tsx` (the spread panel, honest empty states mirroring
+  PortfolioView: `—` + "no market price", graded-unavailable → the API-key hint, never `$0.00`) +
+  `ScanResult.tsx` self-annotation form (grader/grade 1–10 half-steps/cert/notes → POST grade-label;
+  fetches an existing label read-only). App threads `scanId`. Mobile-safe CSS.
+- **T7 — site.** New scroll-animated `Grading` section: Centering lights up, Corners/Edges/Surface
+  stay dimmed with "Needs labelled data" tags (never light up — no pretending), plus a scroll-driven
+  upside-spread visual labelled "example" with the honest "spread, not a prediction" caption. Roadmap
+  row 03b (done) + 03 set to in-progress. Rebuilt → `docs/` (superpowers/ preserved).
+
+**Sacred constraints held:** no ad-hoc price resolution (only `latest_price`/`latest_graded`);
+snapshots immutable; staleness surfaced; honest empty states unchanged on the scanner; no `data/`
+contents deleted (only additions under `data/rectified/`); `func.lower(...).like` for text search.

@@ -43,7 +43,9 @@ Each phase ships independently usable functionality and gets its own spec → pl
 | 1b | Scan PWA — camera capture, top-3 picker, scan logging | **Complete** |
 | 1c | Robust card detection — coverage 31% → 61%, 0 regressions | **Complete** |
 | 2 | Portfolio tracker — cost basis, P/L, price charts | **Complete** — ships correct, useful as data accrues |
-| 3 | Grade Predictor — CV centering/corner scoring + grading EV | Planned |
+| 3a | Card centering — geometric PSA cap from border measurement | **Complete** |
+| 3b | Grading data infrastructure — rectified-crop persistence, grade-label schema + self-annotation, graded-price provider, grading-upside spread | **Complete** |
+| 3 | Grade Predictor — corner/edge/surface scoring + P(grade) + grading EV | In progress — data infra unblocked (3b); full predictor still planned |
 | 4 | Bulk cataloger — detect every card in one photo | Planned |
 | 5 | Deal sniper + sealed EV — listings vs. sold comps, rip-vs-flip | Planned |
 | 6 | Set-completion optimizer — cheapest path to finish a set | Planned |
@@ -351,6 +353,36 @@ generalised across the portfolio:
   tcgplayer-preferred resolved point per date but never invents a blended "market price" number.
 - **Predictive trends / projections** — the chart plots observed points only.
 
+## Phase 3a + 3b — shipped
+
+**3a — card centering** (2026-07-31): a geometric PSA *cap* from front-border measurement — always a
+ceiling ("centering allows up to PSA 9"), never a grade. Correct by construction (0.00% error on
+synthetic cards) but only ~4% coverage on real photos (textured modern frames defeat the border
+classifier); the 101 saved scans are the test set to fix coverage against. Corners, edges and surface
+are not assessed.
+
+**3b — grading data infrastructure** (2026-08-01, branch `phase-3b-grading-infra`). **374 backend +
+65 frontend tests.** Unblocks the full Grade predictor by building the infrastructure to collect the
+labelled data it needs and the graded-price leg — without shipping a fake prediction. 105 real scans
+preserved; raw `PriceSnapshot` and recognition behavior untouched.
+
+- **Migration helper** (`db/migrations.py`) — idempotent nullable-ALTER, no Alembic; new tables
+  `grading_labels` + `graded_price_snapshots`, new `scan_logs.rectified_path` + `variant`.
+- **Rectified-crop persistence** — the 600×825 rectified PNG is written to `data/rectified/` and
+  stamped on the scan log; the normalized input a future corner/edge/surface grader consumes.
+- **Grade-label store + self-annotation API** — `POST/GET /scans/{id}/grade-label`,
+  `GET /grading/labels`; the only honest labelled dataset is the user's own mailed-in grades.
+- **Graded-price provider + service** — `PkmnPricesProvider` (env-keyed, degrades to `[]` without a
+  key, never raises) + `GradedPriceService`; CLI `refresh-graded-prices`. Documented follow-ups:
+  PkmnPrices↔`base1-4` id mapping; pagination.
+- **Grading-upside spread** — `GET /cards/{id}/grading-upside?variant=` returns raw / PSA-9 / PSA-10
+  comps + fee + `upside_to_10` (null unless both inputs present) + `graded_prices_unavailable`. A
+  **spread, not a prediction** — P(grade) needs the labelled dataset we're only starting to collect.
+- **Frontend** — `GradingUpside` panel (honest empty states: `—` + "no market price",
+  graded-unavailable → the API-key hint, never `$0.00`) + a `ScanResult` self-annotation form.
+- **Site** — new scroll-animated Grading section (Centering lit; Corners/Edges/Surface dimmed with
+  "Needs labelled data" tags that never light up) + roadmap row 03b; rebuilt → `docs/`.
+
 ## Carried into Phase 1 (from the final Phase 0 review)
 
 Verified against the real 20,444-card database — resolve these when planning Phase 1:
@@ -387,4 +419,8 @@ different inputs, so the system knows when it is unsure.
 
 ## Next step
 
-Write the Phase 0+1 implementation plan.
+The full Grade predictor (corner/edge/surface scoring + P(grade) + grading EV). The data
+infrastructure is unblocked (3b): rectified crops persist, grade-labels + self-annotation collect the
+only honest labelled dataset, and the graded-price provider + grading-upside spread are live. What
+remains is the corner/edge/surface scoring and the P(grade) model — which needs the labelled dataset
+to accrue from real mailed-in grades.
