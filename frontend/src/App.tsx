@@ -148,6 +148,7 @@ export default function App() {
                 <ScanResult
                   result={result}
                   variant={VARIANT}
+                  scanId={scanId}
                   onConfirm={handleConfirm}
                   onPick={handlePick}
                   onReject={handleReject}

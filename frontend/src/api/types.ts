@@ -145,3 +145,56 @@ export interface Scan {
   visual_margin: number | null;
   collector_number_read: string | null;
 }
+
+// The third-party graders a self-annotation can name. The backend stores grader
+// as a free string, but the UI only offers these three — the labels Lucas mails
+// in himself are the project's only honest labelled dataset, so the choice is
+// constrained to the services that actually grade Pokémon cards.
+export type Grader = "PSA" | "CGC" | "BGS";
+
+// One tier of the raw-vs-graded price spread (raw / psa9 / psa10). `market` may
+// be null when a graded comp exists in the source without a market figure, and
+// the whole tier is null when the underlying snapshot is missing — never a
+// fabricated $0 (the project's sacred convention; see PortfolioView.tsx, which
+// renders an em dash and "no market price" rather than a flat zero). `source`
+// and `source_updated_at` travel with every figure so the UI can say where a
+// number came from and how old it is.
+export interface GradingTier {
+  market: number | null;
+  source: string;
+  source_updated_at: string | null;
+}
+
+// The raw-vs-graded price SPREAD, not a grade prediction. `upside_to_10` is null
+// unless BOTH raw_price and psa10 are present; a fabricated number from a
+// missing input would be confidently-wrong. `graded_prices_unavailable` is true
+// only when psa9 AND psa10 are both null, signalling the UI to show "graded
+// prices unavailable — set a graded-price provider key" instead of a misleading
+// panel of zeroes. Mirrors GradingUpsideOut in backend api.py field-for-field.
+export interface GradingUpside {
+  card_id: string;
+  variant: string;
+  raw_price: GradingTier | null;
+  psa9: GradingTier | null;
+  psa10: GradingTier | null;
+  grading_fee: number;
+  upside_to_10: number | null;
+  graded_prices_unavailable: boolean;
+}
+
+// A third-party grade attached to one scan — the only honest labelled data the
+// project collects. `variant` is nullable: a scan that never picked a variant
+// carries an honest None, never a fabricated "normal". One label per scan;
+// re-grading upserts the same row, so `id` is stable across corrections. Mirrors
+// GradingLabelOut in backend api.py field-for-field.
+export interface GradingLabel {
+  id: number;
+  scan_id: number;
+  card_id: string;
+  variant: string | null;
+  grade: number;
+  grader: Grader;
+  cert_number: string | null;
+  notes: string | null;
+  created_at: string;
+}

@@ -1,5 +1,8 @@
 import type {
   CollectionItem,
+  Grader,
+  GradingLabel,
+  GradingUpside,
   Portfolio,
   Price,
   PriceHistory,
@@ -171,4 +174,50 @@ export async function getPriceHistory(
   return expectJson<PriceHistory>(
     await fetch(`${BASE}/cards/${cardId}/prices/history?${params}`),
   );
+}
+
+// The raw-vs-graded price spread (NOT a grade prediction). Mirrors
+// getResolvedPrice: query-string variant, expectJson for the body.
+export async function getGradingUpside(
+  cardId: string,
+  variant: string,
+): Promise<GradingUpside> {
+  const params = new URLSearchParams({ variant });
+  return expectJson<GradingUpside>(
+    await fetch(`${BASE}/cards/${cardId}/grading-upside?${params}`),
+  );
+}
+
+// The label attached to a scan, or null when none exists yet. "No label yet"
+// is the common case (most scans are never mailed in) and the backend signals
+// it with 404 — distinct from a real error, so we swallow it to null rather
+// than throwing, mirroring jsonOrNull's treatment of 204 for unpriced cards.
+export async function getGradeLabel(scanId: number): Promise<GradingLabel | null> {
+  const response = await fetch(`${BASE}/scans/${scanId}/grade-label`);
+  if (response.status === 404) return null;
+  if (!response.ok) {
+    throw new Error(`request failed: ${response.status}`);
+  }
+  return (await response.json()) as GradingLabel;
+}
+
+// Record the grade a user received back from PSA/CGC/BGS for this scan. The
+// backend resolves card_id/variant from the scan itself (never the body), so
+// the label always describes the card the scan identified — the body carries
+// only grade, grader, cert_number, notes (matches GradingLabelIn in api.py).
+export async function postGradeLabel(
+  scanId: number,
+  body: {
+    grade: number;
+    grader: Grader;
+    cert_number?: string | null;
+    notes?: string | null;
+  },
+): Promise<GradingLabel> {
+  const response = await fetch(`${BASE}/scans/${scanId}/grade-label`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return expectJson<GradingLabel>(response);
 }
