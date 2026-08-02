@@ -3,8 +3,9 @@
 `AlertEngine.check_alerts()` runs one tick: every active `Watch` is evaluated
 against the latest listing state (via `ListingsService`) and/or the clock, and
 fired alerts are written as immutable `AlertEvent` rows. The engine NEVER raises
-out of `check_alerts()` — one bad watch (or a failing notifier) is logged and
-skipped so a single corrupt row cannot silence the rest of the tick.
+out of `check_alerts()` — one bad watch (or a failing notifier, or a transient
+commit failure) is logged and skipped so a single corrupt row or DB blip cannot
+silence the rest of the tick or crash the poll loop.
 
 CRITICAL design decision — baselines live on the WATCH, not the snapshot table:
 
@@ -130,7 +131,8 @@ class AlertEngine:
 
     def check_alerts(self) -> int:
         """Evaluate every active Watch, write AlertEvent rows, commit once.
-        Returns the count of events created this tick. Never raises."""
+        Returns the count of events created this tick. Never raises — not on a
+        bad watch, a failing notifier, nor a transient final-commit failure."""
         count = 0
         watches = (
             self.session.query(Watch)
@@ -140,11 +142,37 @@ class AlertEngine:
         )
         for w in watches:
             try:
-                count += self._eval(w)
+                # A SAVEPOINT isolates this watch's flush from the outer
+                # transaction. If _eval (or _fire's flush) raises, the savepoint
+                # ROLLs back to here and re-raises; the outer except swallows it
+                # and the session stays usable for the next watch. Without this,
+                # a flush IntegrityError would poison the session with a pending
+                # rollback -> every later watch's first query raises
+                # PendingRollbackError and the final commit would ESCAPE,
+                # violating the never-raise contract. Prior watches' successful
+                # rows stay in the outer (uncommitted) transaction and are
+                # committed by the final commit below.
+                with self.session.begin_nested():
+                    count += self._eval(w)
             except Exception:
                 # One bad watch must not silence the rest of the tick.
+                # begin_nested()'s context manager already rolled back to the
+                # savepoint on the exception; the session remains usable.
                 log.warning("watch %s evaluation failed", w.id, exc_info=True)
-        self.session.commit()
+                continue
+        # Truly never-raise: a transient commit failure (hard DB error) is logged
+        # and rolled back rather than crashing the T5 poll loop. The count of
+        # events created this tick is returned even if the commit failed (those
+        # rows are lost on rollback, but the caller still gets an honest int and
+        # the loop survives).
+        try:
+            self.session.commit()
+        except Exception:
+            log.warning("check_alerts final commit failed; rolling back", exc_info=True)
+            try:
+                self.session.rollback()
+            except Exception:
+                log.warning("rollback after failed commit also failed", exc_info=True)
         return count
 
     def _eval(self, w: Watch) -> int:
@@ -287,7 +315,9 @@ class AlertEngine:
             # serialized listing_id is the pragmatic dedupe — this mirrors the
             # codebase's func.lower().like text-search convention adapted to a
             # JSON string. A structured column would be cleaner but is out of
-            # scope for T3's schema.
+            # scope for T3's schema. listing_ids are numeric/opaque (no LIKE
+            # wildcards or quotes); a mixed/wildcard id source would need a
+            # dedicated dedupe column.
             already = (
                 self.session.query(AlertEvent)
                 .filter(

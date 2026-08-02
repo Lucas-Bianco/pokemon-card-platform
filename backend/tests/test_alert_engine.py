@@ -507,3 +507,58 @@ def test_notifier_dispatched_and_failure_does_not_break(seeded):
     # The notifier dispatched for both (append happens before the conditional raise).
     assert len(notifier.events) == 2
     # No exception propagated (we reached these assertions).
+
+
+def test_flush_failure_does_not_poison_tick(seeded):
+    """A flush IntegrityError during the FIRST watch's _fire must not poison the
+    session for the rest of the tick. The SAVEPOINT rolls back the failed
+    insert, the second watch still fires, and check_alerts returns without
+    raising (the final commit also does not escape).
+
+    Path taken: monkeypatch `session.flush` to raise `sqlalchemy.exc.
+    IntegrityError` on the first flush that runs while an AlertEvent is
+    pending in `session.new` — i.e. the explicit flush inside `_fire` for the
+    first watch (the only place an AlertEvent is added then flushed). This
+    simulates an FK violation on AlertEvent insert (the realistic
+    flush-poisoning trigger, since AlertEvent has no unique constraint) and
+    directly exercises the PendingRollbackError cascade the SAVEPOINT
+    isolation guards; a bare refresh-raises test would not, because refresh
+    happens before any flush.
+    """
+    from sqlalchemy.exc import IntegrityError
+
+    w1 = _watch(seeded, alert_type="new_listing", last_seen_listing_ids=json.dumps(["A"]))
+    w2 = _watch(seeded, alert_type="new_listing", last_seen_listing_ids=json.dumps(["A"]))
+    fake = FakeListingsService(listings=[_listing("A"), _listing("B")])
+    eng = AlertEngine(seeded, listings_service=fake, clock=Clock())
+
+    real_flush = seeded.flush
+    poisoned = {"first": True}
+
+    def flaky_flush(*a, **kw):
+        # Only poison the flush that has an AlertEvent pending (inside _fire).
+        # Autoflushes from the initial Watch query run with session.new empty
+        # and must be left alone so the tick can start.
+        has_alert = any(isinstance(o, AlertEvent) for o in seeded.new)
+        if has_alert and poisoned["first"]:
+            poisoned["first"] = False
+            raise IntegrityError(
+                "INSERT INTO alert_events ... FOREIGN KEY constraint failed",
+                {},
+                Exception("fk violation"),
+            )
+        return real_flush(*a, **kw)
+
+    seeded.flush = flaky_flush
+    try:
+        # Must not raise — not on the failed watch, not on the final commit.
+        n = eng.check_alerts()
+    finally:
+        seeded.flush = real_flush
+
+    assert isinstance(n, int)
+    evs = _events(seeded)
+    # w1's event was rolled back by the savepoint; w2's event persisted.
+    assert len(evs) == 1
+    assert evs[0].watch_id == w2.id
+    assert evs[0].alert_type == "new_listing"
