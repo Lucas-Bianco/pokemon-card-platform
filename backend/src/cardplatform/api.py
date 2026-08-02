@@ -22,6 +22,7 @@ from cardplatform.collection.store import (
 )
 from cardplatform.grading.centering import CenteringResult, psa_cap_for
 from cardplatform.grading.store import GradingLabelStore
+from cardplatform.grading.upside import GradingUpsideService
 from cardplatform.db.models import Card, CollectionItem, GradingLabel, PriceSnapshot, ScanLog
 from cardplatform.db.session import Database
 from cardplatform.prices.service import PriceService
@@ -359,6 +360,42 @@ class ValuationOut(BaseModel):
     unpriced_items: int
 
 
+class GradingUpsideTierOut(BaseModel):
+    """One tier of the grading spread (raw / psa9 / psa10), or null when unpriced.
+
+    `market` may be null when the snapshot exists but carries no market figure, and
+    the whole object is null when the underlying snapshot is missing — never a
+    fabricated $0 (the project's sacred convention; see frontend PortfolioView.tsx
+    and PriceChart.tsx, which render an em dash and "no market price" rather than
+    a flat zero). `source` and `source_updated_at` travel with every figure so the
+    UI can say where a number came from and how old it is.
+    """
+
+    market: float | None
+    source: str
+    source_updated_at: str
+
+
+class GradingUpsideOut(BaseModel):
+    """The raw-vs-graded price spread, NOT a grade prediction.
+
+    `upside_to_10` is null unless BOTH raw_price and psa10 are present; a fabricated
+    number from a missing input would be confidently-wrong. `graded_prices_unavailable`
+    is true only when psa9 AND psa10 are both null, signalling the frontend to show
+    "graded prices unavailable — set a graded-price provider key" instead of a
+    misleading panel of zeroes.
+    """
+
+    card_id: str
+    variant: str
+    raw_price: GradingUpsideTierOut | None
+    psa9: GradingUpsideTierOut | None
+    psa10: GradingUpsideTierOut | None
+    grading_fee: float
+    upside_to_10: float | None
+    graded_prices_unavailable: bool
+
+
 def create_app() -> FastAPI:
     app = FastAPI(title="ClaudeKnowledge", version="0.1.0")
 
@@ -471,6 +508,30 @@ def create_app() -> FastAPI:
         service = PriceService(session, provider)
         service.refresh_card(card_id)
         return _price_response(service.latest_price(card_id, variant))
+
+    @app.get("/cards/{card_id}/grading-upside", response_model=GradingUpsideOut)
+    def grading_upside(
+        card_id: str,
+        variant: str = Query(...),
+        session: Session = Depends(get_session),
+    ) -> GradingUpsideOut:
+        """The grading-upside spread: raw price vs PSA-9 vs PSA-10 minus the grading fee.
+
+        This is a PRICE SPREAD, NOT a grade prediction. It does not estimate
+        P(PSA 10) for this card — that needs the grade predictor we don't have yet
+        (Phase 3c). It answers the simpler honest question the user can already
+        act on: given today's raw market price, today's PSA-9/10 market prices,
+        and the bulk grading fee, what is the dollar upside to a PSA-10?
+
+        `variant` is required because the raw price is variant-specific. Every
+        price field is null when the underlying snapshot is missing, never a
+        fabricated $0. `upside_to_10` is null unless BOTH raw and psa10 are
+        present. Unknown card returns 404 (not an empty 200).
+        """
+        _require_card(session, card_id)
+        return GradingUpsideOut(
+            **GradingUpsideService(session).upside(card_id, variant)
+        )
 
     @app.post("/scans", response_model=ScanOut, status_code=201)
     async def record_scan(
