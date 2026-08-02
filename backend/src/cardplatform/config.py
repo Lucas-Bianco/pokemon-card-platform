@@ -52,6 +52,13 @@ class Settings(BaseSettings):
     # "grading upside" spread (graded market price minus raw price minus fee).
     grading_fee: float = Field(default=25.0)
 
+    # Graded-price source (PkmnPrices eBay sold comps). Opt-in: when the key is
+    # None (the default) the provider returns [] without touching the network,
+    # so graded prices are simply unavailable until a key is configured. Base
+    # URL per https://www.pkmnprices.com/docs (endpoint /v1/cards/:id/listings/ebay).
+    graded_price_api_key: str | None = Field(default=None)
+    graded_price_base_url: str = Field(default="https://api.pkmnprices.com/v1")
+
     @property
     def db_path(self) -> Path:
         return self.data_dir / "cardplatform.sqlite3"

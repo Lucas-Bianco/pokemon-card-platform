@@ -9,7 +9,9 @@ import sys
 from cardplatform.catalog.dump import DumpClient
 from cardplatform.catalog.loader import CatalogLoader
 from cardplatform.db.session import Database
+from cardplatform.prices.pkmnprices import PkmnPricesProvider
 from cardplatform.prices.pokemontcg import PokemonTcgIoProvider
+from cardplatform.prices.graded_service import GradedPriceService
 from cardplatform.prices.service import PriceService
 
 
@@ -58,6 +60,41 @@ def refresh_prices(args: argparse.Namespace) -> int:
             print(f"  {card_id}: {written} new snapshot(s)", flush=True)
 
     print(f"Total: {total} new snapshot(s) across {len(card_ids)} card(s)")
+    return 0
+
+
+def refresh_graded_prices(args: argparse.Namespace) -> int:
+    """Fetch and store new graded-price snapshots (PSA/CGC/BGS sold comps).
+
+    Mirrors refresh-prices: one or more card ids, a row count per card, a
+    running total. Graded prices are opt-in via CARDPLATFORM_GRADED_PRICE_API_KEY;
+    when no key is set the PkmnPrices provider returns [] without a network call,
+    so this command prints a clear "not configured" message and exits 0 rather
+    than failing — graded prices are simply unavailable, not an error.
+    """
+    db = Database()
+    db.create_all()
+
+    if not db.settings.graded_price_api_key:
+        print(
+            "graded-price API key not set — set CARDPLATFORM_GRADED_PRICE_API_KEY "
+            "to enable graded-price refresh from PkmnPrices."
+        )
+        return 0
+
+    card_ids: list[str] = args.card_ids
+    print(f"Refreshing graded prices for {len(card_ids)} card(s) from "
+          f"{db.settings.graded_price_base_url}", flush=True)
+
+    total = 0
+    with db.session() as session:
+        service = GradedPriceService(session, PkmnPricesProvider(db.settings))
+        for card_id in card_ids:
+            written = service.refresh_graded(card_id)
+            total += written
+            print(f"  {card_id}: {written} new graded snapshot(s)", flush=True)
+
+    print(f"Total: {total} new graded snapshot(s) across {len(card_ids)} card(s)")
     return 0
 
 
@@ -208,6 +245,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     refresh.add_argument("card_ids", nargs="+", metavar="CARD_ID", help="e.g. base1-4")
     refresh.set_defaults(handler=refresh_prices)
+
+    refresh_graded = subparsers.add_parser(
+        "refresh-graded-prices",
+        help="Fetch PSA/CGC/BGS graded sold-comp prices per card (PkmnPrices).",
+    )
+    refresh_graded.add_argument("card_ids", nargs="+", metavar="CARD_ID", help="e.g. base1-4")
+    refresh_graded.set_defaults(handler=refresh_graded_prices)
 
     refresh_all = subparsers.add_parser(
         "refresh-collection-prices",
