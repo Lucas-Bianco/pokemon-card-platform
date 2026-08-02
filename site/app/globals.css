@@ -981,6 +981,143 @@ body {
   color: var(--accent);
 }
 
+/* --- Alerts --- */
+.alert-chips {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.alert-chip {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px 18px;
+  will-change: opacity, transform;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+/* "Lit up" state — applied by GSAP once a chip has fully arrived on scroll.
+   Without JS the class never toggles, but the chip is still fully visible at
+   natural CSS (opacity 1); only the accent border is missing. */
+.alert-chip.is-lit {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent), var(--shadow-2);
+}
+
+.alert-icon {
+  font-size: 1.4rem;
+  line-height: 1;
+}
+
+.alert-name {
+  font-size: 1.04rem;
+  font-weight: 600;
+}
+
+.alert-note {
+  color: var(--fg-dim);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.alert-key-tag {
+  display: inline-block;
+  margin-top: 4px;
+  font-family: var(--font-jetbrains);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ok);
+  border: 1px solid color-mix(in srgb, var(--ok) 40%, var(--line));
+  border-radius: 999px;
+  padding: 3px 9px;
+  align-self: flex-start;
+}
+
+.alert-channels {
+  margin: 48px 0 0;
+}
+
+.alert-channels-title {
+  margin: 0 0 16px;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.channel-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.channel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.channel.is-on {
+  border-color: color-mix(in srgb, var(--ok) 40%, var(--line));
+}
+
+.channel.is-opt {
+  opacity: 0.85;
+}
+
+.channel-name {
+  font-size: 0.98rem;
+  font-weight: 600;
+}
+
+.channel-note {
+  font-family: var(--font-jetbrains);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-faint);
+}
+
+.channel.is-on .channel-note {
+  color: var(--ok);
+}
+
+.alert-caption {
+  margin: 32px 0 0;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+  color: var(--fg-dim);
+  font-size: 0.94rem;
+  line-height: 1.65;
+  max-width: 72ch;
+}
+
+@media (max-width: 720px) {
+  .channel-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .alert-chips {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* --- Reduced motion: disable decorative animation, keep content visible --- */
 @media (prefers-reduced-motion: reduce) {
   .poke-card {
@@ -997,6 +1134,13 @@ body {
   .grade-dim {
     opacity: 1 !important;
     transform: none !important;
+  }
+  .alert-chip {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+  .alert-chip.is-lit {
+    /* keep the lit border in reduced motion — it's semantic, not decorative */
   }
   .spread-bar-fill {
     transition: none !important;
