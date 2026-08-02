@@ -350,3 +350,117 @@ def test_run_migrations_continues_after_a_transient_operational_error(tmp_path, 
     with database.engine.connect() as c:
         cols = {r[1] for r in c.execute(text("PRAGMA table_info(scan_logs)")).fetchall()}
     assert "variant" in cols  # the loop continued past the swallowed error
+
+
+# --- T3: grading_labels.variant nullable rebuild (see _ensure_grading_labels_nullable) ---
+
+# The DDL T1 originally created `grading_labels` with: `variant VARCHAR NOT NULL`.
+# Used below to simulate a DB built before T3 relaxed the column, so the rebuild
+# migration has a NOT-NULL table to act on. Built by hand (not from the current
+# model, which is nullable) so the test actually exercises the NOT-NULL branch.
+_T1_GRADING_LABELS_DDL = """
+CREATE TABLE grading_labels (
+    id INTEGER NOT NULL,
+    scan_id INTEGER NOT NULL,
+    card_id VARCHAR NOT NULL,
+    variant VARCHAR NOT NULL,
+    grade FLOAT NOT NULL,
+    grader VARCHAR NOT NULL,
+    cert_number VARCHAR,
+    notes VARCHAR,
+    created_at DATETIME NOT NULL,
+    PRIMARY KEY (id),
+    UNIQUE (scan_id),
+    FOREIGN KEY(scan_id) REFERENCES scan_logs (id),
+    FOREIGN KEY(card_id) REFERENCES cards (id)
+)
+"""
+
+
+def _variant_notnull(engine) -> bool:
+    """True if grading_labels.variant still carries a NOT NULL constraint."""
+    with engine.connect() as c:
+        info = c.execute(text("PRAGMA table_info(grading_labels)")).fetchall()
+    variant_row = next((r for r in info if r[1] == "variant"), None)
+    # PRAGMA table_info: (cid, name, type, notnull, dflt_value, pk)
+    return bool(variant_row and variant_row[3])
+
+
+def _reset_grading_labels_to_t1_shape(engine) -> None:
+    """Drop the nullable table create_all made and rebuild it NOT NULL (T1 shape)."""
+    with engine.begin() as conn:
+        conn.execute(text("DROP TABLE grading_labels"))
+        conn.execute(text(_T1_GRADING_LABELS_DDL))
+
+
+def test_grading_labels_rebuild_skips_a_non_empty_table(tmp_path, caplog):
+    """The rebuild's whole safety story: a non-empty grading_labels table is
+    never dropped/rebuilt, even when its variant column is NOT NULL.
+
+    If this guard regressed, real user labels would be silently destroyed on the
+    next startup. This test seeds one row into a T1-shaped (NOT NULL variant)
+    table, runs the migration, and asserts the row survives, the column stays
+    NOT NULL (i.e. the table was NOT rebuilt), and a warning was logged.
+    """
+    database = Database(Settings(data_dir=tmp_path))
+    database.create_all()  # builds grading_labels with the current nullable variant
+    with database.session() as s:
+        _seed_card(s)
+        s.add(ScanLog(image_path="scans/x.png", predicted_card_id="base1-4", status="confident"))
+        s.commit()
+
+    _reset_grading_labels_to_t1_shape(database.engine)
+    assert _variant_notnull(database.engine) is True
+
+    with database.engine.begin() as conn:
+        # Insert a real label into the NOT-NULL table (variant required).
+        conn.execute(
+            text(
+                "INSERT INTO grading_labels "
+                "(scan_id, card_id, variant, grade, grader, created_at) "
+                "VALUES (1, 'base1-4', 'holofoil', 9.0, 'PSA', '2026-01-01 00:00:00')"
+            )
+        )
+
+    with caplog.at_level(logging.WARNING, logger="cardplatform.db.migrations"):
+        run_migrations(database.engine)
+
+    # The table was NOT rebuilt: row survives and variant is still NOT NULL.
+    assert _variant_notnull(database.engine) is True
+    with database.engine.connect() as c:
+        count = c.execute(text("SELECT COUNT(*) FROM grading_labels")).scalar()
+    assert count == 1
+    assert any("leaving as-is" in rec.message for rec in caplog.records)
+
+
+def test_grading_labels_rebuild_rebuilds_an_empty_table_to_nullable(tmp_path, caplog):
+    """An empty NOT-NULL grading_labels table IS rebuilt to nullable (happy path).
+
+    This is the case the migration exists for: a DB built under T1 (NOT NULL
+    variant) with no labels yet. After run_migrations the column is nullable and
+    the rebuild is logged at info.
+    """
+    database = Database(Settings(data_dir=tmp_path))
+    database.create_all()
+    with database.session() as s:
+        _seed_card(s)
+        s.add(ScanLog(image_path="scans/x.png", predicted_card_id="base1-4", status="confident"))
+        s.commit()  # scan_logs row id=1, so the NULL-variant insert below satisfies its FK
+
+    _reset_grading_labels_to_t1_shape(database.engine)
+    assert _variant_notnull(database.engine) is True
+
+    with caplog.at_level(logging.INFO, logger="cardplatform.db.migrations"):
+        run_migrations(database.engine)
+
+    assert _variant_notnull(database.engine) is False
+    assert any("rebuilt empty grading_labels" in rec.message for rec in caplog.records)
+    # A nullable None variant can now be inserted (the point of the migration).
+    with database.engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO grading_labels "
+                "(scan_id, card_id, variant, grade, grader, created_at) "
+                "VALUES (1, 'base1-4', NULL, 9.0, 'PSA', '2026-01-01 00:00:00')"
+            )
+        )

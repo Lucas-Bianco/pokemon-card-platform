@@ -79,10 +79,10 @@ def run_migrations(engine: Engine) -> None:
                 # startup retries rather than hard-failing the whole migration.
                 logger.warning("migrations: failed to add %s.%s: %s", table, column, exc)
 
-        _ensure_grading_labels_variant_nullable(conn, engine, actual_tables)
+        _ensure_grading_labels_variant_nullable(conn, actual_tables)
 
 
-def _ensure_grading_labels_variant_nullable(conn, engine, actual_tables: set[str]) -> None:
+def _ensure_grading_labels_variant_nullable(conn, actual_tables: set[str]) -> None:
     """One-time fix-up for T1's `grading_labels.variant` NOT NULL column.
 
     T3 stores None there: a scan that never picked a variant is honestly
