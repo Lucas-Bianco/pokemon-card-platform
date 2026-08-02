@@ -73,7 +73,7 @@ def _upside(client, variant="holofoil"):
 
 # --- Full spread: all three tiers present ------------------------------------
 
-def test_full_spade_computes_upside_to_10(seeded, client):
+def test_full_spread_computes_upside_to_10(seeded, client):
     """raw + psa9 + psa10 all present -> upside_to_10 == psa10.market - raw.market - fee."""
     _raw(seeded, market=120.0)
     _graded(seeded, grade=9.0, market=350.0)
@@ -150,6 +150,48 @@ def test_only_psa9_present_psa10_null(seeded, client):
     assert body["psa10"] is None
     assert body["upside_to_10"] is None  # needs psa10 specifically
     assert body["graded_prices_unavailable"] is False
+
+
+# --- Unpriced snapshots: market=None on an EXISTING row ---------------------
+# PriceSnapshot.market / GradedPriceSnapshot.market are Mapped[float | None]. The
+# upside_to_10 guard at upside.py:97-102 checks raw_dict["market"] is not None AND
+# psa10_dict["market"] is not None — these tests pin that guard against a future
+# refactor that loosened it to only `raw_dict is not None`, which would compute
+# None - None - 25.0 -> TypeError -> 500 on a real unpriced snapshot.
+
+def test_unpriced_raw_snapshot_nulls_upside_to_10(seeded, client):
+    """A raw snapshot that EXISTS but carries market=None must not blow up the
+    spread. The tier object still surfaces (source travels with it), but
+    upside_to_10 is null because raw.market is None — never a fabricated number
+    and never a 500."""
+    _raw(seeded, market=None)
+    _graded(seeded, grade=10.0, market=1200.0)
+
+    body = _upside(client).json()
+
+    assert body["raw_price"]["market"] is None
+    assert body["raw_price"]["source"] == "tcgplayer"  # tier still surfaces source
+    assert body["raw_price"]["source_updated_at"] == "2026/07/29"
+    assert body["psa10"]["market"] == 1200.0
+    assert body["upside_to_10"] is None  # raw.market None -> can't compute
+    assert body["graded_prices_unavailable"] is False  # psa10 IS available
+
+
+def test_unpriced_psa10_snapshot_nulls_upside_to_10(seeded, client):
+    """Symmetric: a psa10 snapshot that EXISTS but carries market=None. The tier
+    object still surfaces source, but upside_to_10 is null because psa10.market
+    is None."""
+    _raw(seeded, market=120.0)
+    _graded(seeded, grade=10.0, market=None)
+
+    body = _upside(client).json()
+
+    assert body["raw_price"]["market"] == 120.0
+    assert body["psa10"]["market"] is None
+    assert body["psa10"]["source"] == "pkmnprices"  # tier still surfaces source
+    assert body["psa10"]["source_updated_at"] == "2026/07/28"
+    assert body["upside_to_10"] is None  # psa10.market None -> can't compute
+    assert body["graded_prices_unavailable"] is False  # psa10 row EXISTS
 
 
 # --- 404 / fee --------------------------------------------------------------
