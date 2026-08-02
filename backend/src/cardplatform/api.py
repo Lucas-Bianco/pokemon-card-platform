@@ -1,9 +1,11 @@
-"""HTTP read/write layer over the local catalog, prices, and collection."""
+"""HTTP read/write layer over the local catalog, prices, collection, and scans."""
 
 from __future__ import annotations
 
+import asyncio
 import io
-from datetime import datetime
+import logging
+from datetime import datetime, timezone
 from typing import Iterator
 
 from fastapi import Depends, FastAPI, File, HTTPException, Query, Response, UploadFile
@@ -13,6 +15,16 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from cardplatform.alerts.api_models import (
+    AlertEventOut,
+    ListingOut,
+    PushSubscribeIn,
+    WatchCreate,
+    WatchOut,
+    WatchPatch,
+)
+from cardplatform.alerts.engine import AlertEngine
+from cardplatform.alerts.notify import NotificationService
 from cardplatform.collection.store import (
     Allocation,
     CollectionStore,
@@ -20,15 +32,34 @@ from cardplatform.collection.store import (
     PortfolioItem,
     PortfolioSummary,
 )
+from cardplatform.config import settings
 from cardplatform.grading.centering import CenteringResult, psa_cap_for
 from cardplatform.grading.store import GradingLabelStore
 from cardplatform.grading.upside import GradingUpsideService
-from cardplatform.db.models import Card, CollectionItem, GradingLabel, PriceSnapshot, ScanLog
+from cardplatform.db.models import (
+    AlertEvent,
+    Card,
+    CollectionItem,
+    GradingLabel,
+    ListingSnapshot,
+    PriceSnapshot,
+    PushSubscription,
+    ScanLog,
+    Watch,
+)
 from cardplatform.db.session import Database
+from cardplatform.prices.ebay_listings import EbayListingsProvider
+from cardplatform.prices.listings_service import ListingsService
 from cardplatform.prices.service import PriceService
 from cardplatform.scans.store import ScanStore
 
 _database: Database | None = None
+
+log = logging.getLogger(__name__)
+
+# Alert types the watchlist accepts on POST. Validation lives in the endpoint
+# (not Pydantic) because the required-fields-per-type rule is conditional.
+_ALERT_TYPES = {"restock", "new_listing", "price_target", "auction_ending", "drop_time"}
 
 
 def _get_database() -> Database:
@@ -781,6 +812,252 @@ def create_app() -> FastAPI:
         a no-op; clearing the row returns 204 either way."""
         CollectionStore(session).remove(card_id, variant=variant, quantity=quantity)
         return Response(status_code=204)
+
+    # --------------------------------------------------------------- watchlist
+    # Phase 3c: alert subscriptions. Filters are exact-match (card_id, active) —
+    # the watchlist has no free-text search, so no ilike. Ordered newest first
+    # (id desc), consistent with the grading-labels feed.
+    @app.get("/watchlist", response_model=list[WatchOut])
+    def list_watches(
+        card_id: str | None = Query(default=None),
+        active: bool | None = Query(default=None),
+        session: Session = Depends(get_session),
+    ) -> list[WatchOut]:
+        stmt = select(Watch).order_by(Watch.id.desc())
+        if card_id is not None:
+            stmt = stmt.where(Watch.card_id == card_id)
+        if active is not None:
+            stmt = stmt.where(Watch.active == active)
+        rows = session.scalars(stmt).all()
+        return [WatchOut.model_validate(r) for r in rows]
+
+    @app.post("/watchlist", response_model=WatchOut, status_code=201)
+    def create_watch(
+        payload: WatchCreate, session: Session = Depends(get_session)
+    ) -> WatchOut:
+        if payload.alert_type not in _ALERT_TYPES:
+            raise HTTPException(
+                status_code=422,
+                detail=f"alert_type must be one of {sorted(_ALERT_TYPES)}",
+            )
+        if payload.alert_type == "price_target" and payload.target_price is None:
+            raise HTTPException(
+                status_code=422,
+                detail="target_price is required for alert_type 'price_target'",
+            )
+        if payload.alert_type == "drop_time" and payload.drop_at is None:
+            raise HTTPException(
+                status_code=422,
+                detail="drop_at is required for alert_type 'drop_time'",
+            )
+        if payload.card_id is not None:
+            _require_card(session, payload.card_id)
+        watch = Watch(
+            card_id=payload.card_id,
+            subject_label=payload.subject_label,
+            variant=payload.variant,
+            alert_type=payload.alert_type,
+            target_price=payload.target_price,
+            drop_at=payload.drop_at,
+            lead_time_min=payload.lead_time_min,
+            auction_window_min=payload.auction_window_min,
+            active=True,
+        )
+        session.add(watch)
+        session.commit()
+        session.refresh(watch)
+        return WatchOut.model_validate(watch)
+
+    @app.patch("/watchlist/{watch_id}", response_model=WatchOut)
+    def patch_watch(
+        watch_id: int,
+        payload: WatchPatch,
+        session: Session = Depends(get_session),
+    ) -> WatchOut:
+        watch = session.get(Watch, watch_id)
+        if watch is None:
+            raise HTTPException(status_code=404, detail="unknown watch")
+        if payload.active is not None:
+            watch.active = payload.active
+        if payload.target_price is not None:
+            watch.target_price = payload.target_price
+        if payload.drop_at is not None:
+            watch.drop_at = payload.drop_at
+        if payload.lead_time_min is not None:
+            watch.lead_time_min = payload.lead_time_min
+        if payload.auction_window_min is not None:
+            watch.auction_window_min = payload.auction_window_min
+        session.commit()
+        session.refresh(watch)
+        return WatchOut.model_validate(watch)
+
+    @app.delete("/watchlist/{watch_id}")
+    def delete_watch(
+        watch_id: int, session: Session = Depends(get_session)
+    ) -> Response:
+        watch = session.get(Watch, watch_id)
+        if watch is None:
+            raise HTTPException(status_code=404, detail="unknown watch")
+        session.delete(watch)
+        session.commit()
+        return Response(status_code=204)
+
+    # --------------------------------------------------------------- alerts feed
+    # The engine fires AlertEvents in T3; this layer reads them and flips read_at.
+    @app.get("/alerts", response_model=list[AlertEventOut])
+    def list_alerts(
+        unread: bool | None = Query(default=None),
+        limit: int = Query(default=50, ge=1, le=200),
+        offset: int = Query(default=0, ge=0),
+        session: Session = Depends(get_session),
+    ) -> list[AlertEventOut]:
+        stmt = select(AlertEvent).order_by(
+            AlertEvent.created_at.desc(), AlertEvent.id.desc()
+        ).limit(limit).offset(offset)
+        if unread:
+            stmt = stmt.where(AlertEvent.read_at.is_(None))
+        rows = session.scalars(stmt).all()
+        return [AlertEventOut.model_validate(r) for r in rows]
+
+    # Declared before /alerts/{id}: a literal path must be registered ahead of
+    # the parameterised one, or "read-all" / "unread-count" are captured as an id.
+    @app.post("/alerts/read-all")
+    def read_all_alerts(session: Session = Depends(get_session)) -> dict[str, int]:
+        now = datetime.now(timezone.utc)
+        rows = session.scalars(
+            select(AlertEvent).where(AlertEvent.read_at.is_(None))
+        ).all()
+        for row in rows:
+            row.read_at = now
+        session.commit()
+        return {"updated": len(rows)}
+
+    @app.get("/alerts/unread-count")
+    def alerts_unread_count(session: Session = Depends(get_session)) -> dict[str, int]:
+        count = session.scalar(
+            select(func.count(AlertEvent.id)).where(AlertEvent.read_at.is_(None))
+        )
+        return {"count": int(count or 0)}
+
+    @app.patch("/alerts/{alert_id}", response_model=AlertEventOut)
+    def mark_alert_read(
+        alert_id: int, session: Session = Depends(get_session)
+    ) -> AlertEventOut:
+        event = session.get(AlertEvent, alert_id)
+        if event is None:
+            raise HTTPException(status_code=404, detail="unknown alert")
+        event.read_at = datetime.now(timezone.utc)
+        session.commit()
+        session.refresh(event)
+        return AlertEventOut.model_validate(event)
+
+    # --------------------------------------------------------------- listings
+    @app.post("/cards/{card_id}/listings")
+    def refresh_card_listings(
+        card_id: str,
+        variant: str | None = Query(default=None),
+        session: Session = Depends(get_session),
+    ) -> dict:
+        """Refresh + return the latest marketplace listings for this card.
+
+        Honest empty state: when no `listings_api_key` is configured the provider
+        returns [] WITHOUT touching the network, and `listings_unavailable` is
+        True (no provider configured — never fake listings). When a provider IS
+        configured but returns [] (e.g. eBay found nothing), `listings_unavailable`
+        is False (the source was queried, just empty). Unknown card is 404.
+        """
+        _require_card(session, card_id)
+        v = variant or ""
+        service = ListingsService(session, EbayListingsProvider())
+        service.refresh_listings(card_id, v)
+        rows = service.latest_listings(card_id, v)
+        return {
+            "listings": [ListingOut.model_validate(r) for r in rows],
+            "listings_unavailable": settings.listings_api_key is None,
+        }
+
+    # --------------------------------------------------------------- push
+    @app.get("/push/vapid-public")
+    def vapid_public() -> dict[str, str]:
+        # Empty string = not configured (honest; frontend checks for emptiness,
+        # never None — a keyless server is the default state, not an error).
+        return {"public_key": settings.vapid_public_key or ""}
+
+    @app.post("/push/subscribe", status_code=201)
+    def push_subscribe(
+        payload: PushSubscribeIn,
+        session: Session = Depends(get_session),
+    ) -> dict:
+        existing = session.scalars(
+            select(PushSubscription).where(PushSubscription.endpoint == payload.endpoint)
+        ).first()
+        if existing is not None:
+            existing.p256dh = payload.p256dh
+            existing.auth = payload.auth
+            session.commit()
+            session.refresh(existing)
+            return {"id": existing.id, "endpoint": existing.endpoint}
+        sub = PushSubscription(
+            endpoint=payload.endpoint, p256dh=payload.p256dh, auth=payload.auth
+        )
+        session.add(sub)
+        session.commit()
+        session.refresh(sub)
+        return {"id": sub.id, "endpoint": sub.endpoint}
+
+    @app.delete("/push/subscribe")
+    def push_unsubscribe(
+        endpoint: str = Query(...),
+        session: Session = Depends(get_session),
+    ) -> Response:
+        sub = session.scalars(
+            select(PushSubscription).where(PushSubscription.endpoint == endpoint)
+        ).first()
+        if sub is None:
+            raise HTTPException(status_code=404, detail="unknown subscription")
+        session.delete(sub)
+        session.commit()
+        return Response(status_code=204)
+
+    # --------------------------------------------------------------- poll loop
+    # In-process alert poll: one background task per app, started once on startup.
+    # The CLI `check-alerts` is the durable cron path; this loop only runs while the
+    # server is up and swallows per-tick exceptions so a bad tick never crashes the
+    # server. The Database is constructed lazily INSIDE the loop (after the first
+    # sleep) so importing the app / running TestClient never touches the real data
+    # file — the first tick is `alert_poll_min` minutes away, which tests never
+    # reach.
+    poll_task: asyncio.Task | None = None
+
+    @app.on_event("startup")
+    async def _start_alert_poll_loop() -> None:
+        nonlocal poll_task
+        if settings.alert_poll_min <= 0:
+            return
+
+        async def _poll_loop() -> None:
+            while True:
+                await asyncio.sleep(settings.alert_poll_min * 60)
+                try:
+                    db = Database(settings)
+                    db.create_all()
+                    with db.session() as session:
+                        engine = AlertEngine(
+                            session,
+                            ListingsService(session, EbayListingsProvider()),
+                            NotificationService(session, settings),
+                            settings,
+                        )
+                        engine.check_alerts()
+                except Exception:
+                    log.warning("alert poll tick failed", exc_info=True)
+
+        poll_task = asyncio.create_task(_poll_loop())
+
+    @app.on_event("shutdown")
+    async def _stop_alert_poll_loop() -> None:
+        if poll_task is not None and not poll_task.done():
+            poll_task.cancel()
 
     return app
 

@@ -179,6 +179,39 @@ def gen_vapid(_args: argparse.Namespace) -> int:
     return 0
 
 
+def check_alerts(_args: argparse.Namespace) -> int:
+    """Run one alert-poll tick and exit — the durable, cron-friendly path.
+
+    Mirrors the in-process poll loop in api.py but runs a single tick and exits,
+    so a scheduler (cron, Task Scheduler, systemd timer) can drive alerts
+    without keeping the server up. Builds the same collaborators (ListingsService
+    + EbayListingsProvider + NotificationService + AlertEngine) the loop does.
+
+    The engine commits once at the end of `check_alerts()` and never raises, so
+    the CLI's session wrapper needs no extra commit/rollback here — a final
+    flush is defensive only.
+    """
+    from cardplatform.alerts.engine import AlertEngine
+    from cardplatform.alerts.notify import NotificationService
+    from cardplatform.prices.ebay_listings import EbayListingsProvider
+    from cardplatform.prices.listings_service import ListingsService
+
+    db = Database()
+    db.create_all()
+
+    with db.session() as session:
+        engine = AlertEngine(
+            session,
+            ListingsService(session, EbayListingsProvider()),
+            NotificationService(session, db.settings),
+            db.settings,
+        )
+        n = engine.check_alerts()
+
+    print(f"{n} alerts fired")
+    return 0
+
+
 def build_index(args: argparse.Namespace) -> int:
     """Download every catalog image, embed it, and persist a FAISS index.
 
@@ -302,6 +335,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Generate a VAPID keypair for Web Push alerts and print as env lines.",
     )
     vapid.set_defaults(handler=gen_vapid)
+
+    check = subparsers.add_parser(
+        "check-alerts",
+        help="Run one alert-poll tick and exit (the durable cron-friendly path).",
+    )
+    check.set_defaults(handler=check_alerts)
 
     index = subparsers.add_parser(
         "build-index",
