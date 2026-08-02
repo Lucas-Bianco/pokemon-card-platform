@@ -141,6 +141,44 @@ def refresh_collection_prices(args: argparse.Namespace) -> int:
     return 0
 
 
+def gen_vapid(_args: argparse.Namespace) -> int:
+    """Generate a VAPID EC P-256 keypair for Web Push.
+
+    Prints two env lines (CARDPLATFORM_VAPID_PUBLIC_KEY / ..._PRIVATE_KEY) the
+    user can paste into their environment. Does NOT write any file. Uses
+    py_vapid (bundled with pywebpush) to generate the keypair and base64url-
+    encodes the raw public point (65 bytes uncompressed) and the private scalar
+    (32 bytes) per the Web Push spec.
+    """
+    import base64
+
+    from cryptography.hazmat.primitives import serialization
+    from py_vapid import Vapid
+
+    v = Vapid()
+    v.generate_keys()
+    priv = v.private_key
+    pub = priv.public_key()
+
+    raw_pub = pub.public_bytes(
+        encoding=serialization.Encoding.X962,
+        format=serialization.PublicFormat.UncompressedPoint,
+    )
+    priv_bytes = priv.private_numbers().private_value.to_bytes(32, "big")
+
+    def _b64url(b: bytes) -> str:
+        return base64.urlsafe_b64encode(b).rstrip(b"=").decode()
+
+    public_key = _b64url(raw_pub)
+    private_key = _b64url(priv_bytes)
+
+    print("VAPID keypair generated. Set these in your environment:")
+    print(f"CARDPLATFORM_VAPID_PUBLIC_KEY={public_key}")
+    print(f"CARDPLATFORM_VAPID_PRIVATE_KEY={private_key}")
+    print("Optionally set CARDPLATFORM_VAPID_SUBJECT=mailto:you@example.com")
+    return 0
+
+
 def build_index(args: argparse.Namespace) -> int:
     """Download every catalog image, embed it, and persist a FAISS index.
 
@@ -258,6 +296,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Refresh prices for every card in the collection (run on a schedule).",
     )
     refresh_all.set_defaults(handler=refresh_collection_prices)
+
+    vapid = subparsers.add_parser(
+        "gen-vapid",
+        help="Generate a VAPID keypair for Web Push alerts and print as env lines.",
+    )
+    vapid.set_defaults(handler=gen_vapid)
 
     index = subparsers.add_parser(
         "build-index",

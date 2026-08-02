@@ -66,6 +66,33 @@ class Settings(BaseSettings):
     listings_api_key: str | None = Field(default=None)
     listings_base_url: str = Field(default="https://api.ebay.com/buy/browse/v1")
 
+    # --- alerts (Phase 3c) ---
+    # Web Push (VAPID) keypair. Opt-in: when both keys are None (the default) the
+    # notifier skips push entirely and never touches the network. Generate with
+    # `cardplatform gen-vapid` and set as CARDPLATFORM_VAPID_PUBLIC_KEY /
+    # CARDPLATFORM_VAPID_PRIVATE_KEY. `vapid_subject` is the JWT "sub" claim
+    # (a mailto: or https:// URL per the Web Push spec).
+    vapid_public_key: str | None = Field(default=None)
+    vapid_private_key: str | None = Field(default=None)
+    vapid_subject: str | None = Field(default=None)
+
+    # Email (SMTP) delivery. Opt-in: when smtp_host is None (the default) the
+    # notifier skips email entirely. This is a single-user local-first app, so
+    # email is delivered to the configured smtp_from address (self-loop); a
+    # per-watch recipient is a follow-up.
+    smtp_host: str | None = Field(default=None)
+    smtp_port: int = Field(default=587)
+    smtp_user: str | None = Field(default=None)
+    smtp_password: str | None = Field(default=None)
+    smtp_from: str | None = Field(default=None)
+
+    # Alert poll cadence and per-watch cooldown. The engine reads cooldown_min
+    # defensively (getattr default 60); owning it here keeps the value in one
+    # place. poll_min is the T5 poll loop interval (informational here; the loop
+    # reads it directly from settings).
+    alert_poll_min: int = Field(default=15)
+    alert_cooldown_min: int = Field(default=60)
+
     @property
     def db_path(self) -> Path:
         return self.data_dir / "cardplatform.sqlite3"

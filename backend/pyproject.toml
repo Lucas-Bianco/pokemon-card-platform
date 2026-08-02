@@ -11,6 +11,9 @@ dependencies = [
     "tenacity>=8.3",
     "fastapi>=0.111",
     "uvicorn>=0.30",
+    # Phase 3c alerts: Web Push delivery (VAPID). Pulls py-vapid (used by the
+    # gen-vapid CLI to generate keypairs) and http-ece for payload encryption.
+    "pywebpush>=2.0",
 ]
 
 [project.optional-dependencies]
