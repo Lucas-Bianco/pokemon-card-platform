@@ -225,3 +225,116 @@ class GradedPriceSnapshot(Base):
     # See PriceSnapshot: '' collides under the unique constraint; NULL would not.
     source_updated_at: Mapped[str] = mapped_column(String, default="", server_default="")
     fetched_at: Mapped[datetime] = mapped_column(UtcDateTime, default=_utcnow)
+
+
+class Watch(Base):
+    """A user watch: one row per alert subscription (price drop, auction, etc.).
+
+    Phase 3c's source of intent. `card_id` is nullable so a watch can target a
+    non-card subject (a set, a grade tier) via `subject_label`; `variant` is
+    nullable because not every alert type is variant-scoped. Dedupes on the
+    five-tuple (card_id, variant, alert_type, target_price, drop_at) so the
+    same alert re-armed with the same params is one row, not many.
+    """
+
+    __tablename__ = "watchlist"
+    __table_args__ = (
+        UniqueConstraint(
+            "card_id", "variant", "alert_type", "target_price", "drop_at",
+            name="uq_watch",
+        ),
+        Index("ix_watch_card", "card_id", "variant"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    card_id: Mapped[str | None] = mapped_column(ForeignKey("cards.id"), index=True, default=None)
+    subject_label: Mapped[str | None] = mapped_column(String, default=None)
+    variant: Mapped[str | None] = mapped_column(String, default=None)
+    alert_type: Mapped[str] = mapped_column(String, index=True)
+    target_price: Mapped[float | None] = mapped_column(Float, default=None)
+    drop_at: Mapped[datetime | None] = mapped_column(UtcDateTime, default=None)
+    lead_time_min: Mapped[int | None] = mapped_column(Integer, default=None)
+    auction_window_min: Mapped[int | None] = mapped_column(Integer, default=30)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_seen_listing_ids: Mapped[str | None] = mapped_column(String, default=None)
+    last_fired_at: Mapped[datetime | None] = mapped_column(UtcDateTime, default=None)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=_utcnow)
+
+
+class ListingSnapshot(Base):
+    """Immutable point-in-time snapshot of a single marketplace listing.
+
+    Rows are never updated; each fetch appends a new row so Phase 3c can diff
+    consecutive snapshots to detect price drops and new listings. Dedupes on
+    (card_id, variant, source, listing_id, source_updated_at) using the same
+    empty-string sentinel trick as PriceSnapshot: a missing source timestamp
+    is stored as "" to collide correctly under the unique constraint.
+    """
+
+    __tablename__ = "listing_snapshots"
+    __table_args__ = (
+        UniqueConstraint(
+            "card_id", "variant", "source", "listing_id", "source_updated_at",
+            name="uq_listing",
+        ),
+        Index("ix_listing_lookup", "card_id", "variant", "source", "fetched_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    card_id: Mapped[str] = mapped_column(ForeignKey("cards.id"), index=True)
+    variant: Mapped[str] = mapped_column(String, index=True)
+    source: Mapped[str] = mapped_column(String, index=True)
+    listing_id: Mapped[str] = mapped_column(String)
+    title: Mapped[str | None] = mapped_column(String, default=None)
+    price: Mapped[float | None] = mapped_column(Float, default=None)
+    currency: Mapped[str | None] = mapped_column(String, default=None)
+    listing_type: Mapped[str | None] = mapped_column(String, default=None)
+    auction_end_at: Mapped[datetime | None] = mapped_column(UtcDateTime, default=None)
+    url: Mapped[str | None] = mapped_column(String, default=None)
+    condition: Mapped[str | None] = mapped_column(String, default=None)
+    quantity: Mapped[int | None] = mapped_column(Integer, default=None)
+    source_updated_at: Mapped[str] = mapped_column(String, default="", server_default="")
+    fetched_at: Mapped[datetime] = mapped_column(UtcDateTime, default=_utcnow)
+
+
+class AlertEvent(Base):
+    """One fired alert, retained for the in-app notification feed and audit.
+
+    `read_at` is NULL until the user opens it, which is how the unread badge
+    is computed. The (read_at, created_at) index serves the unread-first
+    ordering the feed uses. FKs to watchlist and cards are nullable: an event
+    may outlive its watch (deleted watches keep history) and a subject_label
+    watch has no card_id.
+    """
+
+    __tablename__ = "alert_events"
+    __table_args__ = (Index("ix_alert_unread", "read_at", "created_at"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    watch_id: Mapped[int | None] = mapped_column(ForeignKey("watchlist.id"), index=True, default=None)
+    card_id: Mapped[str | None] = mapped_column(ForeignKey("cards.id"), index=True, default=None)
+    alert_type: Mapped[str] = mapped_column(String, index=True)
+    message: Mapped[str] = mapped_column(String)
+    context: Mapped[str | None] = mapped_column(String, default=None)
+    delivered_inapp: Mapped[bool] = mapped_column(Boolean, default=True)
+    delivered_push: Mapped[bool] = mapped_column(Boolean, default=False)
+    delivered_email: Mapped[bool] = mapped_column(Boolean, default=False)
+    read_at: Mapped[datetime | None] = mapped_column(UtcDateTime, default=None)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=_utcnow)
+
+
+class PushSubscription(Base):
+    """A Web Push subscription endpoint for delivering alerts to a device.
+
+    One endpoint per device; duplicates collide via the `unique` constraint on
+    `endpoint`. The p256dh/auth keys are the ECDH key material the browser
+    generates on subscribe and are required to encrypt each push payload.
+    """
+
+    __tablename__ = "push_subscriptions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    endpoint: Mapped[str] = mapped_column(String, unique=True)
+    p256dh: Mapped[str] = mapped_column(String)
+    auth: Mapped[str] = mapped_column(String)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=_utcnow)
