@@ -1,4 +1,6 @@
 import type {
+  AlertEvent,
+  AlertType,
   CardSearchResult,
   CollectionItem,
   Grader,
@@ -8,9 +10,13 @@ import type {
   Portfolio,
   Price,
   PriceHistory,
+  PushSubscription,
   RecognizeResponse,
   Scan,
   Valuation,
+  Watch,
+  WatchCreate,
+  WatchPatch,
 } from "./types";
 
 // Always relative: the Vite dev server proxies /api to the backend. Calling the
@@ -265,3 +271,147 @@ export async function getUnreadCount(): Promise<number> {
   const body = (await response.json()) as { count: number };
   return body.count;
 }
+
+// Like expectJson, but on a non-ok response reads the body and surfaces the
+// backend's `detail` message (FastAPI's validation error shape) in the thrown
+// Error's message. Used by createWatch so a 422 ("target_price is required
+// for alert_type 'price_target'") reaches the sheet as a helpful string
+// rather than a bare "request failed: 422".
+async function expectJsonOrDetail<T>(response: Response): Promise<T> {
+  if (!response.ok) {
+    let detail = `request failed: ${response.status}`;
+    try {
+      const body = await response.json();
+      if (body?.detail) {
+        detail =
+          typeof body.detail === "string"
+            ? body.detail
+            : JSON.stringify(body.detail);
+      }
+    } catch {
+      // Body wasn't JSON (or already consumed) — keep the status message.
+    }
+    throw new Error(detail);
+  }
+  return (await response.json()) as T;
+}
+
+// ----- Watchlist ---------------------------------------------------------
+// Phase 3c alert subscriptions. Filters are exact-match (card_id, active);
+// ordered newest first by the backend. Mirrors the GET/POST/PATCH/DELETE
+// /watchlist endpoints.
+
+export async function getWatches(
+  cardId?: string,
+  active?: boolean,
+): Promise<Watch[]> {
+  const params = new URLSearchParams();
+  if (cardId) params.set("card_id", cardId);
+  if (active !== undefined) params.set("active", String(active));
+  const qs = params.toString();
+  return expectJson<Watch[]>(
+    await fetch(qs ? `${BASE}/watchlist?${qs}` : `${BASE}/watchlist`),
+  );
+}
+
+export async function createWatch(payload: WatchCreate): Promise<Watch> {
+  const response = await fetch(`${BASE}/watchlist`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  // 422 from the backend carries a useful detail string (e.g. "target_price
+  // is required for alert_type 'price_target'"). Surface it so the sheet can
+  // show it instead of a generic status code.
+  return expectJsonOrDetail<Watch>(response);
+}
+
+export async function patchWatch(id: number, patch: WatchPatch): Promise<Watch> {
+  const response = await fetch(`${BASE}/watchlist/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  return expectJson<Watch>(response);
+}
+
+export async function deleteWatch(id: number): Promise<void> {
+  const response = await fetch(`${BASE}/watchlist/${id}`, { method: "DELETE" });
+  if (!response.ok) {
+    throw new Error(`request failed: ${response.status}`);
+  }
+}
+
+// ----- Alerts feed -------------------------------------------------------
+// The engine fires AlertEvents; this layer reads them and flips read_at.
+
+export async function getAlerts(
+  opts?: { unread?: boolean; limit?: number; offset?: number },
+): Promise<AlertEvent[]> {
+  const params = new URLSearchParams();
+  if (opts?.unread !== undefined) params.set("unread", String(opts.unread));
+  if (opts?.limit !== undefined) params.set("limit", String(opts.limit));
+  if (opts?.offset !== undefined) params.set("offset", String(opts.offset));
+  const qs = params.toString();
+  return expectJson<AlertEvent[]>(
+    await fetch(qs ? `${BASE}/alerts?${qs}` : `${BASE}/alerts`),
+  );
+}
+
+export async function markAlertRead(id: number): Promise<AlertEvent> {
+  return expectJson<AlertEvent>(
+    await fetch(`${BASE}/alerts/${id}`, { method: "PATCH" }),
+  );
+}
+
+export async function readAllAlerts(): Promise<{ updated: number }> {
+  return expectJson<{ updated: number }>(
+    await fetch(`${BASE}/alerts/read-all`, { method: "POST" }),
+  );
+}
+
+// ----- Web Push ----------------------------------------------------------
+// VAPID public key + subscribe/unsubscribe. An empty public_key means the
+// server has no VAPID config — the frontend treats that as "push not
+// configured" and never fakes a subscription.
+
+export async function getVapidPublic(): Promise<string> {
+  const response = await fetch(`${BASE}/push/vapid-public`);
+  if (!response.ok) {
+    throw new Error(`request failed: ${response.status}`);
+  }
+  const body = (await response.json()) as { public_key: string };
+  return body.public_key;
+}
+
+export async function subscribePush(
+  sub: PushSubscription,
+): Promise<{ id: number }> {
+  const response = await fetch(`${BASE}/push/subscribe`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(sub),
+  });
+  return expectJson<{ id: number }>(response);
+}
+
+export async function unsubscribePush(endpoint: string): Promise<void> {
+  const params = new URLSearchParams({ endpoint });
+  const response = await fetch(`${BASE}/push/subscribe?${params}`, {
+    method: "DELETE",
+  });
+  if (!response.ok) {
+    throw new Error(`request failed: ${response.status}`);
+  }
+}
+
+// The alert-type set the watchlist accepts. Mirrors the backend's
+// _ALERT_TYPES so the sheet's picker never offers a value the endpoint would
+// reject.
+export const ALERT_TYPES: AlertType[] = [
+  "restock",
+  "new_listing",
+  "price_target",
+  "auction_ending",
+  "drop_time",
+];

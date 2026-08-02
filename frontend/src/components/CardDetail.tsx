@@ -11,12 +11,13 @@ interface Props {
   cardId: string;
   variant?: string;
   onBack: () => void;
+  onWatchCard?: (card: { cardId: string; variant?: string }) => void;
 }
 
 // Loading + error + retry for the card fetch — the gating load. GradingUpside
 // and PriceLine fetch their own data (reused, not duplicated), so CardDetail
 // only owns the card body, the price history, and the listings.
-export default function CardDetail({ cardId, variant = "normal", onBack }: Props) {
+export default function CardDetail({ cardId, variant = "normal", onBack, onWatchCard }: Props) {
   const [card, setCard] = useState<CardSearchResult | null>(null);
   const [cardError, setCardError] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -181,9 +182,15 @@ export default function CardDetail({ cardId, variant = "normal", onBack }: Props
         )}
       </div>
 
-      {/* T7 wires the WatchCardSheet. Disabled here so the affordance is visible
-          without inventing a watch that does nothing. */}
-      <button className="primary watch-card-btn" disabled title="Watchlist setup coming soon">
+      {/* T7 wires the WatchCardSheet. Opens the sheet preselected to this card
+          and variant. The affordance is always enabled now — the sheet is the
+          honest surface for choosing an alert type. */}
+      <button
+        className="primary watch-card-btn"
+        onClick={() => onWatchCard?.({ cardId, variant })}
+        disabled={!onWatchCard}
+        title={onWatchCard ? "Set up a watch" : "Watchlist setup coming soon"}
+      >
         Watch this card
       </button>
     </section>

@@ -1135,3 +1135,336 @@ h1 { font-size: 1.25rem; margin: 4px 0 16px; }
 .listing-meta { font-size: 0.8rem; }
 .watch-card-btn { margin-top: var(--sp-2); }
 .watch-card-btn:disabled { opacity: 0.5; }
+
+/* =========================================================================
+   Phase 3c — AlertsFeed / WatchCardSheet / More (T7)
+   Additive: continues the Grading Lab dark idiom (surface cards, line borders,
+   dim meta, accent primary). Mobile-first; the sheet is keyboard-aware and
+   scrolls when content exceeds the viewport. Honest empty states only.
+   ========================================================================= */
+
+/* ----- AlertsFeed ------------------------------------------------------- */
+.alerts-feed {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.alerts-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.alert-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1);
+}
+.alert-chip {
+  padding: 6px 12px;
+  min-height: 36px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--fg-dim);
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+.alert-chip.selected {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.alerts-actions { display: flex; gap: var(--sp-2); flex-wrap: wrap; }
+.alerts-actions .link { padding: 6px 10px; font-size: 0.82rem; }
+
+.alert-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+.alert-row {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  padding: var(--sp-3);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  text-align: left;
+  color: var(--fg);
+  min-height: 44px;
+}
+/* Unread rows get a left accent bar + bolder message — the only visual signal
+   that separates "new" from "seen", since the feed never fabricates a badge. */
+.alert-row.unread {
+  border-left: 3px solid var(--accent);
+  padding-left: calc(var(--sp-3) - 2px);
+}
+.alert-row.unread .alert-message { font-weight: 600; }
+.alert-icon { font-size: 1.15rem; line-height: 1.2; flex-shrink: 0; }
+.alert-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.alert-message { font-size: 0.92rem; word-break: break-word; }
+.alert-meta { font-size: 0.78rem; }
+
+/* The honest empty state reuses the radar copy. Centered, never fabricated. */
+.alerts-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: var(--sp-3);
+  padding: var(--sp-7) var(--sp-4);
+  min-height: 50vh;
+}
+.alerts-empty .alerts-radar {
+  max-width: 32ch;
+  color: var(--fg-dim);
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+/* ----- WatchCardSheet (bottom-sheet modal) ------------------------------- */
+.sheet-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  /* Click on the backdrop closes; the sheet stops propagation. */
+}
+.sheet {
+  width: 100%;
+  max-width: 560px;
+  max-height: 92dvh;
+  overflow-y: auto;
+  background: var(--surface);
+  border-top-left-radius: 18px;
+  border-top-right-radius: 18px;
+  border-top: 1px solid var(--line);
+  box-shadow: var(--shadow-3);
+  /* Keyboard-aware: the sheet scrolls when the soft keyboard opens. */
+  padding-bottom: max(var(--sp-4), env(safe-area-inset-bottom));
+  animation: sheet-rise 220ms ease-out;
+}
+@keyframes sheet-rise {
+  from { transform: translateY(16px); opacity: 0.6; }
+  to { transform: translateY(0); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sheet { animation: none; }
+}
+.sheet-handle {
+  width: 40px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--line);
+  margin: var(--sp-2) auto 0;
+}
+.sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--sp-3) var(--sp-4);
+}
+.sheet-head h3 { margin: 0; font-size: 1.05rem; font-weight: 600; }
+.sheet-close {
+  background: none;
+  border: none;
+  color: var(--fg-dim);
+  font-size: 1.1rem;
+  min-width: 36px;
+  min-height: 36px;
+}
+.sheet-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: 0 var(--sp-4) var(--sp-4);
+}
+
+.watch-card-fixed,
+.watch-card-search {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bg);
+}
+.watch-card-fixed { flex-direction: row; align-items: baseline; gap: var(--sp-2); }
+.sheet-search-results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.sheet-search-row {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--fg);
+  text-align: left;
+}
+.sheet-search-row.picked {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.watch-type-picker {
+  border: none;
+  padding: 0;
+  margin: 0;
+}
+.watch-type-picker legend {
+  padding: 0;
+  margin-bottom: var(--sp-1);
+}
+.watch-type-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: var(--sp-2);
+}
+.watch-type-chip {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--sp-2) var(--sp-3);
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--fg);
+  text-align: left;
+}
+.watch-type-chip strong { font-size: 0.88rem; }
+.watch-type-chip.selected {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.watch-type-chip.selected strong { color: var(--accent); }
+
+.watch-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.82rem;
+  color: var(--fg-dim);
+}
+.watch-field input {
+  width: 100%;
+  padding: 9px 10px;
+  min-height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 0.95rem;
+}
+.watch-field input:focus { outline: none; border-color: var(--accent); }
+.watch-note {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+}
+
+/* ----- More pane -------------------------------------------------------- */
+.more-pane {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-2) 0;
+  text-align: left;
+}
+.more-pane h2 { margin: 0 0 var(--sp-1); font-size: 1.1rem; }
+.more-pane h3 { margin: 0 0 var(--sp-2); font-size: 0.95rem; color: var(--fg-dim); }
+
+.channel-card {
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.channel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+.channel-on { color: var(--ok); font-weight: 600; font-size: 0.85rem; }
+.channel-off { color: var(--fg-dim); font-size: 0.85rem; }
+.channel-card code {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  background: var(--bg);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+.channel-card .link { align-self: flex-start; }
+
+.more-watchlist { margin-top: var(--sp-3); }
+.watchlist-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+.watchlist-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.watchlist-meta { display: flex; flex-direction: column; min-width: 0; }
+.watchlist-meta strong { font-size: 0.9rem; }
+.watchlist-actions { display: flex; gap: var(--sp-1); flex-shrink: 0; }
+.watchlist-actions .link { padding: 6px 10px; font-size: 0.8rem; min-height: 36px; }
+.watchlist-actions .link.on { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 50%, var(--line)); }
+
+/* ----- Scan onboarding nudge -------------------------------------------- */
+/* A small, non-blocking banner under the scan result — never a modal. */
+.watch-nudge {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  margin-top: var(--sp-2);
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line));
+  border-radius: 12px;
+}
+.watch-nudge .muted.small { margin: 0; }
+.watch-nudge .link { align-self: flex-start; }
+.watch-nudge .nudge-dismiss { color: var(--fg-dim); }

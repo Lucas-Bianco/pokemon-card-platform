@@ -236,3 +236,86 @@ export interface ListingsResponse {
   listings: Listing[];
   listings_unavailable: boolean;
 }
+
+// The five alert kinds a watch can listen for. Mirrors the backend's
+// _ALERT_TYPES set (api.py); the watchlist endpoint validates membership and
+// 422s on anything else. Keep this in lockstep with that set.
+export type AlertType =
+  | "restock"
+  | "new_listing"
+  | "price_target"
+  | "auction_ending"
+  | "drop_time";
+
+// One watch subscription. `active` is the on/off toggle the More tab flips;
+// `last_fired_at` is engine state surfaced for display. Mirrors WatchOut in
+// backend alerts/api_models.py field-for-field; every nullable column
+// surfaces as null, never a fabricated default.
+export interface Watch {
+  id: number;
+  card_id: string | null;
+  subject_label: string | null;
+  variant: string | null;
+  alert_type: AlertType;
+  target_price: number | null;
+  drop_at: string | null;
+  lead_time_min: number | null;
+  auction_window_min: number | null;
+  active: boolean;
+  last_fired_at: string | null;
+  created_at: string;
+}
+
+// Inbound watch. `card_id` is optional so a watch can target a non-card subject
+// (e.g. a Pokémon Center vending drop) via `subject_label`. Per-type required
+// fields (target_price for price_target, drop_at for drop_time) are validated
+// by the endpoint, not by the type — Pydantic cannot express the conditional,
+// and neither can TS cleanly. Mirrors WatchCreate.
+export interface WatchCreate {
+  card_id?: string | null;
+  subject_label?: string | null;
+  variant?: string | null;
+  alert_type: AlertType;
+  target_price?: number | null;
+  drop_at?: string | null;
+  lead_time_min?: number | null;
+  auction_window_min?: number | null;
+}
+
+// Partial update to a watch. Every field is optional; a field that is absent
+// (undefined) is left untouched by the backend. Use null to clear a field
+// explicitly where the backend allows it. Mirrors WatchPatch.
+export interface WatchPatch {
+  active?: boolean | null;
+  target_price?: number | null;
+  drop_at?: string | null;
+  lead_time_min?: number | null;
+  auction_window_min?: number | null;
+}
+
+// One fired alert for the in-app notification feed. `read_at` is null until the
+// user opens it; the feed's unread badge is computed from it. `context` is a
+// free-form string — the engine may JSON-encode extra detail (e.g. a listing
+// url) there, so the feed tries to parse it for a deep link. Mirrors
+// AlertEventOut field-for-field.
+export interface AlertEvent {
+  id: number;
+  watch_id: number | null;
+  card_id: string | null;
+  alert_type: AlertType;
+  message: string;
+  context: string | null;
+  delivered_push: boolean;
+  delivered_email: boolean;
+  read_at: string | null;
+  created_at: string;
+}
+
+// A Web Push subscription endpoint + its ECDH key material. The browser
+// generates p256dh/auth on subscribe; they rotate, so the upsert updates them
+// when the same endpoint re-subscribes. Mirrors PushSubscribeIn.
+export interface PushSubscription {
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+}

@@ -2,12 +2,15 @@ import { useEffect, useState } from "react";
 
 import { getUnreadCount } from "../api/client";
 import type { RecognizeResponse } from "../api/types";
+import AlertsFeed from "./AlertsFeed";
 import CameraCapture from "./CameraCapture";
 import CardDetail from "./CardDetail";
 import CornerAdjust from "./CornerAdjust";
 import Browse from "./Browse";
+import More from "./More";
 import PortfolioView from "./PortfolioView";
 import ScanResult from "./ScanResult";
+import WatchCardSheet from "./WatchCardSheet";
 
 // The scan flow stays owned by App (which holds the recognition state and the
 // scan-log callbacks); AppShell receives it as a bundle so it can render the
@@ -56,21 +59,33 @@ export default function AppShell({ scan }: Props) {
   const [view, setView] = useState<TabView>("alerts");
   const [selectedCard, setSelectedCard] = useState<{ cardId: string; variant?: string } | null>(null);
   const [unread, setUnread] = useState(0);
+  // The WatchCardSheet is app-level so any surface (AlertsFeed empty-state
+  // CTA, CardDetail "Watch this card", the scan onboarding nudge) can open it
+  // preselected to a card. `card` is undefined for the no-preselect CTA.
+  const [watchSheet, setWatchSheet] = useState<{
+    open: boolean;
+    cardId?: string;
+    variant?: string;
+  }>({ open: false });
 
-  // Unread badge for the Alerts tab. Fetched on mount for T6; T7 adds the live
-  // feed + polling. A failed count is honest zero (no fake badge), not an error.
-  useEffect(() => {
-    let cancelled = false;
+  function openWatchSheet(card?: { cardId?: string; variant?: string }) {
+    setWatchSheet({ open: true, cardId: card?.cardId, variant: card?.variant });
+  }
+  function closeWatchSheet() {
+    setWatchSheet((prev) => ({ ...prev, open: false }));
+  }
+
+  function refreshUnread() {
     getUnreadCount()
-      .then((count) => {
-        if (!cancelled) setUnread(count);
-      })
-      .catch(() => {
-        if (!cancelled) setUnread(0);
-      });
-    return () => {
-      cancelled = true;
-    };
+      .then(setUnread)
+      .catch(() => setUnread(0));
+  }
+
+  // Unread badge for the Alerts tab. Fetched on mount; refreshed when a watch
+  // is created (the sheet's onCreated) so the badge reflects new activity. A
+  // failed count is honest zero (no fake badge), not an error.
+  useEffect(() => {
+    refreshUnread();
   }, []);
 
   function selectTab(tab: TabView) {
@@ -92,19 +107,36 @@ export default function AppShell({ scan }: Props) {
             cardId={selectedCard.cardId}
             variant={selectedCard.variant}
             onBack={() => setSelectedCard(null)}
+            onWatchCard={(c) => openWatchSheet(c)}
           />
         ) : view === "scan" ? (
-          <ScanPane scan={scan} onWatchCard={(cardId) => setSelectedCard({ cardId })} />
+          <ScanPane
+            scan={scan}
+            onViewCard={(cardId) => setSelectedCard({ cardId })}
+            onWatchCard={(card) => openWatchSheet(card)}
+          />
         ) : view === "vault" ? (
           <PortfolioView />
         ) : view === "alerts" ? (
-          <AlertsPlaceholder onWatchCard={() => setView("browse")} />
+          <AlertsFeed
+            onOpenCard={(c) => setSelectedCard(c)}
+            onWatchCard={(c) => openWatchSheet(c)}
+          />
         ) : view === "browse" ? (
           <Browse onSelectCard={(c) => setSelectedCard(c)} />
         ) : (
-          <MorePane />
+          <More />
         )}
       </div>
+
+      {watchSheet.open && (
+        <WatchCardSheet
+          cardId={watchSheet.cardId}
+          variant={watchSheet.variant}
+          onClose={closeWatchSheet}
+          onCreated={() => refreshUnread()}
+        />
+      )}
 
       <nav className="bottom-nav" aria-label="Primary">
         <TabButton label="Scan" active={view === "scan" && !selectedCard} onClick={() => selectTab("scan")} glyph={<ScanGlyph />} />
@@ -152,11 +184,41 @@ function TabButton({
 }
 
 // The scan pane renders the existing CameraCapture → ScanResult flow exactly as
-// App.tsx did, so no recognition behavior changes. On a recognized scan it
-// surfaces a "Watch this card" affordance that opens CardDetail — T7 wires the
-// real onboarding sheet; here it only makes the card reachable.
-function ScanPane({ scan, onWatchCard }: { scan: ScanFlow; onWatchCard: (cardId: string) => void }) {
+// App.tsx did, so no recognition behavior changes. The onboarding nudge is the
+// Collectr-style "Watch this card" banner: after a successful scan resolving to a
+// recognized card WITH a market price, surface a contextual prompt once per card
+// (gated by a localStorage flag so it never nags). Tapping it opens WatchCardSheet
+// preselected to that card. Non-blocking: a small banner, never a modal.
+function ScanPane({
+  scan,
+  onViewCard,
+  onWatchCard,
+}: {
+  scan: ScanFlow;
+  onViewCard: (cardId: string) => void;
+  onWatchCard: (card: { cardId: string; variant?: string }) => void;
+}) {
   const { result, variant, scanId, busy, error, note, adjusting, lastImage, canAdjust } = scan;
+
+  // Onboarding nudge: only for a recognized card with a market price, and only
+  // once per card. The flag is set when the banner is shown so a dismiss or a
+  // tap both stop it reappearing — never nags.
+  const card = result?.card ?? null;
+  const hasMarketPrice = result?.price?.market != null;
+  const nudgeKey = card ? `watch_nudge_${card.id}` : null;
+  const [nudgeDismissed, setNudgeDismissed] = useState(false);
+  const showNudge =
+    !!card &&
+    hasMarketPrice &&
+    !!nudgeKey &&
+    !localStorage.getItem(nudgeKey) &&
+    !nudgeDismissed;
+
+  function dismissNudge() {
+    if (nudgeKey) localStorage.setItem(nudgeKey, "1");
+    setNudgeDismissed(true);
+  }
+
   return (
     <>
       {!result && <CameraCapture onCapture={scan.onCapture} busy={busy} />}
@@ -183,13 +245,32 @@ function ScanPane({ scan, onWatchCard }: { scan: ScanFlow; onWatchCard: (cardId:
             onReject={scan.onReject}
             onRescan={scan.onRescan}
           />
-          {result.card && (
+          {card && (
             <button
               className="link watch-scan-link"
-              onClick={() => onWatchCard(result.card!.id)}
+              onClick={() => onViewCard(card.id)}
             >
               View card details
             </button>
+          )}
+          {showNudge && card && (
+            <div className="watch-nudge" role="status">
+              <p className="muted small">
+                Want a ping when {card.name} restocks or hits your price?
+              </p>
+              <button
+                className="link"
+                onClick={() => {
+                  dismissNudge();
+                  onWatchCard({ cardId: card.id, variant });
+                }}
+              >
+                Watch this card
+              </button>
+              <button className="link nudge-dismiss" onClick={dismissNudge} aria-label="Dismiss">
+                Not now
+              </button>
+            </div>
           )}
           {canAdjust && (
             <button className="adjust-offer" onClick={scan.onAdjust} disabled={busy}>
@@ -199,34 +280,6 @@ function ScanPane({ scan, onWatchCard }: { scan: ScanFlow; onWatchCard: (cardId:
         </>
       )}
     </>
-  );
-}
-
-// T7 replaces this with the live alert feed. The placeholder is an honest empty
-// state — never a fabricated alert. The "Watch a card" button routes to Browse
-// (where a card can be selected → CardDetail → real watch setup lands in T7).
-function AlertsPlaceholder({ onWatchCard }: { onWatchCard: () => void }) {
-  return (
-    <section className="alerts-placeholder">
-      <p className="alerts-radar">
-        Your personal card-market radar — watch a card to get pinged the moment it restocks, hits your
-        price, or a drop happens.
-      </p>
-      <button className="primary" disabled title="Watchlist setup coming soon">
-        Watch a card
-      </button>
-      <button className="link" onClick={onWatchCard}>
-        Browse cards
-      </button>
-    </section>
-  );
-}
-
-function MorePane() {
-  return (
-    <section className="more-pane">
-      <p className="muted">More coming soon.</p>
-    </section>
   );
 }
 
