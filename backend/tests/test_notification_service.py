@@ -190,7 +190,7 @@ def test_email_when_smtp(db, monkeypatch):
     svc.dispatch(event)
 
     assert event.delivered_email is True
-    smtp_cls.assert_called_once_with("smtp.example.com", 587)
+    smtp_cls.assert_called_once_with("smtp.example.com", 587, timeout=10)
     # Self-loop: single-user app sends from smtp_from TO smtp_from.
     smtp_instance.sendmail.assert_called_once()
     from_addr, to_addrs, _msg = smtp_instance.sendmail.call_args.args
@@ -241,3 +241,7 @@ def test_never_raises(db, monkeypatch):
     assert event.delivered_push is False
     assert event.delivered_email is False
     assert event.delivered_inapp is True
+    # Negative prune: a 500 does NOT widen the prune set — only 404/410 prune.
+    # Locks in that a future regression (e.g. `if status >= 400`) would fail.
+    db.commit()
+    assert db.query(PushSubscription).count() == 1

@@ -18,7 +18,10 @@ email is a no-op (delivered_email stays False).
 Email is sent SYNCHRONOUSLY (no thread pool). Threading is premature for a
 single-user local-first app and would make delivery flags non-deterministic
 in tests; a thread pool can be layered on later if a tick ever needs to fan
-out to many SMTP recipients (YAGNI for now).
+out to many SMTP recipients (YAGNI for now). Because email is synchronous, the
+SMTP connection uses a bounded `timeout=10` so a hung server cannot block the
+poll tick forever. Supported ports: 587 (STARTTLS, the default), 465
+(SMTPS / implicit TLS via SMTP_SSL), and 25 (plaintext, no STARTTLS).
 
 dispatch() does NOT commit — the engine commits once at the end of the tick.
 Callers that invoke dispatch directly (e.g. tests, a manual fire) must commit
@@ -87,18 +90,27 @@ class NotificationService:
         if not subs:
             return
 
-        payload = json.dumps(
-            {
-                "title": "Cardplatform alert",
-                "body": event.message,
-                # context is a JSON string (the engine stores ctx as json.dumps);
-                # surface it as the click-through target if present.
-                "url": event.context or "",
+        # Build the payload + VAPID claims in their own try/except so a failure
+        # here (e.g. non-serializable context) logs and returns from _send_push
+        # without preventing _send_email from running — true channel isolation.
+        # Control jumps to dispatch's outer try/except only if the per-sub loop
+        # itself raises unexpectedly.
+        try:
+            payload = json.dumps(
+                {
+                    "title": "Cardplatform alert",
+                    "body": event.message,
+                    # context is a JSON string (the engine stores ctx as json.dumps);
+                    # surface it as the click-through target if present.
+                    "url": event.context or "",
+                }
+            )
+            vapid_claims = {
+                "sub": s.vapid_subject or "mailto:noreply@example.com",
             }
-        )
-        vapid_claims = {
-            "sub": s.vapid_subject or "mailto:noreply@example.com",
-        }
+        except Exception:
+            log.warning("push payload/claims build failed for event id=%s", getattr(event, "id", None), exc_info=True)
+            return
         any_success = False
         for sub in subs:
             try:
@@ -155,9 +167,16 @@ class NotificationService:
             if event.context:
                 msg.set_content(f"{event.message}\n\nContext: {event.context}")
 
-            with smtplib.SMTP(s.smtp_host, s.smtp_port) as smtp:
+            # 465 = SMTPS (implicit TLS); 587 = STARTTLS; 25 = plaintext.
+            # timeout=10 so a hung/unresponsive SMTP server cannot block the
+            # synchronous send (and thus the poll tick) indefinitely.
+            if s.smtp_port == 465:
+                server = smtplib.SMTP_SSL(s.smtp_host, s.smtp_port, timeout=10)
+            else:
+                server = smtplib.SMTP(s.smtp_host, s.smtp_port, timeout=10)
                 if s.smtp_port == 587:
-                    smtp.starttls()
+                    server.starttls()
+            with server as smtp:
                 if s.smtp_user:
                     smtp.login(s.smtp_user, s.smtp_password or "")
                 smtp.sendmail(s.smtp_from, [s.smtp_from], msg.as_string())
