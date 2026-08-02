@@ -134,13 +134,17 @@ def test_refresh_graded_without_provider_raises(seeded):
 
 
 def test_latest_graded_returns_newest_snapshot(seeded):
-    """Multiple snapshots for one (grader, grade, variant), inserted out of
-    source-date order — latest_graded must return the one with the newest
-    fetched_at, not rely on insertion order."""
+    """latest_graded orders by fetched_at DESC, not source_updated_at. The
+    newest-FETCHED row here has an OLDER source_updated_at than another row, so
+    asserting market == 250.0 only passes under fetched_at-desc ordering — a
+    wrong source_updated_at-desc ordering would return the Feb-1 row instead.
+
+    Insert order is the fetch order: market=320/Feb-1 FIRST, then
+    market=250/Jan-10 SECOND (later fetched_at, older source stamp).
+    """
     quotes = [
-        _quote(market=275.0, source_updated_at="2025-01-20"),
-        _quote(market=250.0, source_updated_at="2025-01-10"),
         _quote(market=320.0, source_updated_at="2025-02-01"),
+        _quote(market=250.0, source_updated_at="2025-01-10"),
     ]
     for q in quotes:
         GradedPriceService(seeded, FakeGradedProvider([q])).refresh_graded("base1-4")
@@ -150,8 +154,8 @@ def test_latest_graded_returns_newest_snapshot(seeded):
     )
 
     assert latest is not None
-    assert latest.market == 320.0
-    assert latest.source_updated_at == "2025-02-01"
+    assert latest.market == 250.0
+    assert latest.source_updated_at == "2025-01-10"
 
 
 def test_latest_graded_scopes_to_grader_and_grade(seeded):

@@ -171,14 +171,18 @@ def test_transport_error_degrades_to_empty(monkeypatch):
 
 
 @respx.mock
-def test_bad_json_degrades_to_empty():
-    settings = Settings(graded_price_api_key="key-123")
-    respx.get(_url(settings, "base1-4")).mock(
+def test_bad_json_degrades_to_empty_after_one_attempt():
+    """200 with a non-JSON body will never decode on retry — terminal, so it must
+    stop after ONE attempt, not burn the retry budget on identical failures."""
+    settings = Settings(graded_price_api_key="key-123", http_max_attempts=5)
+    route = respx.get(_url(settings, "base1-4"))
+    route.mock(
         return_value=httpx.Response(200, content=b"<html>not json</html>",
                                      headers={"content-type": "text/html"})
     )
 
     assert PkmnPricesProvider(settings).fetch_graded("base1-4") == []
+    assert route.call_count == 1
 
 
 @respx.mock
@@ -244,3 +248,45 @@ def test_missing_sold_at_uses_empty_string_sentinel():
     quotes = PkmnPricesProvider(settings).fetch_graded("base1-4")
     assert len(quotes) == 1
     assert quotes[0].source_updated_at is None
+
+
+@respx.mock
+def test_single_sold_comp_bucket_collapses_to_one_price():
+    """A scarce card with one sold comp in a (grader, grade) bucket: low/high/mid/market
+    all equal that single price (statistics.median([x]) == x)."""
+    settings = Settings(graded_price_api_key="key-123")
+    respx.get(_url(settings, "base1-4")).mock(
+        return_value=httpx.Response(200, json={
+            "data": [
+                {"id": 1, "price": 425.0, "grader": "PSA", "grade": "10", "sold_at": "2025-03-01"},
+            ],
+        })
+    )
+
+    quotes = PkmnPricesProvider(settings).fetch_graded("base1-4")
+    assert len(quotes) == 1
+    q = quotes[0]
+    assert q.low == q.high == q.mid == q.market == 425.0
+
+
+@respx.mock
+def test_parse_skips_non_dict_items_in_data():
+    """Malformed non-dict entries in the data array must not crash the parser —
+    they are skipped, and only valid dict listings become quotes."""
+    settings = Settings(graded_price_api_key="key-123")
+    respx.get(_url(settings, "base1-4")).mock(
+        return_value=httpx.Response(200, json={
+            "data": [
+                123,
+                "str",
+                None,
+                {"id": 1, "price": 200, "grader": "PSA", "grade": "10", "sold_at": "2025-01-15"},
+                {"id": 2},
+            ],
+        })
+    )
+
+    quotes = PkmnPricesProvider(settings).fetch_graded("base1-4")
+    assert len(quotes) == 1
+    assert quotes[0].grader == "PSA"
+    assert quotes[0].market == 200.0

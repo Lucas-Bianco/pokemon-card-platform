@@ -29,11 +29,11 @@ class GradedPriceQuote:
     grader: str
     grade: float
     variant: str
+    source: str
     low: float | None = None
     mid: float | None = None
     high: float | None = None
     market: float | None = None
-    source: str = ""
     source_updated_at: str | None = None
 
 

@@ -110,9 +110,12 @@ class PkmnPricesProvider:
                 try:
                     return response.json()
                 except (httpx.DecodingError, ValueError) as exc:
-                    # 200 with a non-JSON body is not retryable — degrade to [].
+                    # 200 with a non-JSON body will never decode on retry — terminal,
+                    # not retryable. Raise _TerminalHttpError so tenacity stops after
+                    # one attempt instead of burning the budget on identical failures;
+                    # the outer except degrades to [].
                     logger.warning("graded price fetch bad JSON for %s: %s", card_id, exc)
-                    return None
+                    raise _TerminalHttpError(response.status_code) from exc
             if response.status_code == 429 or response.status_code >= 500:
                 logger.warning(
                     "graded price fetch HTTP %s for %s (retryable)",
