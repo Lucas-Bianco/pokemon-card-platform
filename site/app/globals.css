@@ -1118,6 +1118,199 @@ body {
   }
 }
 
+/* --- Deals --- */
+.deal-diagram {
+  display: grid;
+  /* source spans both columns; rip stacks left, flip stacks right. */
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.deal-node {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px 18px;
+  will-change: opacity, transform;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+/* "Lit up" state — applied by GSAP once a node has fully arrived on scroll.
+   Without JS the class never toggles, but the node is still fully visible at
+   natural CSS (opacity 1); only the accent border is missing. Mirrors the
+   .alert-chip.is-lit pattern. */
+.deal-node.is-lit {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent), var(--shadow-2);
+}
+
+/* The raw-listing source sits centered, spanning both branches. */
+.deal-node-source {
+  grid-column: 1 / -1;
+  text-align: center;
+  align-items: center;
+}
+
+.deal-node-rip {
+  grid-column: 1;
+}
+
+.deal-node-flip {
+  grid-column: 2;
+}
+
+.deal-node-label {
+  font-size: 1.04rem;
+  font-weight: 600;
+}
+
+.deal-node-note {
+  color: var(--fg-dim);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.deal-edges {
+  margin: 56px 0 0;
+  padding: 28px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background:
+    radial-gradient(560px 300px at 80% 0%, rgba(255, 203, 5, 0.06), transparent 70%),
+    var(--surface);
+}
+
+.deal-edges-title {
+  margin: 0 0 6px;
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+.deal-edges-sub {
+  margin: 0 0 22px;
+  color: var(--fg-dim);
+  font-size: 0.96rem;
+  line-height: 1.6;
+}
+
+.deal-edges-sub em {
+  color: var(--accent);
+  font-style: normal;
+  font-weight: 600;
+}
+
+.deal-bars {
+  display: grid;
+  gap: 18px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.deal-bar-row {
+  display: grid;
+  gap: 8px;
+}
+
+.deal-bar-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.deal-tag {
+  font-family: var(--font-jetbrains);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+}
+
+.deal-tag-rip {
+  color: var(--accent-2);
+  border-color: color-mix(in srgb, var(--accent-2) 45%, var(--line));
+}
+
+.deal-tag-flip {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+}
+
+.deal-bar-label {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.deal-bar-formula {
+  font-family: var(--font-jetbrains);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--fg-dim);
+}
+
+.deal-bar-track {
+  position: relative;
+  height: 14px;
+  border-radius: 999px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  overflow: hidden;
+}
+
+.deal-bar-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
+  border-radius: 999px;
+  will-change: width;
+}
+
+/* Rip bar = blue-leaning (the simpler edge); flip bar = full-yellow (the prize). */
+.deal-bar-row:nth-child(1) .deal-bar-fill {
+  background: linear-gradient(90deg, var(--accent-2), color-mix(in srgb, var(--accent-2) 60%, var(--accent)));
+}
+
+.deal-bar-row:nth-child(2) .deal-bar-fill {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 60%, var(--accent-2)), var(--accent));
+}
+
+.deal-caption {
+  margin: 26px 0 0;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+  color: var(--fg-dim);
+  font-size: 0.94rem;
+  line-height: 1.65;
+  max-width: 72ch;
+}
+
+@media (max-width: 720px) {
+  .deal-diagram {
+    grid-template-columns: 1fr;
+  }
+  .deal-node-source,
+  .deal-node-rip,
+  .deal-node-flip {
+    grid-column: 1;
+  }
+}
+
+@media (max-width: 560px) {
+  .deal-edges {
+    padding: 20px;
+  }
+}
+
 /* --- Reduced motion: disable decorative animation, keep content visible --- */
 @media (prefers-reduced-motion: reduce) {
   .poke-card {
@@ -1142,7 +1335,17 @@ body {
   .alert-chip.is-lit {
     /* keep the lit border in reduced motion — it's semantic, not decorative */
   }
+  .deal-node {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+  .deal-node.is-lit {
+    /* keep the lit border in reduced motion — it's semantic, not decorative */
+  }
   .spread-bar-fill {
+    transition: none !important;
+  }
+  .deal-bar-fill {
     transition: none !important;
   }
   .progress-fill {

@@ -43,7 +43,7 @@ export const ROADMAP: Phase[] = [
     status: "progress",
   },
   { n: "04", title: "Bulk cataloger", subtitle: "Detect and log every card in one photo", status: "planned" },
-  { n: "05", title: "Deal sniper & sealed EV", subtitle: "Watchlist + restock/price/drop/auction alerts shipped — rip-vs-flip modelling still planned", status: "progress" },
+  { n: "05", title: "Deal sniper & sealed EV", subtitle: "Deal sniper (rip-vs-flip) shipped — sealed EV still planned", status: "progress" },
   { n: "06", title: "Set-completion optimizer", subtitle: "Cheapest path to finishing a set", status: "planned" },
   { n: "07", title: "Counterfeit detector", subtitle: "Holo pattern, print rosette, texture analysis", status: "planned" },
   { n: "08", title: "On-device inference", subtitle: "Quantized model in-browser — scanning with no server", status: "planned" },
