@@ -155,10 +155,14 @@ describe("CardDetail", () => {
     stubFetch({});
     const { container } = render(<CardDetail cardId="base1-4" variant="normal" onBack={noop} />);
 
+    // Wait for the LOADED panel, not the loading skeleton: the loading state
+    // also renders a <p class="grading-upside"> ("Checking grading spread…"),
+    // so querying the class alone races the fetch. The headline only renders
+    // once the spread data is in.
     await waitFor(() => {
-      expect(container.querySelector(".grading-upside")).not.toBeNull();
+      expect(container.textContent ?? "").toMatch(/spread, not a prediction/i);
     });
-    expect(container.textContent ?? "").toMatch(/spread, not a prediction/i);
+    expect(container.querySelector(".grading-upside")).not.toBeNull();
   });
 
   it("renders the reused PriceChart when history points are present", async () => {
