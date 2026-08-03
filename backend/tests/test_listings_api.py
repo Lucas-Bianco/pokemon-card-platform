@@ -112,3 +112,38 @@ def test_listings_variant_param_passed_through(seeded, tmp_path, monkeypatch):
     assert response.status_code == 200
     assert seen["variant"] == "holofoil"
     assert response.json()["listings_unavailable"] is False
+
+
+def test_listings_endpoint_wires_catalog_lookup(seeded, tmp_path, monkeypatch):
+    """The endpoint wires the catalog lookup so the eBay keyword is the card's
+    name + number (not the raw 'base1-4' slug, which returns nothing on eBay).
+    Configures a key (so fetch_listings doesn't short-circuit) and stubs the
+    network search to None (no HTTP) while letting the real fetch_listings +
+    _build_query run, so the spy captures the keyword.
+    """
+    custom = Settings(data_dir=tmp_path, listings_api_key="test-key")
+    monkeypatch.setattr("cardplatform.api.settings", custom)
+    # The provider defaults to the module-level `default_settings` it imported
+    # at load time (NOT cardplatform.api.settings), so patch that binding too —
+    # otherwise fetch_listings short-circuits on "no key" before _build_query.
+    monkeypatch.setattr("cardplatform.prices.ebay_listings.default_settings", custom)
+
+    captured = {}
+    orig = EbayListingsProvider._build_query
+
+    def spy(self, card_id):
+        q = orig(self, card_id)
+        captured["query"] = q
+        return q
+
+    monkeypatch.setattr(EbayListingsProvider, "_build_query", spy)
+    monkeypatch.setattr(EbayListingsProvider, "_search", lambda self, q: None)
+
+    app = create_app()
+    app.dependency_overrides[get_session] = lambda: seeded
+    client = TestClient(app)
+
+    r = client.post("/cards/base1-4/listings", params={"variant": "holofoil"})
+    assert r.status_code == 200
+    assert captured["query"] != "base1-4"
+    assert captured["query"].endswith("4")

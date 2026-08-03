@@ -968,7 +968,7 @@ def create_app() -> FastAPI:
         """
         _require_card(session, card_id)
         v = variant or ""
-        service = ListingsService(session, EbayListingsProvider())
+        service = ListingsService(session, EbayListingsProvider(catalog=_catalog_lookup(session)))
         service.refresh_listings(card_id, v)
         rows = service.latest_listings(card_id, v)
         return {
@@ -1044,7 +1044,7 @@ def create_app() -> FastAPI:
                     with db.session() as session:
                         engine = AlertEngine(
                             session,
-                            ListingsService(session, EbayListingsProvider()),
+                            ListingsService(session, EbayListingsProvider(catalog=_catalog_lookup(session))),
                             NotificationService(session, settings),
                             settings,
                         )
@@ -1218,6 +1218,24 @@ def _require_card(session: Session, card_id: str) -> Card:
     if card is None:
         raise HTTPException(status_code=404, detail=f"unknown card: {card_id!r}")
     return card
+
+
+def _catalog_lookup(session: Session):
+    """Build an EbayListingsProvider catalog callable: card_id -> (set_name,
+    number, card_name) | None. Resolves the catalog row + its set so the eBay
+    keyword is the card's real name + number (not the 'base1-4' slug, which
+    returns nothing). Returns None for an unknown card (provider falls back to
+    the slug — never raises)."""
+    from cardplatform.db.models import Card
+
+    def _lookup(card_id: str) -> tuple[str, str, str] | None:
+        card = session.get(Card, card_id)
+        if card is None:
+            return None
+        set_name = card.card_set.name if card.card_set is not None else ""
+        return (set_name, card.number, card.name)
+
+    return _lookup
 
 
 def _item_out(item: CollectionItem) -> CollectionItemOut:

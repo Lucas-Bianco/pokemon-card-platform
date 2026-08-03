@@ -193,6 +193,7 @@ def check_alerts(_args: argparse.Namespace) -> int:
     """
     from cardplatform.alerts.engine import AlertEngine
     from cardplatform.alerts.notify import NotificationService
+    from cardplatform.api import _catalog_lookup
     from cardplatform.prices.ebay_listings import EbayListingsProvider
     from cardplatform.prices.listings_service import ListingsService
 
@@ -202,7 +203,7 @@ def check_alerts(_args: argparse.Namespace) -> int:
     with db.session() as session:
         engine = AlertEngine(
             session,
-            ListingsService(session, EbayListingsProvider()),
+            ListingsService(session, EbayListingsProvider(catalog=_catalog_lookup(session))),
             NotificationService(session, db.settings),
             db.settings,
         )

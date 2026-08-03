@@ -1,4 +1,4 @@
-"""EbayListingsProvider — raw eBay listing search via the Browse API.
+"""EbayListingsProvider — raw eBay listing search via the Finding API.
 
 Mirrors PkmnPricesProvider's error/retry discipline line-for-line: the fetch
 method NEVER raises — every failure mode degrades to [].
@@ -13,26 +13,23 @@ Degrade-to-[] philosophy (mirrors PkmnPricesProvider / PokemonTcgIoProvider):
   * NEVER raises out of fetch_listings.
 
 eBay search caveat (documented follow-up, NOT solved here):
-  eBay Browse API search is keyword-based. We build the query from the card's
-  name + set name + number when a `catalog_lookup` callable is wired in, else
-  from the raw card_id slug (e.g. "base1-4"). Keyword search may surface
-  near-miss listings, so every quote carries `source` + `url` so the user can
-  verify each listing in the UI. Tighter id-mapping (e.g. filtering by eBay
-  product id, or a card-id -> eBay-product-id mapping) is a documented
+  eBay Finding API search is keyword-based. We build the query from the card's
+  name + number (NO set name — eBay keyword search over-matches on set names)
+  when a `catalog_lookup` callable is wired in, else from the raw card_id slug
+  (e.g. "base1-4", which returns noisy or empty results). Keyword search may
+  surface near-miss listings, so every quote carries `source` + `url` so the
+  user can verify each listing in the UI. Tighter id-mapping (e.g. filtering by
+  eBay product id, or a card-id -> eBay-product-id mapping) is a documented
   follow-up; until it exists, treat listings as "best-effort keyword matches",
-  not authoritative. Do NOT build the mapping here — T2 is listings *fetch*
+  not authoritative. Do NOT build the mapping here — T1 is listings *fetch*
   only.
 
-Auth caveat (documented follow-up, NOT solved here):
-  The eBay Browse API needs an OAuth2 user-token (or the Client Credentials
-  grant for guest-restricted calls). For this single-user local-first app we
-  treat `listings_api_key` as a bearer/App-Key token and send it via the
-  `Authorization: Bearer {token}` header (also accepted as
-  `X-EBAY-API-IAF-TOKEN` for the legacy App-Key flow). A real OAuth
-  client-credentials flow (token exchange + refresh) is a documented
-  follow-up; for now the key is treated as a static bearer token — mirror the
-  "document the auth caveat" honesty of PkmnPricesProvider. Do NOT build the
-  OAuth flow here.
+Auth: the eBay Finding API takes a single SECURITY-APPNAME (App ID) as a
+QUERY PARAM — no OAuth. Lucas's free eBay developer App ID works directly,
+sent in `params["SECURITY-APPNAME"]` (not an Authorization header). The 3c
+adapter used the Browse API (item_summary/search), which needs a real OAuth
+client-credentials token, so it faked a static bearer token and never
+returned listings. The Finding API has no such requirement.
 """
 
 from __future__ import annotations
@@ -97,9 +94,11 @@ class EbayListingsProvider:
             return []
 
     def _build_query(self, card_id: str) -> str:
-        """Build the eBay search query. Use the catalog callable when wired in
-        (set_name + number + card_name); else fall back to the raw card_id slug.
-        Keyword search is best-effort — see the search caveat in the docstring."""
+        """Build the eBay search query: card name + number (NO set name — eBay
+        keyword search over-matches on set names). Falls back to the raw card_id
+        slug when no catalog callable is wired (the 3c default — returns noisy
+        or empty results, but never raises). Keyword search is best-effort —
+        treat listings as leads to verify, not authoritative matches."""
         if self.catalog is not None:
             try:
                 meta = self.catalog(card_id)
@@ -107,25 +106,30 @@ class EbayListingsProvider:
                 logger.warning("ebay catalog lookup failed for %s: %s", card_id, exc)
                 meta = None
             if meta is not None:
-                set_name, number, card_name = meta
-                return f"{card_name} {set_name} {number}".strip()
+                _set_name, number, card_name = meta
+                return f"{card_name} {number}".strip()
         return card_id
 
     def _search(self, query: str) -> dict[str, Any] | None:
-        """GET the eBay Browse search endpoint, retrying transport/5xx/429 only.
+        """GET the eBay Finding API, retrying transport/5xx/429 only.
 
-        Mirrors PkmnPricesProvider._get_listings exactly: 404/401 raise
-        _TerminalHttpError (one attempt only); 5xx/429/transport return None and
-        tenacity retries until the attempt budget is exhausted, then we degrade
-        to []. 200-with-bad-JSON raises _TerminalHttpError (terminal, one
-        attempt) so tenacity does not burn the budget on identical failures.
+        Mirrors the 3c discipline: 404/401 raise _TerminalHttpError (one
+        attempt); 5xx/429/transport return None and tenacity retries; 200 with
+        bad JSON is terminal (one attempt); RetryError degrades to None.
+        SECURITY-APPNAME is a query param (NOT an auth header) — the Finding
+        API uses the App ID directly, no OAuth token.
         """
-        headers = {
-            "Authorization": f"Bearer {self.settings.listings_api_key}",
-            "X-EBAY-API-IAF-TOKEN": self.settings.listings_api_key,
+        url = self.settings.listings_base_url
+        params = {
+            "OPERATION-NAME": "findItemsByKeywords",
+            "SERVICE-VERSION": "1.13.0",
+            "SECURITY-APPNAME": self.settings.listings_api_key,
+            "RESPONSE-DATA-FORMAT": "JSON",
+            "REST-PAYLOAD": "",
+            "GLOBAL-ID": "EBAY-US",
+            "keywords": query,
+            "paginationInput.entriesPerPage": "20",
         }
-        url = f"{self.settings.listings_base_url}/item_summary/search"
-        params = {"q": query}
 
         @retry(
             stop=stop_after_attempt(self.settings.http_max_attempts),
@@ -135,10 +139,7 @@ class EbayListingsProvider:
         def _attempt() -> dict[str, Any] | None:
             try:
                 response = httpx.get(
-                    url,
-                    headers=headers,
-                    params=params,
-                    timeout=self.settings.http_timeout_seconds,
+                    url, params=params, timeout=self.settings.http_timeout_seconds,
                 )
             except httpx.HTTPError as exc:
                 logger.warning("ebay listings transport error for %r: %s", query, exc)
@@ -147,25 +148,12 @@ class EbayListingsProvider:
                 try:
                     return response.json()
                 except (httpx.DecodingError, ValueError) as exc:
-                    # 200 with a non-JSON body will never decode on retry —
-                    # terminal, not retryable. Raise _TerminalHttpError so
-                    # tenacity stops after one attempt instead of burning the
-                    # budget on identical failures; the outer except degrades
-                    # to [].
                     logger.warning("ebay listings bad JSON for %r: %s", query, exc)
                     raise _TerminalHttpError(response.status_code) from exc
             if response.status_code == 429 or response.status_code >= 500:
-                logger.warning(
-                    "ebay listings HTTP %s for %r (retryable)",
-                    response.status_code,
-                    query,
-                )
+                logger.warning("ebay listings HTTP %s for %r (retryable)", response.status_code, query)
                 return None
-            logger.warning(
-                "ebay listings HTTP %s for %r (terminal, not retrying)",
-                response.status_code,
-                query,
-            )
+            logger.warning("ebay listings HTTP %s for %r (terminal)", response.status_code, query)
             raise _TerminalHttpError(response.status_code)
 
         try:
@@ -173,31 +161,36 @@ class EbayListingsProvider:
         except _TerminalHttpError:
             return None
         except RetryError:
-            logger.error(
-                "ebay listings gave up for %r after %s attempts",
-                query,
-                self.settings.http_max_attempts,
-            )
+            logger.error("ebay listings gave up for %r after %s attempts", query, self.settings.http_max_attempts)
             return None
 
     @staticmethod
-    def _parse(
-        card_id: str, variant: str, payload: dict[str, Any]
-    ) -> list[ListingQuote]:
-        """Map eBay `itemSummaries` -> ListingQuotes.
+    def _parse(card_id: str, variant: str, payload: dict[str, Any]) -> list[ListingQuote]:
+        """Map eBay Finding API `findItemsByKeywordsResponse.searchResult.item`
+        -> ListingQuotes.
 
-        For each item: listing_id from itemId (or id), price/currency from
-        price.value/price.currency (skip if price present but unparseable),
-        url from itemWebUrl, title, listing_type from buyingOptions
-        (contains "BIDDING" -> "auction", else "fixed_price"), auction_end_at
-        from itemEndDate parsed ISO -> tz-aware UTC (or None), condition from
-        the condition field (string; None if absent). source="ebay".
-        source_updated_at is None: eBay Browse search does not reliably expose
-        a per-listing updated stamp; the service normalizes None -> "" for the
-        dedupe unique key (mirrors graded_service). Skip rows missing
-        listing_id — never fabricate.
+        The Finding API is XML-first; serialized to JSON it wraps EVERY field
+        in a single-element array, so each access is `[0]`. For each item:
+        listing_id from itemId, price/currency from sellingStatus.currentPrice
+        (skip if present-but-unparseable — never fabricate), url from
+        viewItemURL, listing_type from listingInfo.listingType
+        (Auction/AuctionWithBIN -> "auction", else "fixed_price"),
+        auction_end_at from listingInfo.endTime (tz-aware UTC, or None),
+        condition from condition.conditionDisplayName. source="ebay";
+        source_updated_at None (Finding API exposes no per-listing updated
+        stamp). Skip rows missing itemId — never fabricate.
         """
-        items = payload.get("itemSummaries")
+        def _first(node, key):
+            v = node.get(key)
+            return v[0] if isinstance(v, list) and v else None
+
+        resp = payload.get("findItemsByKeywordsResponse")
+        if not isinstance(resp, list) or not resp:
+            return []
+        search = _first(resp[0], "searchResult")
+        if not isinstance(search, dict):
+            return []
+        items = search.get("item")
         if not isinstance(items, list):
             return []
 
@@ -205,46 +198,49 @@ class EbayListingsProvider:
         for item in items:
             if not isinstance(item, dict):
                 continue
-            listing_id = item.get("itemId") or item.get("id")
+            listing_id = _first(item, "itemId")
             if not listing_id:
                 continue
 
             price: float | None = None
             currency: str | None = None
-            price_block = item.get("price")
-            if isinstance(price_block, dict):
-                currency = price_block.get("currency")
-                raw_value = price_block.get("value")
-                if raw_value is not None:
-                    try:
-                        price = float(raw_value)
-                    except (TypeError, ValueError):
-                        # Price present but unparseable — skip this listing
-                        # rather than fabricate a price.
-                        continue
+            selling = _first(item, "sellingStatus")
+            if isinstance(selling, dict):
+                price_block = _first(selling, "currentPrice")
+                if isinstance(price_block, dict):
+                    currency = price_block.get("@currencyId")
+                    raw_value = price_block.get("__value__")
+                    if raw_value is not None:
+                        try:
+                            price = float(raw_value)
+                        except (TypeError, ValueError):
+                            continue  # price present but unparseable — skip, don't fake
+            if price is None:
+                continue  # missing price — skip, never fabricate (SACRED)
 
-            buying_options = item.get("buyingOptions")
-            if isinstance(buying_options, list) and "BIDDING" in buying_options:
-                listing_type = "auction"
-            else:
-                listing_type = "fixed_price"
+            listing_info = _first(item, "listingInfo")
+            ltype_raw = _first(listing_info, "listingType") if isinstance(listing_info, dict) else None
+            listing_type = "auction" if (isinstance(ltype_raw, str) and ltype_raw.startswith("Auction")) else "fixed_price"
+            # endTime is the auction close; for fixed-price listings it is not
+            # an auction end, so ignore it (never synthesize an auction_end_at).
+            auction_end_at = (
+                _parse_iso(_first(listing_info, "endTime"))
+                if isinstance(listing_info, dict) and listing_type == "auction"
+                else None
+            )
 
-            auction_end_at = _parse_iso(item.get("itemEndDate"))
+            condition = None
+            cond_block = _first(item, "condition")
+            if isinstance(cond_block, dict):
+                condition = _first(cond_block, "conditionDisplayName")
 
             quotes.append(
                 ListingQuote(
-                    card_id=card_id,
-                    variant=variant,
-                    listing_id=str(listing_id),
-                    title=item.get("title"),
-                    price=price,
-                    currency=currency,
-                    listing_type=listing_type,
-                    auction_end_at=auction_end_at,
-                    url=item.get("itemWebUrl"),
-                    condition=item.get("condition"),
-                    source="ebay",
-                    source_updated_at=None,
+                    card_id=card_id, variant=variant, listing_id=str(listing_id),
+                    title=_first(item, "title"), price=price, currency=currency,
+                    listing_type=listing_type, auction_end_at=auction_end_at,
+                    url=_first(item, "viewItemURL"), condition=condition,
+                    source="ebay", source_updated_at=None,
                 )
             )
         return quotes

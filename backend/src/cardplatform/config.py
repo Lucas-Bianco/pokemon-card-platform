@@ -59,12 +59,14 @@ class Settings(BaseSettings):
     graded_price_api_key: str | None = Field(default=None)
     graded_price_base_url: str = Field(default="https://api.pkmnprices.com/v1")
 
-    # Listings source (eBay Browse API item_summary/search). Opt-in: when the
+    # Listings source (eBay Finding API findItemsByKeywords). Opt-in: when the
     # key is None (the default) the provider returns [] without touching the
     # network, so listings are simply unavailable until a key is configured.
-    # Base URL per https://developer.ebay.com/api-docs/buy/browse/resources/item_summary
+    # The Finding API takes a single SECURITY-APPNAME (App ID) as a query
+    # param — no OAuth — so Lucas's free eBay developer App ID works directly.
+    # Base URL per https://developer.ebay.com/Devzone/finding/CallRefType/index.html
     listings_api_key: str | None = Field(default=None)
-    listings_base_url: str = Field(default="https://api.ebay.com/buy/browse/v1")
+    listings_base_url: str = Field(default="https://svcs.ebay.com/services/search/FindingService/v1")
 
     # --- alerts (Phase 3c) ---
     # Web Push (VAPID) keypair. Opt-in: when both keys are None (the default) the
@@ -92,6 +94,15 @@ class Settings(BaseSettings):
     # reads it directly from settings).
     alert_poll_min: int = Field(default=15)
     alert_cooldown_min: int = Field(default=60)
+
+    # --- deals (Phase 05 / rip-vs-flip) ---
+    # Thresholds filter noise without manufacturing deals. A listing is a `rip`
+    # when rip_edge >= deal_rip_min_abs AND >= deal_rip_min_pct * raw_market.
+    # A listing is a `flip` when flip_edge_to_10 >= deal_flip_min_abs (grading
+    # fee + meaningful profit). Edges are indicative leads, not arbitrage.
+    deal_rip_min_abs: float = Field(default=2.0)
+    deal_rip_min_pct: float = Field(default=0.10)
+    deal_flip_min_abs: float = Field(default=20.0)
 
     @property
     def db_path(self) -> Path:
