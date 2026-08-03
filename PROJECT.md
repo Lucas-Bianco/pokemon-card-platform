@@ -2,10 +2,11 @@
 
 **Owner:** Lucas
 **Started:** 2026-07-28
-**Status:** Phase 3c (watchlist + alerts) shipped 2026-08-02 — see
-[design spec](docs/superpowers/specs/2026-08-02-alerts-watchlist-design.md) +
-[plan](docs/superpowers/plans/2026-08-02-alerts-watchlist.md).
-Next: full Grade predictor (corner/edge/surface + P(grade)), pending labelled-data accrual.
+**Status:** Phase 05 (deal sniper / rip-vs-flip) shipped 2026-08-03 — see
+[design spec](docs/superpowers/specs/2026-08-03-deal-sniper-design.md) +
+[plan](docs/superpowers/plans/2026-08-03-deal-sniper.md).
+Next: sealed-product EV (Phase 05's other leg) or the full Grade predictor (corner/edge/surface +
+P(grade)), pending labelled-data accrual.
 
 **Shape:** ONE platform built in phases, not seven apps. All modules share a card-recognition core,
 a pricing layer, and a collection store. Responsive PWA (phone + desktop): React/TypeScript
@@ -49,7 +50,7 @@ Each phase ships independently usable functionality and gets its own spec → pl
 | 3c | Watchlist + restock/price/drop/auction alerts — CollectorVault-style 5-tab UI | **Complete** |
 | 3 | Grade Predictor — corner/edge/surface scoring + P(grade) + grading EV | In progress — data infra unblocked (3b); full predictor still planned |
 | 4 | Bulk cataloger — detect every card in one photo | Planned |
-| 5 | Deal sniper + sealed EV — listings vs. sold comps, rip-vs-flip | Planned |
+| 5 | Deal sniper + sealed EV — listings vs. sold comps, rip-vs-flip | In progress — deal sniper / rip-vs-flip shipped; sealed EV still planned |
 | 6 | Set-completion optimizer — cheapest path to finish a set | Planned |
 | 7 | Counterfeit detector — holo pattern, rosette, texture analysis | Planned |
 | 8 | On-device inference — quantized model in-browser, no server | Planned |
@@ -420,10 +421,54 @@ when unconfigured. 105 real scans preserved; raw price/graded tables and recogni
   in-progress ("…alerts shipped — rip-vs-flip modelling still planned"). Rebuilt → `docs/`.
 
 **Documented follow-ups** — `@app.on_event` poll loop is deprecated-cosmetic (lifespan handler is
-the clean replacement); the eBay listings adapter needs real keyword-search + auth before
-restock/new_listing/auction alerts fire (provider degrades to `[]` until
-`CARDPLATFORM_LISTINGS_API_KEY` is set); `previous_listing_ids` can merge same-clock-tick fetches
-(fine at a 15-min cadence).
+the clean replacement); the eBay listings adapter was upgraded to the real Finding API in Phase 05
+(see below) — restock/new_listing/auction alerts now flow when `CARDPLATFORM_LISTINGS_API_KEY`
+(eBay App ID) is set; `previous_listing_ids` can merge same-clock-tick fetches (fine at a 15-min
+cadence).
+
+## Phase 05 (deal-sniper leg) — shipped
+
+Deal sniper / rip-vs-flip, built 2026-08-03
+([spec](docs/superpowers/specs/2026-08-03-deal-sniper-design.md) +
+[plan](docs/superpowers/plans/2026-08-03-deal-sniper.md)). **462 backend + 96 frontend tests.**
+Joins the 3b graded-price leg and the 3c listings leg into one evaluation: **is this active listing a
+deal — to rip (buy below raw sold-comp market) or to flip (buy raw, grade, sell at the PSA-10 comp)?**
+The same "never fake missing data" value throughout — missing raw/graded nulls the edge it feeds
+(never `$0`, never a fake profit). 105 real scans preserved; raw price/graded tables and recognition
+untouched.
+
+- **Deal model (read-only `DealEngine`)** — `rip_edge = raw_market − listing.price`;
+  `flip_edge_to_9/10 = psa comp − listing.price − grading_fee`. `is_rip` iff `rip_edge >= $2` AND `>=
+  10% of raw market; `is_flip` iff `flip_edge_to_10 >= $20`. `deal_score = max(rip, flip-to-10)`,
+  ranked desc nulls last. **Writes nothing** — deals are computed on demand from the latest
+  snapshots, so they never go stale in storage (no `deal_snapshots` table). Edges are indicative
+  leads; the UI says "investigate before buying".
+- **eBay Finding API adapter (the realness leg)** — the 3c `EbayListingsProvider` called the Browse
+  API with the key faked as a static bearer (Browse needs real OAuth, so it never returned
+  listings). Replaced with the Finding API `findItemsByKeywords`: one `SECURITY-APPNAME` (eBay App
+  ID) query param, no OAuth. A catalog lookup (card name + number) wired into the API + CLI +
+  poll-loop paths — **this also unblocks the 3c restock/new_listing/auction alerts**. Never-raise
+  discipline kept; price-less items skipped not fabricated; `auction_end_at` only for auctions.
+- **API + CLI** — `GET /cards/{id}/deals?variant=` (ranked, honest `listings_unavailable` /
+  `listings_empty` flags, thresholds in response) + `GET /deals?card_ids=&limit=` (cross-card feed
+  defaulting to the watchlist) + `cardplatform find-deals` CLI (honest no-key / no-listings
+  messages).
+- **Frontend** — 6th bottom-nav **Deals** tab (`Deals.tsx` — search or pull watched cards → ranked
+  deal feed, rip/flip edges, deal chips, staleness, "investigate before buying" caveat; honest
+  empty states) + per-listing deal-score chips on `CardDetail`.
+- **Site** — new scroll-animated `Deals` section (rip-vs-flip diagram, GSAP scrub + Framer reveal,
+  reduced-motion fallback) with the honest "indicative leads, not guaranteed arbitrage — always
+  verify the listing" caption; roadmap row 05 → in-progress. Rebuilt → `docs/` (`.nojekyll` +
+  `docs/superpowers/` preserved).
+
+**Key acquisition** — free eBay developer account → My Apps → create app → the App ID is the
+`SECURITY-APPNAME`, set as `CARDPLATFORM_LISTINGS_API_KEY`. Until set, the whole deal surface is
+honestly empty — the phase ships regardless.
+
+**Documented follow-ups** — sealed-product EV (Phase 05's other leg, needs a sealed-product price
+provider); deal alerts (compose the 3c alert engine with this evaluator); deal snapshots / history;
+multi-source listings (only eBay; the Protocol keeps a second source swappable); full-catalog deal
+scan; eBay OAuth / Browse API as an upgrade path.
 
 ## Carried into Phase 1 (from the final Phase 0 review)
 
@@ -461,8 +506,17 @@ different inputs, so the system knows when it is unsure.
 
 ## Next step
 
-The full Grade predictor (corner/edge/surface scoring + P(grade) + grading EV). The data
-infrastructure is unblocked (3b): rectified crops persist, grade-labels + self-annotation collect the
-only honest labelled dataset, and the graded-price provider + grading-upside spread are live. What
-remains is the corner/edge/surface scoring and the P(grade) model — which needs the labelled dataset
-to accrue from real mailed-in grades.
+Two candidates, both honestly framed:
+
+1. **Sealed-product EV** — Phase 05's other leg. Joins the deal sniper's edge thinking to sealed
+   booster/product economics. Needs a sealed-product price provider we don't have yet (the deals +
+   graded-price provider patterns make one swappable in).
+2. **The full Grade predictor** (corner/edge/surface scoring + P(grade) + grading EV). The data
+   infrastructure is unblocked (3b): rectified crops persist, grade-labels + self-annotation collect
+   the only honest labelled dataset, and the graded-price provider + grading-upside spread are live.
+   What remains is the corner/edge/surface scoring and the P(grade) model — which needs the labelled
+   dataset to accrue from real mailed-in grades.
+
+The deal sniper also opens a natural follow-up: **deal alerts** (fire a 3c alert when a new listing
+clears the rip/flip thresholds) — a small compose of the 3c alert engine and the read-only
+DealEngine.

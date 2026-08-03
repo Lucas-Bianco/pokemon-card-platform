@@ -7,7 +7,7 @@
 > **Keep it current.** Update this file after any change that alters architecture, measured
 > results, or the roadmap. A stale onboarding doc is worse than none, because it is trusted.
 >
-> Last updated: **2026-08-02**
+> Last updated: **2026-08-03**
 
 ---
 
@@ -31,7 +31,7 @@ Site: https://lucas-bianco.github.io/pokemon-card-platform/
 
 ---
 
-## 2. Current state (2026-08-02)
+## 2. Current state (2026-08-03)
 
 | Phase | What | Status |
 |---|---|---|
@@ -44,11 +44,11 @@ Site: https://lucas-bianco.github.io/pokemon-card-platform/
 | 3b | Grading data infrastructure: rectified-crop persistence, grade-label schema + self-annotation, graded-price provider, grading-upside spread | ✅ Complete |
 | 3c | Watchlist + restock/price/drop/auction alerts (CollectorVault-style 5-tab UI) | ✅ Complete (§11) |
 | 4 | Bulk cataloger: many cards per photo | Planned |
-| 5 | Deal sniper + sealed EV | Planned |
+| 5 | Deal sniper + sealed EV | In progress — deal sniper / rip-vs-flip shipped (§12); sealed EV still planned |
 | 6 | Set-completion optimizer | Planned |
 | 7 | Counterfeit detector | Planned |
 
-**Tests:** 443 backend (pytest) + 90 frontend (vitest).
+**Tests:** 462 backend (pytest) + 96 frontend (vitest).
 
 ### UI — "Grading Lab" (2026-08-01)
 
@@ -130,12 +130,19 @@ backend/src/cardplatform/
                      graded_provider.py + pkmnprices.py + graded_service.py — graded sold comps
                      (degrades to [] without CARDPLATFORM_GRADED_PRICE_API_KEY, never raises);
                      listings_provider.py (Protocol + ListingQuote) + ebay_listings.py
-                     (EbayListingsProvider — mirrors PkmnPricesProvider, degrades to []) +
+                     (EbayListingsProvider — eBay **Finding API** findItemsByKeywords, one
+                     SECURITY-APPNAME query param, no OAuth; catalog lookup wired so the keyword
+                     is card name + number; degrades to [] without a key, never raises) +
                      listings_service.py (ListingsService — immutable ListingSnapshot dedupe,
                      lowest_price None-not-0.0, previous_listing_ids by fetched_at-grouping)
   alerts/            engine.py (AlertEngine — 5 alert types, per-watch SAVEPOINT isolation,
                      never-raises), notify.py (NotificationService — in-app/push/email, degrades
                      gracefully per channel), api_models.py (Pydantic wire models)
+  deals/             engine.py (DealEngine — read-only rip-vs-flip: rip_edge = raw_market −
+                     listing.price; flip_edge_to_9/10 = graded comp − listing.price − grading_fee;
+                     thresholds filter noise, missing inputs null the edge, never a fabricated $0;
+                     ranked by deal_score desc, nulls last; writes nothing) +
+                     api_models.py (DealAssessmentOut, DealsResponse — Pydantic v2)
   collection/        store.py — add/remove/list/valuation + portfolio/summary/set_cost_basis
   recognition/       detectors.py, rectify.py, encoder.py, index.py, ocr.py, fusion.py, service.py
                      (persists the rectified crop to data/rectified/ + stamps scan_logs.variant)
@@ -144,16 +151,19 @@ backend/src/cardplatform/
   scans/             store.py — logs every scan as ground truth (rectified_path + variant columns)
   api.py             FastAPI, cli.py  CLI
 backend/scripts/     evaluate_recognition.py, evaluate_detection.py, spot_check.py
-frontend/src/        api/, lib/ (format, cameraCrop), components/  (CameraCapture, ScanResult,
-                     CandidatePicker, PriceLine, CornerAdjust, PortfolioView, PriceChart,
-                     GradingUpside — the spread panel; ScanResult hosts the self-annotation form;
-                     AppShell — 5-tab nav Scan/Vault/Alerts/Browse/More, Alerts-first; CardDetail,
-                     Browse, AlertsFeed, WatchCardSheet, More — the Phase 3c alert/watchlist UI)
+frontend/src/        api/, lib/ (format, cameraCrop, time — shared relativeTime), components/
+                     (CameraCapture, ScanResult, CandidatePicker, PriceLine, CornerAdjust,
+                     PortfolioView, PriceChart, GradingUpside — the spread panel; ScanResult hosts
+                     the self-annotation form; AppShell — 6-tab nav Scan/Vault/Alerts/Deals/Browse/
+                     More, Alerts-first; CardDetail — listings + per-listing deal-score chips;
+                     Browse, AlertsFeed, WatchCardSheet, Deals — the Phase 05 deal feed, More — the
+                     Phase 3c alert/watchlist UI)
 frontend/public/     manifest.webmanifest, icon-192/512/icon-maskable-512.png, icon-source.svg
 frontend/scripts/    gen-icons.py (rasterize icon-source.svg → PNGs)
 site/                Next.js 15 marketing app — app/sections/ (Hero, Problem, Pipeline, Roadmap,
-                     Grading, Stack, Footer), app/sections/data.ts (copy + roadmap rows), providers.tsx
-                     (Lenis + GSAP ScrollTrigger), next.config.mjs (static export + basePath)
+                     Grading, Alerts, Deals, Stack, Footer), app/sections/data.ts (copy + roadmap
+                     rows), providers.tsx (Lenis + GSAP ScrollTrigger), next.config.mjs (static
+                     export + basePath)
 api.py Phase 2 endpoints: GET /collection/portfolio (items + summary in one round trip,
                      all valuation server-side via latest_price), PATCH /collection/{id}
                      (cost basis / acquired_at / condition / notes), DELETE /collection
@@ -170,6 +180,12 @@ api.py Phase 3c endpoints: GET/POST/PATCH/DELETE /watchlist (422 validation per 
                      GET /push/vapid-public, POST/DELETE /push/subscribe. A startup poll loop
                      runs AlertEngine.check_alerts() every alert_poll_min minutes (skips if <=0).
                      CLI: check-alerts (one-shot), gen-vapid (VAPID keypair for web push).
+api.py Phase 05 endpoints: GET /cards/{card_id}/deals?variant= (ranked rip/flip deals, honest
+                     listings_unavailable / listings_empty flags, thresholds in response) +
+                     GET /deals?card_ids=&limit= (cross-card feed defaulting to the active
+                     watchlist; assesses the "" variant per card). DealEngine is read-only —
+                     no snapshot writes. CLI: find-deals (one-shot, prints ranked deals; honest
+                     "no listings source key" / "no active listings" messages).
 data/                GITIGNORED — 20,391 card images, 40 MB FAISS index, SQLite db, 105 real scans
 ```
 
@@ -538,12 +554,84 @@ T5 spec-review subagent):
   `docs/` (`.nojekyll` + `docs/superpowers/` preserved).
 
 **Documented follow-ups (not solved):** the `@app.on_event` poll loop is deprecated-cosmetic
-(lifespan handler is the clean replacement); eBay listings need a real keyword-search + auth adapter
-(the provider degrades to `[]` until then, so restock/new_listing/auction alerts need
-`CARDPLATFORM_LISTINGS_API_KEY` to fire); `previous_listing_ids` can merge two same-clock-tick fetches
-(acceptable at a 15-min poll cadence); numeric `listing_id` assumed for the auction dedupe `LIKE`.
+(lifespan handler is the clean replacement); the eBay listings adapter was upgraded to the real
+Finding API in Phase 05 (§12) — restock/new_listing/auction alerts now flow when
+`CARDPLATFORM_LISTINGS_API_KEY` (eBay App ID) is set; `previous_listing_ids` can merge two
+same-clock-tick fetches (acceptable at a 15-min poll cadence); numeric `listing_id` assumed for the
+auction dedupe `LIKE`.
 
 **Sacred constraints held:** no ad-hoc price resolution; snapshots immutable (listings too);
 staleness surfaced; honest empty states (no `$0`, never fabricate events, channels degrade silently);
 no `data/` contents deleted; `func.lower(...).like` for text search; `UtcDateTime` for tz-aware
 columns; `""` sentinel for unique-constraint columns that may lack a source timestamp.
+
+---
+
+## 12. Phase 05 — deal sniper / rip-vs-flip (deal-sniper leg)
+
+Shipped 2026-08-03 on `main`. **462 backend + 96 frontend tests.** Joins the 3b graded-price leg and
+the 3c listings leg into an evaluation: **is this active listing a deal — to rip (buy below raw sold-comp
+market) or to flip (buy raw, grade, sell at the PSA-10 comp)?** — with honest nulls whenever an edge
+input is missing. The same "never fake missing data" value throughout: missing raw/graded nulls the
+edge they feed (never `$0`, never a fake profit), and listings degrade honestly when no source key is
+set. 105 real scans preserved; raw `PriceSnapshot` / `GradedPriceSnapshot` and recognition untouched.
+
+**The deal model (read-only `DealEngine.assess(card_id, variant) -> list[DealAssessment]`):**
+`rip_edge = raw_market.price − listing.price`; `flip_edge_to_9 = psa9.market − listing.price −
+grading_fee`; `flip_edge_to_10 = psa10.market − listing.price − grading_fee`. A listing is `is_rip`
+iff `rip_edge >= deal_rip_min_abs AND rip_edge >= deal_rip_min_pct * raw_market.price` (default `$2` /
+`0.10`); `is_flip` iff `flip_edge_to_10 >= deal_flip_min_abs` (default `$20`). `deal_score =
+max(rip_edge or 0, flip_edge_to_10 or 0)`, ranked desc, nulls last. Edges are **indicative leads** —
+eBay keyword listings carry seller-mislabel noise; the UI says "investigate before buying". The
+engine writes nothing (deals are computed on demand from the latest snapshots, so they never go
+stale in storage — no `deal_snapshots` table).
+
+What shipped (TDD, subagent-driven; inline spec+quality reviews T1–T5):
+- **T1 — eBay Finding API adapter (the realness leg).** The 3c `EbayListingsProvider` called the
+  Browse API (`item_summary/search`) with the key faked as a static bearer — Browse needs real OAuth,
+  so it never returned listings. Replaced with the **Finding API** `findItemsByKeywords`: one
+  `SECURITY-APPNAME` (eBay App ID) query param, no OAuth. Parses the array-wrapped Finding JSON
+  (`findItemsByKeywordsResponse.searchResult.item[]`, every field in a single-element array). A
+  `_catalog_lookup(session)` helper resolves card_id → (set_name, number, card_name) and is wired
+  into the API endpoint, the in-process `_poll_loop`, and the CLI `check-alerts`, so the keyword is
+  the card's real name + number (not the `"base1-4"` slug, which returned nothing) — **this also
+  unblocks the 3c restock/new_listing/auction alerts**. Never-raise discipline kept (no key → `[]`;
+  404/401/bad-JSON terminal-one-attempt; 5xx/429/transport retry → `[]`). Items missing a price are
+  **skipped, not fabricated**; `auction_end_at` is set only for auctions. Three deal-threshold
+  settings added.
+- **T2 — read-only DealEngine.** `deals/engine.py` — uses only `PriceService.latest_price`,
+  `GradedPriceService.latest_graded`, `ListingsService.latest_listings` (no ad-hoc resolution, no
+  snapshot writes). Missing inputs null the edge they feed; thresholds filter noise without
+  manufacturing deals.
+- **T3 — API + CLI.** `deals/api_models.py` (Pydantic v2) + `GET /cards/{id}/deals?variant=` (ranked
+  deals, honest flags, thresholds in response) + `GET /deals?card_ids=&limit=` (cross-card feed
+  defaulting to the active watchlist; assesses the `""` variant per card) + `cardplatform find-deals`
+  CLI (honest "no listings source key" / "no active listings" messages).
+- **T4 — frontend.** 6th bottom-nav **Deals** tab (`Deals.tsx` — search a card or pull watched cards
+  → ranked deal feed with rip/flip edges, deal chips, staleness, "investigate before buying" caveat;
+  honest empty states: set-a-key / no active listings / no market price / no graded comps) +
+  per-listing deal-score chips on `CardDetail`. `relativeTime` extracted to `lib/time.ts` (shared
+  with `AlertsFeed`); new `auctionCountdown` helper (the existing one was past-elapsed only).
+  `formatMoney`'s no-comma convention preserved.
+- **T5 — site.** New scroll-animated `Deals` section (GSAP scrub + Framer reveal, rip-vs-flip
+  diagram, `prefers-reduced-motion` static, JS-off visible) with the honest "Deal edges are
+  indicative leads from marketplace keyword search, not guaranteed arbitrage — always verify the
+  listing" caption. Roadmap row 05 → in-progress ("Deal sniper (rip-vs-flip) shipped — sealed EV
+  still planned"). Rebuilt → `docs/` (`.nojekyll` + `docs/superpowers/` preserved).
+
+**Key acquisition:** a free eBay developer account at `developer.ebay.com` → My Apps → create app →
+the App ID (Client ID) is the `SECURITY-APPNAME`. Set as `CARDPLATFORM_LISTINGS_API_KEY`. Until set,
+the whole deal surface is honestly empty — the phase ships regardless (the verified path is the
+honest-empty path, same as graded prices in 3b).
+
+**Documented follow-ups (not solved):** sealed-product EV (Phase 05's other leg — needs a
+sealed-product price provider); deal alerts (compose the 3c alert engine with this evaluator);
+persisting deal scores / deal history (a `deal_snapshots` table — deals are on-demand now);
+multi-source listings (only eBay; the Protocol keeps a second source swappable); full-catalog deal
+scan (the feed scopes to watched + searched cards); eBay OAuth / Browse API (Finding API's one-key
+auth is simpler; Browse is an upgrade path).
+
+**Sacred constraints held:** no ad-hoc price resolution (only `latest_price`/`latest_graded`/
+`latest_listings`); snapshots immutable; **DealEngine is read-only (no writes, no new table)**;
+staleness surfaced; honest empty states (no `$0`, never a fabricated edge); no `data/` contents
+deleted; `func.lower(...).like` for text search.
