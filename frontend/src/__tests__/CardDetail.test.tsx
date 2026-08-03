@@ -48,6 +48,7 @@ function stubFetch(options: {
   priceStatus?: number;
   listings?: Array<Record<string, unknown>>;
   listingsUnavailable?: boolean;
+  deals?: Array<Record<string, unknown>>;
 }) {
   const opts = {
     card,
@@ -56,10 +57,25 @@ function stubFetch(options: {
     price: { market: 800.0, source: "tcgplayer", source_updated_at: "2026/07/29" },
     listings: [],
     listingsUnavailable: false,
+    deals: [] as Array<Record<string, unknown>>,
     ...options,
   };
   const spy = vi.fn().mockImplementation(async (url: string) => {
     const u = String(url);
+    if (u.match(/\/cards\/[^/]+\/deals/)) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          card_id: "base1-4",
+          variant: "normal",
+          listings_unavailable: false,
+          listings_empty: false,
+          deals: opts.deals,
+          thresholds: { deal_rip_min_abs: 2.0, deal_rip_min_pct: 0.1, deal_flip_min_abs: 20.0 },
+        }),
+      };
+    }
     if (u.match(/\/cards\/[^/]+\/listings/)) {
       return {
         ok: true,
@@ -245,5 +261,56 @@ describe("CardDetail", () => {
     expect(back).toBeDefined();
     fireEvent.click(back);
     expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders a RIP deal chip on a listing the deals API flagged as a rip", async () => {
+    const listings = [
+      {
+        listing_id: "a1",
+        title: "Charizard PSA 10",
+        price: 1200.0,
+        currency: "USD",
+        listing_type: "fixed",
+        auction_end_at: null,
+        url: "https://ebay.example/x",
+        condition: "PSA 10",
+        source: "ebay",
+        fetched_at: "2026-07-30T00:00:00Z",
+      },
+    ];
+    const deals = [
+      {
+        listing_id: "a1",
+        title: "Charizard PSA 10",
+        listing_price: 1200.0,
+        currency: "USD",
+        url: "https://ebay.example/x",
+        condition: "PSA 10",
+        listing_type: "fixed_price",
+        auction_end_at: null,
+        fetched_at: "2026-07-30T00:00:00Z",
+        raw_market: { price: 1500.0, source: "tcgplayer", source_updated_at: "2026/07/29" },
+        rip_edge: 300.0,
+        psa9_comp: null,
+        psa10_comp: null,
+        flip_edge_to_9: null,
+        flip_edge_to_10: null,
+        grading_fee: 25.0,
+        deal_score: 90.0,
+        is_rip: true,
+        is_flip: false,
+      },
+    ];
+    stubFetch({ listings, deals });
+
+    const { container } = render(<CardDetail cardId="base1-4" variant="normal" onBack={noop} />);
+
+    await waitFor(() => {
+      expect(container.querySelector(".deal-chip.rip")).not.toBeNull();
+    });
+    const text = container.textContent ?? "";
+    expect(text).toMatch(/RIP/);
+    // The rip edge renders with formatMoney's no-comma convention.
+    expect(text).toContain("$300.00");
   });
 });

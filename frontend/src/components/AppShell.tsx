@@ -7,6 +7,7 @@ import CameraCapture from "./CameraCapture";
 import CardDetail from "./CardDetail";
 import CornerAdjust from "./CornerAdjust";
 import Browse from "./Browse";
+import Deals from "./Deals";
 import More from "./More";
 import PortfolioView from "./PortfolioView";
 import ScanResult from "./ScanResult";
@@ -35,7 +36,7 @@ export interface ScanFlow {
   onCancelAdjust: () => void;
 }
 
-type TabView = "scan" | "vault" | "alerts" | "browse" | "more";
+type TabView = "scan" | "vault" | "alerts" | "deals" | "browse" | "more";
 
 interface Props {
   scan: ScanFlow;
@@ -45,6 +46,7 @@ const TAB_TITLES: Record<TabView, string> = {
   scan: "Scan",
   vault: "Vault",
   alerts: "Alerts",
+  deals: "Deals",
   browse: "Browse",
   more: "More",
 };
@@ -122,6 +124,8 @@ export default function AppShell({ scan }: Props) {
             onOpenCard={(c) => setSelectedCard(c)}
             onWatchCard={(c) => openWatchSheet(c)}
           />
+        ) : view === "deals" ? (
+          <Deals onOpenCard={(c) => setSelectedCard(c)} />
         ) : view === "browse" ? (
           <Browse onSelectCard={(c) => setSelectedCard(c)} />
         ) : (
@@ -147,6 +151,12 @@ export default function AppShell({ scan }: Props) {
           onClick={() => selectTab("alerts")}
           glyph={<BellGlyph />}
           badge={unread}
+        />
+        <TabButton
+          label="Deals"
+          active={view === "deals" && !selectedCard}
+          onClick={() => selectTab("deals")}
+          glyph={<TagGlyph />}
         />
         <TabButton label="Browse" active={view === "browse" && !selectedCard} onClick={() => selectTab("browse")} glyph={<SearchGlyph />} />
         <TabButton label="More" active={view === "more" && !selectedCard} onClick={() => selectTab("more")} glyph={<MoreGlyph />} />
@@ -320,6 +330,19 @@ function SearchGlyph() {
     <svg className="nav-glyph" viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <circle cx="11" cy="11" r="6" stroke="currentColor" strokeWidth="1.8" />
       <path d="M16 16l4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+function TagGlyph() {
+  return (
+    <svg className="nav-glyph" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M4 12l7-7 8 8-7 7-8-8z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+      <circle cx="9.5" cy="9.5" r="1.6" stroke="currentColor" strokeWidth="1.8" />
     </svg>
   );
 }

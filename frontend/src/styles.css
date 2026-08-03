@@ -1468,3 +1468,125 @@ h1 { font-size: 1.25rem; margin: 4px 0 16px; }
 .watch-nudge .muted.small { margin: 0; }
 .watch-nudge .link { align-self: flex-start; }
 .watch-nudge .nudge-dismiss { color: var(--fg-dim); }
+
+/* ============================================================ Phase 05 — deals */
+
+/* The bottom nav grew to 6 tabs (Scan/Vault/Alerts/Deals/Browse/More). 6 equal
+   flex children fit a 360px phone only when each is more compact than the 5-tab
+   sizing, so the per-tab font/padding/glyph shrink slightly. Touch targets
+   stay >=44px via min-height. Kept scoped to .app-shell so the in-browser
+   header-toggle path is untouched. */
+.app-shell .bottom-nav button {
+  padding: 7px 2px;
+  font-size: 0.66rem;
+  letter-spacing: 0.01em;
+  gap: 1px;
+}
+.app-shell .bottom-nav .nav-glyph {
+  width: 20px;
+  height: 20px;
+}
+@media (max-width: 480px) {
+  .app-shell .bottom-nav button { font-size: 0.64rem; padding: 6px 2px; }
+}
+
+/* ----- Deals screen ----------------------------------------------------- */
+.deals { display: flex; flex-direction: column; gap: var(--sp-3); }
+.deals-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+.deals-search {
+  flex: 1 1 60%;
+  min-width: 0;
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--fg);
+}
+.deals-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: var(--fg-dim);
+  user-select: none;
+}
+.deals-toggle input { width: 16px; height: 16px; }
+.deals-picked {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.deals-picked .link { margin-left: auto; }
+.deals-search-results { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.deals-search-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--fg);
+}
+.deals-error { display: flex; flex-direction: column; gap: var(--sp-2); }
+
+.deal-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-3); }
+.deal-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: var(--sp-3);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.deal-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+.deal-title { color: var(--fg); text-decoration: none; min-width: 0; }
+.deal-title strong { font-size: 0.95rem; }
+.deal-price { font-weight: 700; white-space: nowrap; }
+.deal-card-meta { display: flex; flex-wrap: wrap; gap: 4px; }
+
+.deal-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px var(--sp-2);
+  font-size: 0.85rem;
+}
+.deal-row-label { color: var(--fg-dim); min-width: 92px; flex-shrink: 0; }
+.deal-row-value { min-width: 0; }
+.deal-row-edge, .deal-row-edges { width: 100%; }
+.deal-rip-edge, .deal-flip-10, .deal-flip-9 { font-weight: 600; }
+
+.deal-chips { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin-top: 2px; }
+.deal-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  border: 1px solid var(--line);
+}
+.deal-chip.rip { background: color-mix(in srgb, var(--ok, #2ea043) 14%, var(--surface)); border-color: color-mix(in srgb, var(--ok, #2ea043) 45%, var(--line)); }
+.deal-chip.flip { background: color-mix(in srgb, var(--accent) 14%, var(--surface)); border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+.deal-caveat { margin: 2px 0 0; }

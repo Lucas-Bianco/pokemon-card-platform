@@ -319,3 +319,65 @@ export interface PushSubscription {
   p256dh: string;
   auth: string;
 }
+
+// Phase 05 deal sniper. One market price the engine compared the listing
+// against (raw / psa9 / psa10). `source` and `source_updated_at` travel with
+// every figure so a deal card never presents a number without saying where
+// it came from and how old it is — the same staleness rule PricePoint follows.
+// Mirrors PricePointOut in backend deals/api_models.py.
+export interface DealPricePoint {
+  price: number;
+  source: string;
+  source_updated_at: string;
+}
+
+// The deal thresholds the engine applied; echoed in the response so the UI can
+// label why a listing was flagged (or not). Mirrors ThresholdsOut.
+export interface DealThresholds {
+  deal_rip_min_abs: number;
+  deal_rip_min_pct: number;
+  deal_flip_min_abs: number;
+}
+
+// One ranked listing with its rip/flip edges and flags. `rip_edge` /
+// `flip_edge_to_9` / `flip_edge_to_10` are null when the corresponding market
+// input is missing — never a fabricated $0. `raw_market` / `psa9_comp` /
+// `psa10_comp` are null when no snapshot exists. `is_rip` / `is_flip` are
+// honest booleans against the thresholds; a missing edge is never a deal.
+// Mirrors DealAssessmentOut field-for-field.
+export interface DealAssessment {
+  listing_id: string;
+  title: string | null;
+  listing_price: number | null;
+  currency: string | null;
+  url: string | null;
+  condition: string | null;
+  listing_type: string | null;
+  auction_end_at: string | null;
+  fetched_at: string;
+  raw_market: DealPricePoint | null;
+  rip_edge: number | null;
+  psa9_comp: DealPricePoint | null;
+  psa10_comp: DealPricePoint | null;
+  flip_edge_to_9: number | null;
+  flip_edge_to_10: number | null;
+  grading_fee: number;
+  deal_score: number | null;
+  is_rip: boolean;
+  is_flip: boolean;
+}
+
+// Per-card or cross-card deal feed response. `listings_unavailable` is true
+// when no listings_api_key is configured (honest — no provider configured,
+// never fake listings). `listings_empty` is true when a key IS set but no
+// listings exist (the source was queried, just empty). For the cross-card
+// feed, `card_id` and `variant` are null and the flags merge across all
+// assessed cards. Mirrors DealsResponse field-for-field.
+export interface DealsResponse {
+  card_id: string | null;
+  variant: string | null;
+  listings_unavailable: boolean;
+  listings_empty: boolean;
+  deals: DealAssessment[];
+  thresholds: DealThresholds;
+}

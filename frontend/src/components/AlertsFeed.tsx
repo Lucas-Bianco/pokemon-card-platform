@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { getAlerts, markAlertRead, readAllAlerts } from "../api/client";
 import type { AlertEvent, AlertType } from "../api/types";
+import { relativeTime } from "../lib/time";
 
 interface Props {
   onOpenCard: (card: { cardId: string; variant?: string }) => void;
@@ -32,24 +33,6 @@ const ICON: Record<AlertType, string> = {
   auction_ending: "⏳",
   drop_time: "⏰",
 };
-
-// Relative time formatter: "3m", "2h", "1d", then a short date. Pure function
-// of Date.now() vs created_at; kept here so the feed rows can show staleness
-// without a formatting library.
-function relativeTime(iso: string): string {
-  const then = new Date(iso).getTime();
-  if (Number.isNaN(then)) return "";
-  const diff = Date.now() - then;
-  const m = Math.floor(diff / 60_000);
-  if (m < 1) return "now";
-  if (m < 60) return `${m}m`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h`;
-  const d = Math.floor(h / 24);
-  if (d < 7) return `${d}d`;
-  // Older than a week → a short locale date; avoids "53d" clutter.
-  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
-}
 
 // The context field is a free-form string. The engine may JSON-encode a url
 // (e.g. a listing link); try to parse it for a deep link, and fall back to

@@ -3,6 +3,7 @@ import type {
   AlertType,
   CardSearchResult,
   CollectionItem,
+  DealsResponse,
   Grader,
   GradingLabel,
   GradingUpside,
@@ -415,3 +416,24 @@ export const ALERT_TYPES: AlertType[] = [
   "auction_ending",
   "drop_time",
 ];
+
+// ----- Deals feed --------------------------------------------------------
+// Phase 05 deal sniper. Rip-vs-flip assessments per card, or a cross-card feed
+// across the user's watched cards. Mirrors the GET /cards/{id}/deals and
+// GET /deals endpoints. expectJsonOrDetail so a 422 (e.g. unknown card) surfaces
+// the backend's detail message rather than a bare status. Empty `variant`
+// is omitted (not sent as "normal") — the backend assesses the default variant.
+
+export async function getDeals(cardId: string, variant?: string): Promise<DealsResponse> {
+  const q = variant ? `?variant=${encodeURIComponent(variant)}` : "";
+  return expectJsonOrDetail<DealsResponse>(
+    await fetch(`${BASE}/cards/${encodeURIComponent(cardId)}/deals${q}`),
+  );
+}
+
+export async function getDealsFeed(cardIds?: string[], limit = 20): Promise<DealsResponse> {
+  const params = new URLSearchParams();
+  if (cardIds && cardIds.length) params.set("card_ids", cardIds.join(","));
+  params.set("limit", String(limit));
+  return expectJsonOrDetail<DealsResponse>(await fetch(`${BASE}/deals?${params}`));
+}

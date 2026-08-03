@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { getCard, getPriceHistory, refreshListings } from "../api/client";
-import type { CardSearchResult, Listing, PricePoint } from "../api/types";
+import { getCard, getDeals, getPriceHistory, refreshListings } from "../api/client";
+import type { CardSearchResult, DealAssessment, Listing, PricePoint } from "../api/types";
 import { formatMoney } from "../lib/format";
 import GradingUpside from "./GradingUpside";
 import PriceChart from "./PriceChart";
@@ -29,6 +29,12 @@ export default function CardDetail({ cardId, variant = "normal", onBack, onWatch
   const [listingsUnavailable, setListingsUnavailable] = useState(false);
   const [listingsLoading, setListingsLoading] = useState(true);
   const [listingsError, setListingsError] = useState<string | null>(null);
+
+  // Deal assessments for the active listings — matched by listing_id to attach
+  // a compact deal chip to each row. Enrichment, not gating: a failed deals
+  // fetch never hides the listings themselves, so it resolves to [] (no chip)
+  // rather than an error that would mask the honest listing list.
+  const [deals, setDeals] = useState<DealAssessment[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -67,6 +73,12 @@ export default function CardDetail({ cardId, variant = "normal", onBack, onWatch
       .catch((err) => {
         setHistoryError(err instanceof Error ? err.message : "Could not load price history.");
       });
+
+    // Deal assessments for the active listings. Enrichment only — a failure
+    // leaves the listings visible with no chip, never an error that hides them.
+    getDeals(cardId, variant)
+      .then((res) => setDeals(res.deals))
+      .catch(() => setDeals([]));
   }, [cardId, variant]);
 
   useEffect(() => {
@@ -162,22 +174,26 @@ export default function CardDetail({ cardId, variant = "normal", onBack, onWatch
         )}
         {!listingsError && !listingsLoading && listings.length > 0 && (
           <ul className="listing-list">
-            {listings.map((l) => (
-              <li key={l.listing_id} className="listing-row">
-                <a
-                  href={l.url ?? undefined}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="listing-link"
-                >
-                  <strong className="listing-title">{l.title ?? "Untitled listing"}</strong>
-                  <span className="listing-meta muted small">
-                    {formatMoney(l.price)} · {l.source}
-                    {l.condition ? ` · ${l.condition}` : ""}
-                  </span>
-                </a>
-              </li>
-            ))}
+            {listings.map((l) => {
+              const deal = deals.find((d) => d.listing_id === l.listing_id);
+              return (
+                <li key={l.listing_id} className="listing-row">
+                  <a
+                    href={l.url ?? undefined}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="listing-link"
+                  >
+                    <strong className="listing-title">{l.title ?? "Untitled listing"}</strong>
+                    <span className="listing-meta muted small">
+                      {formatMoney(l.price)} · {l.source}
+                      {l.condition ? ` · ${l.condition}` : ""}
+                    </span>
+                  </a>
+                  <DealChip deal={deal} />
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>
@@ -195,4 +211,23 @@ export default function CardDetail({ cardId, variant = "normal", onBack, onWatch
       </button>
     </section>
   );
+}
+
+// Compact deal-score chip attached to an active listing when the deals API
+// assessed it. `🟢 RIP $<edge>` for a rip, `🟡 FLIP $<flip_to_10>` for a flip;
+// a muted "not a deal" when it was assessed and neither flag is true. When no
+// assessment matched (deal is undefined) the row shows no chip — honest
+// absence, never a fabricated score. Never $0: formatMoney renders an em dash
+// for a null edge.
+function DealChip({ deal }: { deal: DealAssessment | undefined }) {
+  if (!deal) return null;
+  if (deal.is_rip) {
+    return <span className="deal-chip rip">🟢 RIP {formatMoney(deal.rip_edge)}</span>;
+  }
+  if (deal.is_flip) {
+    return (
+      <span className="deal-chip flip">🟡 FLIP {formatMoney(deal.flip_edge_to_10)}</span>
+    );
+  }
+  return <span className="muted small">not a deal</span>;
 }
