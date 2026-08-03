@@ -25,6 +25,12 @@ from cardplatform.alerts.api_models import (
 )
 from cardplatform.alerts.engine import AlertEngine
 from cardplatform.alerts.notify import NotificationService
+from cardplatform.deals.api_models import (
+    DealAssessmentOut,
+    DealsResponse,
+    ThresholdsOut,
+)
+from cardplatform.deals.engine import DealEngine
 from cardplatform.collection.store import (
     Allocation,
     CollectionStore,
@@ -976,6 +982,89 @@ def create_app() -> FastAPI:
             "listings_unavailable": settings.listings_api_key is None,
         }
 
+    # --------------------------------------------------------------- deals
+    @app.get("/cards/{card_id}/deals", response_model=DealsResponse)
+    def card_deals(
+        card_id: str,
+        variant: str | None = Query(default=None),
+        session: Session = Depends(get_session),
+    ) -> DealsResponse:
+        """Rip-vs-flip deals for one card. Honest empty states: when no
+        `listings_api_key` is configured, `listings_unavailable` is True (no
+        provider configured — never fake listings); when a key IS set but no
+        listings exist, `listings_empty` is True (the source was queried, just
+        empty). Missing raw/graded inputs null the edge they feed — never a
+        fabricated $0. Unknown card is 404 (not an empty 200).
+
+        Deals are derived from the newest snapshots each call via the
+        read-only DealEngine; this endpoint writes nothing and never resolves
+        prices ad-hoc.
+        """
+        _require_card(session, card_id)
+        v = variant or ""
+        engine = DealEngine(session, settings)
+        assessments = engine.assess(card_id, v)
+        return DealsResponse(
+            card_id=card_id,
+            variant=v or None,
+            listings_unavailable=settings.listings_api_key is None,
+            listings_empty=(settings.listings_api_key is not None and not assessments),
+            deals=[_deal_out(a) for a in assessments],
+            thresholds=ThresholdsOut(
+                deal_rip_min_abs=settings.deal_rip_min_abs,
+                deal_rip_min_pct=settings.deal_rip_min_pct,
+                deal_flip_min_abs=settings.deal_flip_min_abs,
+            ),
+        )
+
+    @app.get("/deals", response_model=DealsResponse)
+    def deals_feed(
+        card_ids: str | None = Query(default=None),
+        limit: int = Query(default=20, ge=1, le=100),
+        session: Session = Depends(get_session),
+    ) -> DealsResponse:
+        """Cross-card deal feed. `card_ids` (CSV) defaults to the user's active
+        watched cards. Assesses each with the empty variant (the common case for
+        raw listings), merges, ranks by deal_score desc (nulls last), and
+        truncates to `limit`.
+
+        Honest per-card flags merge into the overall flags:
+        `listings_unavailable` is True only when NO key is configured at all
+        (no card could have queried a source); `listings_empty` is True when a
+        key IS set but none of the assessed cards had listings.
+        """
+        if card_ids:
+            ids: list[str] = [c.strip() for c in card_ids.split(",") if c.strip()]
+        else:
+            rows = session.scalars(
+                select(Watch.card_id).where(
+                    Watch.active.is_(True), Watch.card_id.is_not(None)
+                )
+            ).all()
+            ids = sorted({r for r in rows})
+        engine = DealEngine(session, settings)
+        merged: list = []
+        any_key = settings.listings_api_key is not None
+        any_listing = False
+        for cid in ids:
+            assessments = engine.assess(cid, "")
+            if assessments:
+                any_listing = True
+            merged.extend(assessments)
+        merged.sort(key=lambda a: (a.deal_score is None, -(a.deal_score or 0.0)))
+        return DealsResponse(
+            card_id=None,
+            variant=None,
+            listings_unavailable=not any_key,
+            listings_empty=any_key and not any_listing,
+            deals=[_deal_out(a) for a in merged[:limit]],
+            thresholds=ThresholdsOut(
+                deal_rip_min_abs=settings.deal_rip_min_abs,
+                deal_rip_min_pct=settings.deal_rip_min_pct,
+                deal_flip_min_abs=settings.deal_flip_min_abs,
+            ),
+        )
+
     # --------------------------------------------------------------- push
     @app.get("/push/vapid-public")
     def vapid_public() -> dict[str, str]:
@@ -1210,6 +1299,45 @@ def _grading_label_out(row: GradingLabel) -> GradingLabelOut:
         cert_number=row.cert_number,
         notes=row.notes,
         created_at=row.created_at,
+    )
+
+
+def _deal_out(a) -> DealAssessmentOut:
+    """DealEngine.DealAssessment -> wire model, in one place.
+
+    Maps the engine's internal `_PricePoint` dataclass to `PricePointOut` so
+    raw_market / psa9_comp / psa10_comp serialise as flat nested objects. A
+    missing price point (None) survives as None — never a fabricated $0.
+    """
+    def _pp(p) -> dict | None:
+        if p is None:
+            return None
+        return {
+            "price": p.price,
+            "source": p.source,
+            "source_updated_at": p.source_updated_at,
+        }
+
+    return DealAssessmentOut(
+        listing_id=a.listing_id,
+        title=a.title,
+        listing_price=a.listing_price,
+        currency=a.currency,
+        url=a.url,
+        condition=a.condition,
+        listing_type=a.listing_type,
+        auction_end_at=a.auction_end_at,
+        fetched_at=a.fetched_at,
+        raw_market=_pp(a.raw_market),
+        rip_edge=a.rip_edge,
+        psa9_comp=_pp(a.psa9_comp),
+        psa10_comp=_pp(a.psa10_comp),
+        flip_edge_to_9=a.flip_edge_to_9,
+        flip_edge_to_10=a.flip_edge_to_10,
+        grading_fee=a.grading_fee,
+        deal_score=a.deal_score,
+        is_rip=a.is_rip,
+        is_flip=a.is_flip,
     )
 
 

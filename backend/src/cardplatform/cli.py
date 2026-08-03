@@ -213,6 +213,52 @@ def check_alerts(_args: argparse.Namespace) -> int:
     return 0
 
 
+def find_deals(args: argparse.Namespace) -> int:
+    """Assess one card's active listings for rip/flip deals and print them.
+
+    Mirrors the /cards/{id}/deals endpoint: builds a DealEngine from the latest
+    snapshots and prints ranked deals (price, rip edge, flip-to-10, flags, url).
+    Honest messages for the no-key / no-listings / no-market cases — never
+    fabricates an edge. Refreshes listings first when a key IS set so the CLI
+    sees fresh data rather than stale snapshots.
+    """
+    from cardplatform.api import _catalog_lookup
+    from cardplatform.deals.engine import DealEngine
+    from cardplatform.prices.ebay_listings import EbayListingsProvider
+    from cardplatform.prices.listings_service import ListingsService
+
+    db = Database()
+    db.create_all()
+    variant = args.variant or ""
+
+    with db.session() as session:
+        if db.settings.listings_api_key:
+            ListingsService(
+                session, EbayListingsProvider(catalog=_catalog_lookup(session))
+            ).refresh_listings(args.card_id, variant)
+        engine = DealEngine(session, db.settings)
+        deals = engine.assess(args.card_id, variant)
+
+    if db.settings.listings_api_key is None:
+        print(
+            "No listings source key set — set CARDPLATFORM_LISTINGS_API_KEY "
+            "(eBay App ID) to find deals."
+        )
+        return 0
+    if not deals:
+        print(f"No active listings for {args.card_id} (variant={variant or 'none'}).")
+        return 0
+    print(f"Deals for {args.card_id} (variant={variant or 'none'}):")
+    for d in deals:
+        rip = f"${d.rip_edge:.2f}" if d.rip_edge is not None else "—"
+        flip = f"${d.flip_edge_to_10:.2f}" if d.flip_edge_to_10 is not None else "—"
+        flags = ("RIP " if d.is_rip else "") + ("FLIP" if d.is_flip else "")
+        flags = flags or "—"
+        price = f"${d.listing_price:.2f}" if d.listing_price is not None else "—"
+        print(f"  {price:>8}  rip={rip:>8}  flip10={flip:>8}  [{flags}]  {d.url}")
+    return 0
+
+
 def build_index(args: argparse.Namespace) -> int:
     """Download every catalog image, embed it, and persist a FAISS index.
 
@@ -342,6 +388,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Run one alert-poll tick and exit (the durable cron-friendly path).",
     )
     check.set_defaults(handler=check_alerts)
+
+    find = subparsers.add_parser(
+        "find-deals",
+        help="Assess one card's active listings for rip/flip deals (Phase 05).",
+    )
+    find.add_argument("card_id", metavar="CARD_ID", help="e.g. base1-4")
+    find.add_argument("--variant", default="", help="e.g. holofoil (default empty)")
+    find.set_defaults(handler=find_deals)
 
     index = subparsers.add_parser(
         "build-index",
