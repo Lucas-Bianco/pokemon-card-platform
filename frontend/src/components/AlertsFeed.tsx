@@ -22,6 +22,7 @@ const CHIPS: { value: Filter; label: string }[] = [
   { value: "price_target", label: "Price" },
   { value: "auction_ending", label: "Auction" },
   { value: "drop_time", label: "Drops" },
+  { value: "deal", label: "Deals" },
 ];
 
 // A small icon per alert_type. Emojis match the spec (📦 ✨ 🎯 ⏳ ⏰); they read
@@ -32,6 +33,7 @@ const ICON: Record<AlertType, string> = {
   price_target: "🎯",
   auction_ending: "⏳",
   drop_time: "⏰",
+  deal: "💰",
 };
 
 // The context field is a free-form string. The engine may JSON-encode a url

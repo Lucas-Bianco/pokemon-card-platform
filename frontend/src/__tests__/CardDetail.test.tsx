@@ -49,6 +49,7 @@ function stubFetch(options: {
   listings?: Array<Record<string, unknown>>;
   listingsUnavailable?: boolean;
   deals?: Array<Record<string, unknown>>;
+  soldComps?: Record<string, unknown>;
 }) {
   const opts = {
     card,
@@ -74,6 +75,16 @@ function stubFetch(options: {
           deals: opts.deals,
           thresholds: { deal_rip_min_abs: 2.0, deal_rip_min_pct: 0.1, deal_flip_min_abs: 20.0 },
         }),
+      };
+    }
+    if (u.match(/\/cards\/[^/]+\/sold-comps/)) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => opts.soldComps ?? {
+          card_id: "base1-4", variant: "normal",
+          sold_comps: [], sold_comps_unavailable: false, sold_comps_empty: true,
+        },
       };
     }
     if (u.match(/\/cards\/[^/]+\/listings/)) {
@@ -316,5 +327,21 @@ describe("CardDetail", () => {
     expect(text).toMatch(/RIP/);
     // The rip edge renders with formatMoney's no-comma convention.
     expect(text).toContain("$300.00");
+  });
+
+  it("renders the Recent sold (eBay) evidence block", async () => {
+    stubFetch({
+      soldComps: {
+        card_id: "base1-4", variant: "normal",
+        sold_comps: [{ listing_id: "a", title: "Charizard #4", price: 118.0, currency: "USD",
+          url: "https://ebay.example/a", condition: "Used", sold_at: "2026-07-30T18:30:00Z", source: "ebay" }],
+        sold_comps_unavailable: false, sold_comps_empty: false,
+      },
+    });
+    const { container } = render(<CardDetail cardId="base1-4" variant="normal" onBack={noop} />);
+    await waitFor(() => {
+      expect(container.textContent ?? "").toContain("$118.00");
+    });
+    expect(container.textContent ?? "").toMatch(/recent sold/i);
   });
 });

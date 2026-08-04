@@ -51,6 +51,12 @@ const TYPE_INFO: Record<
     needsCard: false,
     needsListings: false,
   },
+  deal: {
+    label: "Deal",
+    description: "Ping me when a deal is detected for this card.",
+    needsCard: true,
+    needsListings: true,
+  },
 };
 
 // A bottom-sheet modal for creating a watch. The alert-type picker shows the

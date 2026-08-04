@@ -14,6 +14,7 @@ import type {
   PushSubscription,
   RecognizeResponse,
   Scan,
+  SoldCompsResponse,
   Valuation,
   Watch,
   WatchCreate,
@@ -415,6 +416,7 @@ export const ALERT_TYPES: AlertType[] = [
   "price_target",
   "auction_ending",
   "drop_time",
+  "deal",
 ];
 
 // ----- Deals feed --------------------------------------------------------
@@ -436,4 +438,22 @@ export async function getDealsFeed(cardIds?: string[], limit = 20): Promise<Deal
   if (cardIds && cardIds.length) params.set("card_ids", cardIds.join(","));
   params.set("limit", String(limit));
   return expectJsonOrDetail<DealsResponse>(await fetch(`${BASE}/deals?${params}`));
+}
+
+// ----- Sold comps --------------------------------------------------------
+// Phase 05b deal-alerts evidence: recent eBay sold comps backing a card's raw
+// market price. Sold comps are EVIDENCE ("market $120 because these 3 just
+// sold at $118/$121/$119"), never a price target. Mirrors GET
+// /cards/{id}/sold-comps?variant=&limit=. Empty `variant` is sent as "" (the
+// backend resolves the default variant) and `limit` defaults to 3 (the panel
+// shows a tight evidence cluster, not a long feed).
+export async function getSoldComps(
+  cardId: string,
+  variant: string,
+  limit = 3,
+): Promise<SoldCompsResponse> {
+  const params = new URLSearchParams({ variant: variant || "", limit: String(limit) });
+  return expectJson<SoldCompsResponse>(
+    await fetch(`${BASE}/cards/${encodeURIComponent(cardId)}/sold-comps?${params}`),
+  );
 }
