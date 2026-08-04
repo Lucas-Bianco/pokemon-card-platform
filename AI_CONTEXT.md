@@ -7,7 +7,7 @@
 > **Keep it current.** Update this file after any change that alters architecture, measured
 > results, or the roadmap. A stale onboarding doc is worse than none, because it is trusted.
 >
-> Last updated: **2026-08-03**
+> Last updated: **2026-08-04**
 
 ---
 
@@ -31,7 +31,7 @@ Site: https://lucas-bianco.github.io/pokemon-card-platform/
 
 ---
 
-## 2. Current state (2026-08-03)
+## 2. Current state (2026-08-04)
 
 | Phase | What | Status |
 |---|---|---|
@@ -44,11 +44,11 @@ Site: https://lucas-bianco.github.io/pokemon-card-platform/
 | 3b | Grading data infrastructure: rectified-crop persistence, grade-label schema + self-annotation, graded-price provider, grading-upside spread | ✅ Complete |
 | 3c | Watchlist + restock/price/drop/auction alerts (CollectorVault-style 5-tab UI) | ✅ Complete (§11) |
 | 4 | Bulk cataloger: many cards per photo | Planned |
-| 5 | Deal sniper + sealed EV | In progress — deal sniper / rip-vs-flip shipped (§12); sealed EV still planned |
+| 5 | Deal sniper + sealed EV | In progress — deal sniper / rip-vs-flip shipped (§12); deal alerts + sold-comps evidence shipped (§13); sealed EV still planned |
 | 6 | Set-completion optimizer | Planned |
 | 7 | Counterfeit detector | Planned |
 
-**Tests:** 462 backend (pytest) + 96 frontend (vitest).
+**Tests:** 485 backend (pytest) + 102 frontend (vitest).
 
 ### UI — "Grading Lab" (2026-08-01)
 
@@ -129,15 +129,20 @@ backend/src/cardplatform/
   prices/            provider.py (protocol), pokemontcg.py, service.py — latest_price + price_history;
                      graded_provider.py + pkmnprices.py + graded_service.py — graded sold comps
                      (degrades to [] without CARDPLATFORM_GRADED_PRICE_API_KEY, never raises);
-                     listings_provider.py (Protocol + ListingQuote) + ebay_listings.py
+                     listings_provider.py (Protocol + ListingQuote + SoldComp) + ebay_listings.py
                      (EbayListingsProvider — eBay **Finding API** findItemsByKeywords, one
                      SECURITY-APPNAME query param, no OAuth; catalog lookup wired so the keyword
-                     is card name + number; degrades to [] without a key, never raises) +
-                     listings_service.py (ListingsService — immutable ListingSnapshot dedupe,
-                     lowest_price None-not-0.0, previous_listing_ids by fetched_at-grouping)
-  alerts/            engine.py (AlertEngine — 5 alert types, per-watch SAVEPOINT isolation,
-                     never-raises), notify.py (NotificationService — in-app/push/email, degrades
-                     gracefully per channel), api_models.py (Pydantic wire models)
+                     is card name + number; degrades to [] without a key, never raises. Also
+                     fetch_sold_listings → findCompletedItems w/ SoldItemsOnly=true,
+                     SERVICE-VERSION=1.13.0 (the EndedWithSales bug fix), EndTimeSoonest — the
+                     3 most-recent eBay SOLD listings as on-demand evidence; NOT persisted, no
+                     snapshot writes) + listings_service.py (ListingsService — immutable
+                     ListingSnapshot dedupe, lowest_price None-not-0.0, previous_listing_ids by
+                     fetched_at-grouping) + sold_comps_api_models.py (SoldCompOut +
+                     SoldCompsResponse — Pydantic v2, from_attributes)
+  alerts/            engine.py (AlertEngine — 6 alert types incl. deal, per-watch SAVEPOINT
+                     isolation, never-raises), notify.py (NotificationService — in-app/push/email,
+                     degrades gracefully per channel), api_models.py (Pydantic wire models)
   deals/             engine.py (DealEngine — read-only rip-vs-flip: rip_edge = raw_market −
                      listing.price; flip_edge_to_9/10 = graded comp − listing.price − grading_fee;
                      thresholds filter noise, missing inputs null the edge, never a fabricated $0;
@@ -155,8 +160,10 @@ frontend/src/        api/, lib/ (format, cameraCrop, time — shared relativeTim
                      (CameraCapture, ScanResult, CandidatePicker, PriceLine, CornerAdjust,
                      PortfolioView, PriceChart, GradingUpside — the spread panel; ScanResult hosts
                      the self-annotation form; AppShell — 6-tab nav Scan/Vault/Alerts/Deals/Browse/
-                     More, Alerts-first; CardDetail — listings + per-listing deal-score chips;
-                     Browse, AlertsFeed, WatchCardSheet, Deals — the Phase 05 deal feed, More — the
+                     More, Alerts-first; CardDetail — listings + per-listing deal-score chips + the
+                     SoldComps "Recent sold (eBay)" evidence block under the market price; Browse,
+                     AlertsFeed (type-filter incl. a Deals chip + 💰 deal icon), WatchCardSheet (6
+                     alert types incl. a Deal chip), Deals — the Phase 05 deal feed, More — the
                      Phase 3c alert/watchlist UI)
 frontend/public/     manifest.webmanifest, icon-192/512/icon-maskable-512.png, icon-source.svg
 frontend/scripts/    gen-icons.py (rasterize icon-source.svg → PNGs)
@@ -186,6 +193,14 @@ api.py Phase 05 endpoints: GET /cards/{card_id}/deals?variant= (ranked rip/flip 
                      watchlist; assesses the "" variant per card). DealEngine is read-only —
                      no snapshot writes. CLI: find-deals (one-shot, prints ranked deals; honest
                      "no listings source key" / "no active listings" messages).
+api.py Phase 05b endpoints: GET /cards/{card_id}/sold-comps?variant=&limit=3 (the 3 most-recent
+                     eBay SOLD listings as on-demand evidence backing the raw market price;
+                     honest sold_comps_unavailable / sold_comps_empty flags; NOT persisted —
+                     no snapshot writes) + deal alert type (alert_type="deal", 422 if card_id
+                     missing). AlertEngine gains an optional deal_engine collaborator; _eval_deal
+                     mirrors _eval_new_listing's last_seen_listing_ids baseline dedupe (first poll
+                     never fires, fires only for NEW listings clearing rip/flip thresholds, baseline
+                     always advances). The poll loop + CLI check-alerts inject the shared DealEngine.
 data/                GITIGNORED — 20,391 card images, 40 MB FAISS index, SQLite db, 105 real scans
 ```
 
@@ -635,3 +650,78 @@ auth is simpler; Browse is an upgrade path).
 `latest_listings`); snapshots immutable; **DealEngine is read-only (no writes, no new table)**;
 staleness surfaced; honest empty states (no `$0`, never a fabricated edge); no `data/` contents
 deleted; `func.lower(...).like` for text search.
+
+---
+
+## 13. Phase 05b — deal alerts + eBay sold-comps evidence
+
+Shipped 2026-08-04 on `main`. **485 backend + 102 frontend tests.** Two additive legs on top of
+Phase 05, both holding the sacred constraints — no schema change, no new table, no snapshot writes.
+105 real scans preserved; raw `PriceSnapshot` / `GradedPriceSnapshot` / `ListingSnapshot` and
+recognition untouched.
+
+**Leg 1 — deal alerts (push instead of pull).** Composes the 3c `AlertEngine` with the Phase 05
+read-only `DealEngine` so a *new* active listing clearing the rip/flip thresholds fires an alert,
+reusing the 3c poll loop, notification channels, and the per-watch `last_seen_listing_ids` baseline
+dedupe.
+
+- **A `deal` watch fits the existing `Watch` model with NO new columns / NO migration.**
+  `alert_type="deal"`, `card_id`+`variant` set (variant defaults `""`), `target_price=None`,
+  `drop_at=None`, unique key `(card_id, variant, "deal", None, None)`. Thresholds are the global
+  `deal_*` settings (no per-watch thresholds).
+- **`AlertEngine.__init__` gains an optional `deal_engine=None`** keyword param — `None` means deal
+  watches never fire (keeps the 3c callers + tests that construct without it green). `_eval` gains a
+  `deal` dispatch branch → `_eval_deal(w, now)`.
+- **`_eval_deal` mirrors `_eval_new_listing`'s baseline-dedupe:** reads `DealEngine.assess(...)`
+  (read-only, never raises), `curr_deal_ids = {a.listing_id for a in assessments if a.is_rip or
+  is_flip}`. **First poll (prev baseline empty) writes the baseline and fires nothing** — never fire
+  on the first poll. Subsequent polls fire for `new_ids = curr_deal_ids - prev_ids`; the baseline
+  always advances (even to empty) so a listing that *stops* being a deal can't re-fire. A non-deal
+  poll produces empty `curr_deal_ids` → empty baseline, never fires.
+- **Deal message + context.** One-line honest message (leads with the larger of rip/flip edge,
+  "Verify before buying.") and a JSON context (listing_id, url, listing_price, currency, condition,
+  rip_edge, flip_edge_to_10, is_rip, is_flip, deal_score, raw_market). Reuses the immutable
+  `AlertEvent` + notifier; `_fire` unchanged.
+- **Watchlist API:** `_ALERT_TYPES` += `"deal"`; 422 if `alert_type=="deal"` and `card_id is None`.
+- **Wiring:** `_poll_loop` builds one shared `ListingsService` + `DealEngine(session, settings,
+  listings_service=listings)` and injects `deal_engine=...` into `AlertEngine`. `cli.py check-alerts`
+  does the same, so `python -m cardplatform.cli check-alerts` now evaluates deal watches.
+
+**Leg 2 — eBay sold-comps evidence (backing the raw market price).** Surfaces the 3 most-recent eBay
+**sold** listings for a card as on-demand evidence ("market $120 because these 3 just sold at $118 /
+$121 / $119"). NOT persisted — no `SoldCompSnapshot` table, no snapshot writes; on-demand read.
+
+- **`EbayListingsProvider.fetch_sold_listings(card_id, variant, limit=3)`** via the Finding API
+  `findCompletedItems` with `itemFilter(0).name=SoldItemsOnly`/`value=true`,
+  `sortOrder=EndTimeSoonest`, `SERVICE-VERSION=1.13.0`. **The version is load-bearing:** the legacy
+  `1.0.0` returns `sellingState="Ended"` for sold items (eBay bug #185); `1.13.0` returns the
+  correct `"EndedWithSales"`. `_parse_completed` **skips any item whose `sellingState !=
+  "EndedWithSales"`** and any price-less item (never fabricate a sale, never a fake `$0`). Same
+  never-raise discipline as `fetch_listings` (no key → `[]`; 404/401/bad-JSON terminal one attempt;
+  5xx/429/transport retry → `[]`).
+- **`SoldComp` frozen dataclass** (`prices/listings_provider.py` alongside `ListingQuote`) +
+  `sold_comps_api_models.py` (`SoldCompOut` + `SoldCompsResponse`, Pydantic v2 `from_attributes`).
+- **`GET /cards/{card_id}/sold-comps?variant=&limit=3`** — honest `sold_comps_unavailable` (= no
+  `CARDPLATFORM_LISTINGS_API_KEY`, mirroring the deals/listings `*_unavailable` contract) +
+  `sold_comps_empty` (= fetched but found none). Both false when comps return. `limit` clamped to
+  `[1, 10]`, default 3.
+- **Frontend** — `SoldComps.tsx` ("Recent sold (eBay)" evidence block: `formatMoney(price)` +
+  `relativeTime(sold_at)` + condition + outbound url, honest empty states) rendered in `CardDetail`
+  right under the market-price block. `getSoldComps(cardId, variant, limit=3)` in the client;
+  `SoldComp` + `SoldCompsResponse` types. `WatchCardSheet` gains a 6th Deal chip
+  (`needsCard`/`needsListings`, no conditional fields); `AlertsFeed` gains a Deals filter chip +
+  `deal: "💰"` icon.
+
+**Deprecation caveat (documented, not blocking):** eBay **deprecated `findCompletedItems` on
+2020-10-15** in favor of the Marketplace Insights API (Limited Release — needs approval, not viable
+for a solo free-tier app). The deprecated endpoint still responds for free App IDs today; the adapter
+degrades to `[]` on any failure (no key, transport, retirement, unexpected shape) and the UI shows an
+honest "recent sold comps unavailable". A future Marketplace Insights migration is a documented
+follow-up, not this phase.
+
+**Sacred constraints held:** no ad-hoc price resolution (only `DealEngine.assess` /
+`PriceService.latest_price`); **no snapshot writes for sold comps** (on-demand evidence only);
+**no schema change, no new table** (a `deal` watch fits the existing `Watch` model);
+staleness surfaced (`sold_at`); honest empty states (no `$0`, never a fabricated sale, never a
+fabricated deal event); no `data/` contents deleted; snapshots still immutable; `func.lower(...).like`
+for text search.

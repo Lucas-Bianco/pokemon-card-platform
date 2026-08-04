@@ -2,7 +2,10 @@
 
 **Owner:** Lucas
 **Started:** 2026-07-28
-**Status:** Phase 05 (deal sniper / rip-vs-flip) shipped 2026-08-03 — see
+**Status:** Phase 05b (deal alerts + eBay sold-comps evidence) shipped 2026-08-04 — see
+[design spec](docs/superpowers/specs/2026-08-04-deal-alerts-sold-comps-design.md) +
+[plan](docs/superpowers/plans/2026-08-04-deal-alerts-sold-comps.md). Phase 05 (deal sniper /
+rip-vs-flip) shipped 2026-08-03 — see
 [design spec](docs/superpowers/specs/2026-08-03-deal-sniper-design.md) +
 [plan](docs/superpowers/plans/2026-08-03-deal-sniper.md).
 Next: sealed-product EV (Phase 05's other leg) or the full Grade predictor (corner/edge/surface +
@@ -50,7 +53,7 @@ Each phase ships independently usable functionality and gets its own spec → pl
 | 3c | Watchlist + restock/price/drop/auction alerts — CollectorVault-style 5-tab UI | **Complete** |
 | 3 | Grade Predictor — corner/edge/surface scoring + P(grade) + grading EV | In progress — data infra unblocked (3b); full predictor still planned |
 | 4 | Bulk cataloger — detect every card in one photo | Planned |
-| 5 | Deal sniper + sealed EV — listings vs. sold comps, rip-vs-flip | In progress — deal sniper / rip-vs-flip shipped; sealed EV still planned |
+| 5 | Deal sniper + sealed EV — listings vs. sold comps, rip-vs-flip | In progress — deal sniper / rip-vs-flip + deal alerts + sold-comps evidence shipped; sealed EV still planned |
 | 6 | Set-completion optimizer — cheapest path to finish a set | Planned |
 | 7 | Counterfeit detector — holo pattern, rosette, texture analysis | Planned |
 | 8 | On-device inference — quantized model in-browser, no server | Planned |
@@ -466,9 +469,46 @@ untouched.
 honestly empty — the phase ships regardless.
 
 **Documented follow-ups** — sealed-product EV (Phase 05's other leg, needs a sealed-product price
-provider); deal alerts (compose the 3c alert engine with this evaluator); deal snapshots / history;
-multi-source listings (only eBay; the Protocol keeps a second source swappable); full-catalog deal
-scan; eBay OAuth / Browse API as an upgrade path.
+provider); deal snapshots / history; multi-source listings (only eBay; the Protocol keeps a second
+source swappable); full-catalog deal scan; eBay OAuth / Browse API as an upgrade path. (Deal alerts
++ sold-comps evidence shipped in Phase 05b, below.)
+
+## Phase 05b (deal alerts + sold-comps evidence) — shipped
+
+Deal alerts + eBay sold-comps evidence, built 2026-08-04
+([spec](docs/superpowers/specs/2026-08-04-deal-alerts-sold-comps-design.md) +
+[plan](docs/superpowers/plans/2026-08-04-deal-alerts-sold-comps.md)). **485 backend + 102 frontend
+tests.** Two additive legs on top of Phase 05 — both hold the sacred constraints: no schema change,
+no new table, no snapshot writes. 105 real scans preserved; raw price/graded/listing tables and
+recognition untouched.
+
+- **Deal alerts (push instead of pull)** — composes the 3c `AlertEngine` with the Phase 05 read-only
+  `DealEngine` so a *new* active listing clearing the rip/flip thresholds fires an alert. A `deal`
+  watch fits the existing `Watch` model with **no new columns / no migration** (`alert_type="deal"`,
+  unique key `(card_id, variant, "deal", None, None)`; global `deal_*` thresholds). `AlertEngine`
+  gains an optional `deal_engine=None` collaborator; `_eval_deal` mirrors `_eval_new_listing`'s
+  `last_seen_listing_ids` baseline dedupe — **first poll never fires**, fires only for NEW listings
+  clearing rip/flip, baseline always advances. Watchlist API: `_ALERT_TYPES` += `"deal"`, 422 if
+  `card_id` missing. The poll loop + `check-alerts` CLI inject the shared `DealEngine`.
+- **eBay sold-comps evidence** — `EbayListingsProvider.fetch_sold_listings` via the Finding API
+  `findCompletedItems` (`SoldItemsOnly=true`, `SERVICE-VERSION=1.13.0` — the `EndedWithSales` bug
+  fix, `EndTimeSoonest`) → the 3 most-recent eBay SOLD listings as **on-demand evidence** backing the
+  raw market price. **NOT persisted** — no snapshot writes, no `SoldCompSnapshot` table. `_parse_completed`
+  skips anything whose `sellingState != "EndedWithSales"` and any price-less item (never fabricate a
+  sale). `GET /cards/{id}/sold-comps?variant=&limit=3` with honest `sold_comps_unavailable` /
+  `sold_comps_empty` flags; `SoldComps.tsx` rendered under the market price in `CardDetail`.
+- **Frontend** — `WatchCardSheet` gains a 6th Deal chip; `AlertsFeed` gains a Deals filter chip +
+  💰 icon; `SoldComps` evidence block with honest empty states.
+
+**Deprecation caveat** — eBay deprecated `findCompletedItems` on 2020-10-15 (Marketplace Insights
+API is the documented successor, but Limited Release / not viable for a solo free-tier app). The
+deprecated endpoint still responds for free App IDs today; the adapter degrades to `[]` on any
+failure and the UI shows an honest "recent sold comps unavailable" — so shipping behind it is safe.
+Marketplace Insights migration is a documented follow-up, not this phase.
+
+**Sacred constraints held** — no ad-hoc price resolution; no snapshot writes for sold comps; no
+schema change / no new table; staleness surfaced (`sold_at`); honest empty states (no `$0`, never a
+fabricated sale, never a fabricated deal event); no `data/` deletion; snapshots still immutable.
 
 ## Carried into Phase 1 (from the final Phase 0 review)
 
@@ -517,6 +557,6 @@ Two candidates, both honestly framed:
    What remains is the corner/edge/surface scoring and the P(grade) model — which needs the labelled
    dataset to accrue from real mailed-in grades.
 
-The deal sniper also opens a natural follow-up: **deal alerts** (fire a 3c alert when a new listing
-clears the rip/flip thresholds) — a small compose of the 3c alert engine and the read-only
-DealEngine.
+The deal sniper's natural follow-up — **deal alerts** (fire a 3c alert when a new listing clears
+the rip/flip thresholds) plus **eBay sold-comps evidence** backing the raw market price — shipped in
+Phase 05b (2026-08-04). The remaining Phase 05 leg is sealed-product EV.
