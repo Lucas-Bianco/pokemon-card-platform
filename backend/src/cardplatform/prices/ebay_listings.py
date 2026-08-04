@@ -48,7 +48,7 @@ from tenacity import (
 )
 
 from cardplatform.config import Settings, settings as default_settings
-from cardplatform.prices.listings_provider import ListingQuote
+from cardplatform.prices.listings_provider import ListingQuote, SoldComp
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +91,33 @@ class EbayListingsProvider:
         except (TypeError, ValueError, KeyError, AttributeError) as exc:
             # Unexpected JSON shape is an honest "unavailable", not a crash.
             logger.warning("ebay listings parse failure for %s: %s", card_id, exc)
+            return []
+
+    def fetch_sold_listings(
+        self, card_id: str, variant: str, limit: int = 3
+    ) -> list[SoldComp]:
+        """Fetch up to `limit` recently-sold eBay listings (sale evidence).
+
+        Mirrors fetch_listings' never-raise discipline: no key -> [] without a
+        request; transport/5xx/429 retry then []; bad JSON / 404 terminal then
+        []; unexpected shape -> []. Uses the deprecated findCompletedItems
+        (still functional for free App IDs; degrades to [] if retired) with
+        SoldItemsOnly=true and SERVICE-VERSION=1.13.0 (the bug-gotcha: 1.0.0
+        returns sellingState="Ended" for sold items; 1.13.0 returns
+        "EndedWithSales"). Never persists — sold comps are on-demand evidence.
+        """
+        if not self.settings.listings_api_key:
+            return []
+
+        query = self._build_query(card_id)
+        payload = self._search_completed(query, limit)
+        if payload is None:
+            return []
+
+        try:
+            return self._parse_completed(card_id, variant, payload, limit)
+        except (TypeError, ValueError, KeyError, AttributeError) as exc:
+            logger.warning("ebay sold-comps parse failure for %s: %s", card_id, exc)
             return []
 
     def _build_query(self, card_id: str) -> str:
@@ -162,6 +189,62 @@ class EbayListingsProvider:
             return None
         except RetryError:
             logger.error("ebay listings gave up for %r after %s attempts", query, self.settings.http_max_attempts)
+            return None
+
+    def _search_completed(self, query: str, limit: int) -> dict[str, Any] | None:
+        """GET the eBay Finding API findCompletedItems (sold listings), retrying
+        transport/5xx/429 only. Same terminal/retry/degrade discipline as
+        _search. SERVICE-VERSION=1.13.0 is REQUIRED — 1.0.0 misreports sold
+        items as sellingState="Ended" (eBay bug #185); 1.13.0 returns the
+        correct "EndedWithSales". SoldItemsOnly filters to sold listings;
+        EndTimeSoonest sorts most-recently-ended first.
+        """
+        url = self.settings.listings_base_url
+        params = {
+            "OPERATION-NAME": "findCompletedItems",
+            "SERVICE-VERSION": "1.13.0",
+            "SECURITY-APPNAME": self.settings.listings_api_key,
+            "RESPONSE-DATA-FORMAT": "JSON",
+            "REST-PAYLOAD": "",
+            "GLOBAL-ID": "EBAY-US",
+            "keywords": query,
+            "itemFilter(0).name": "SoldItemsOnly",
+            "itemFilter(0).value": "true",
+            "sortOrder": "EndTimeSoonest",
+            "paginationInput.entriesPerPage": str(max(1, min(limit, 100))),
+        }
+
+        @retry(
+            stop=stop_after_attempt(self.settings.http_max_attempts),
+            wait=wait_exponential(multiplier=1, min=1, max=20),
+            retry=retry_if_result(lambda r: r is None),
+        )
+        def _attempt() -> dict[str, Any] | None:
+            try:
+                response = httpx.get(
+                    url, params=params, timeout=self.settings.http_timeout_seconds,
+                )
+            except httpx.HTTPError as exc:
+                logger.warning("ebay sold-comps transport error for %r: %s", query, exc)
+                return None
+            if response.status_code == 200:
+                try:
+                    return response.json()
+                except (httpx.DecodingError, ValueError) as exc:
+                    logger.warning("ebay sold-comps bad JSON for %r: %s", query, exc)
+                    raise _TerminalHttpError(response.status_code) from exc
+            if response.status_code == 429 or response.status_code >= 500:
+                logger.warning("ebay sold-comps HTTP %s for %r (retryable)", response.status_code, query)
+                return None
+            logger.warning("ebay sold-comps HTTP %s for %r (terminal)", response.status_code, query)
+            raise _TerminalHttpError(response.status_code)
+
+        try:
+            return _attempt()
+        except _TerminalHttpError:
+            return None
+        except RetryError:
+            logger.error("ebay sold-comps gave up for %r after %s attempts", query, self.settings.http_max_attempts)
             return None
 
     @staticmethod
@@ -244,6 +327,84 @@ class EbayListingsProvider:
                 )
             )
         return quotes
+
+    @staticmethod
+    def _parse_completed(card_id: str, variant: str, payload: dict[str, Any], limit: int) -> list[SoldComp]:
+        """Map findCompletedItemsResponse.searchResult.item -> SoldComps.
+
+        Same single-element-array unwrap as _parse. CRITICAL: skip any item
+        whose sellingState != "EndedWithSales" — EndedWithoutSales (and any
+        other state) is NOT a sold comp; never fabricate a sale. Skip items
+        missing itemId or a parseable price (sacred never-fabricate). sold_at
+        is the sale close from listingInfo.endTime (tz-aware UTC, or None).
+        """
+        def _first(node, key):
+            v = node.get(key)
+            return v[0] if isinstance(v, list) and v else None
+
+        resp = payload.get("findCompletedItemsResponse")
+        if not isinstance(resp, list) or not resp:
+            return []
+        search = _first(resp[0], "searchResult")
+        if not isinstance(search, dict):
+            return []
+        items = search.get("item")
+        if not isinstance(items, list):
+            return []
+
+        comps: list[SoldComp] = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            listing_id = _first(item, "itemId")
+            if not listing_id:
+                continue
+
+            selling = _first(item, "sellingStatus")
+            if not isinstance(selling, dict):
+                continue
+            state = _first(selling, "sellingState")
+            # Only confirmed sales. Never fabricate a sale from an unsold item.
+            if state != "EndedWithSales":
+                continue
+
+            price: float | None = None
+            currency: str | None = None
+            price_block = _first(selling, "currentPrice")
+            if isinstance(price_block, dict):
+                currency = price_block.get("@currencyId")
+                raw_value = price_block.get("__value__")
+                if raw_value is not None:
+                    try:
+                        price = float(raw_value)
+                    except (TypeError, ValueError):
+                        continue
+            if price is None:
+                continue  # missing price — skip, never fabricate (SACRED)
+
+            listing_info = _first(item, "listingInfo")
+            sold_at = (
+                _parse_iso(_first(listing_info, "endTime"))
+                if isinstance(listing_info, dict)
+                else None
+            )
+
+            condition = None
+            cond_block = _first(item, "condition")
+            if isinstance(cond_block, dict):
+                condition = _first(cond_block, "conditionDisplayName")
+
+            comps.append(
+                SoldComp(
+                    card_id=card_id, variant=variant, listing_id=str(listing_id),
+                    price=price, currency=currency, title=_first(item, "title"),
+                    url=_first(item, "viewItemURL"), condition=condition,
+                    sold_at=sold_at, source="ebay",
+                )
+            )
+            if len(comps) >= limit:
+                break
+        return comps
 
 
 def _parse_iso(value: str | None) -> datetime | None:

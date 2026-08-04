@@ -6,6 +6,7 @@ import { formatMoney } from "../lib/format";
 import GradingUpside from "./GradingUpside";
 import PriceChart from "./PriceChart";
 import PriceLine from "./PriceLine";
+import SoldComps from "./SoldComps";
 
 interface Props {
   cardId: string;
@@ -146,6 +147,10 @@ export default function CardDetail({ cardId, variant = "normal", onBack, onWatch
       <div className="card-detail-price">
         <PriceLine cardId={cardId} variant={variant} initial={null} />
       </div>
+
+      {/* Evidence backing the raw market price above. Sold comps fetch their
+          own data (reused, not duplicated) — they're evidence, not a price. */}
+      <SoldComps cardId={cardId} variant={variant} />
 
       {/* Reused — not duplicated. The spread panel fetches its own data. */}
       <GradingUpside cardId={cardId} variant={variant} />

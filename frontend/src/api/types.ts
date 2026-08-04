@@ -237,15 +237,16 @@ export interface ListingsResponse {
   listings_unavailable: boolean;
 }
 
-// The five alert kinds a watch can listen for. Mirrors the backend's
-// _ALERT_TYPES set (api.py); the watchlist endpoint validates membership and
-// 422s on anything else. Keep this in lockstep with that set.
+// The alert kinds a watch can listen for. Mirrors the backend's _ALERT_TYPES
+// set (api.py); the watchlist endpoint validates membership and 422s on
+// anything else. Keep this in lockstep with that set.
 export type AlertType =
   | "restock"
   | "new_listing"
   | "price_target"
   | "auction_ending"
-  | "drop_time";
+  | "drop_time"
+  | "deal";
 
 // One watch subscription. `active` is the on/off toggle the More tab flips;
 // `last_fired_at` is engine state surfaced for display. Mirrors WatchOut in
@@ -380,4 +381,34 @@ export interface DealsResponse {
   listings_empty: boolean;
   deals: DealAssessment[];
   thresholds: DealThresholds;
+}
+
+// One recent eBay sold comp backing a card's market price. Sold comps are
+// EVIDENCE, not a price target — the UI never presents them as the card's
+// price, only as "these just sold at $X". `price` is always present (a comp
+// with no price isn't evidence); every other column surfaces as null when the
+// source omits it. `source` is always present (the backend never fabricates a
+// default). Mirrors SoldCompOut in backend api_models.py.
+export interface SoldComp {
+  listing_id: string;
+  title: string | null;
+  price: number;
+  currency: string | null;
+  url: string | null;
+  condition: string | null;
+  sold_at: string | null;
+  source: string;
+}
+
+// The GET /cards/{id}/sold-comps?variant= response. `sold_comps_unavailable`
+// is true when no listings provider key is configured (honest — no provider
+// configured, never fake comps); `sold_comps_empty` is true when a key IS set
+// but the source returned no recent sales (the source was queried, just
+// empty). Mirrors SoldCompsResponse field-for-field.
+export interface SoldCompsResponse {
+  card_id: string;
+  variant: string;
+  sold_comps: SoldComp[];
+  sold_comps_unavailable: boolean;
+  sold_comps_empty: boolean;
 }

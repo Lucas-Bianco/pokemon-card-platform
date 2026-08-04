@@ -48,11 +48,13 @@ class AlertEngine:
         notifier=None,
         settings=None,
         clock: Optional[Callable[[], datetime]] = None,
+        deal_engine=None,
     ) -> None:
         self.session = session
         self._listings = listings_service
         self._notifier = notifier
         self._settings = settings
+        self._deal_engine = deal_engine
         # Never call datetime.now() directly — always self._now() so tests
         # control time via the injected clock.
         self._clock = clock if clock is not None else (lambda: datetime.now(timezone.utc))
@@ -188,6 +190,8 @@ class AlertEngine:
             return self._eval_auction_ending(w, now)
         if atype == "drop_time":
             return self._eval_drop_time(w, now)
+        if atype == "deal":
+            return self._eval_deal(w, now)
         log.warning("unknown alert_type %r for watch %s", atype, w.id)
         return 0
 
@@ -251,6 +255,88 @@ class AlertEngine:
             fired += 1
         w.last_seen_listing_ids = json.dumps(sorted(curr_ids))
         return fired
+
+    # --------------------------------------------------------------- deal
+
+    def _eval_deal(self, w: Watch, now: datetime) -> int:
+        """Fire when a NEW active listing clears the rip/flip deal thresholds.
+
+        Mirrors _eval_new_listing's baseline-dedupe: the first poll establishes
+        the baseline (never fires); subsequent polls fire only for listing ids
+        that are deals AND not yet in the baseline. The baseline always advances
+        (even to empty) so a listing that stops being a deal cannot re-fire.
+        Reuses the global deal thresholds via the read-only DealEngine — no
+        per-watch thresholds, no snapshot writes. A missing deal_engine is a
+        silent no-op, never a crash.
+        """
+        if w.card_id is None:
+            log.debug("deal watch %s has no card_id; skipping", w.id)
+            return 0
+        if self._deal_engine is None:
+            log.debug("deal watch %s has no deal_engine; skipping", w.id)
+            return 0
+        variant = w.variant or ""
+        try:
+            assessments = self._deal_engine.assess(w.card_id, variant)
+        except Exception:
+            # DealEngine.assess never raises per Phase 05, but defend the
+            # never-raise contract: a deal evaluation failure is a skip.
+            log.warning("deal assess failed for watch %s", w.id, exc_info=True)
+            return 0
+        deal_map = {a.listing_id: a for a in assessments if a.is_rip or a.is_flip}
+        curr_ids = set(deal_map)
+        prev_ids = (
+            set(json.loads(w.last_seen_listing_ids)) if w.last_seen_listing_ids else None
+        )
+        # First poll: establish baseline, never fire.
+        if prev_ids is None:
+            w.last_seen_listing_ids = json.dumps(sorted(curr_ids))
+            return 0
+        new_ids = curr_ids - prev_ids
+        fired = 0
+        for lid in sorted(new_ids):
+            a = deal_map[lid]
+            self._fire(w, self._deal_message(w, a), self._deal_context(a))
+            fired += 1
+        # Always advance the baseline so removed deals don't re-fire.
+        w.last_seen_listing_ids = json.dumps(sorted(curr_ids))
+        return fired
+
+    def _deal_message(self, w: Watch, a) -> str:
+        name = self._display(w)
+        price = a.listing_price
+        price_str = f"${price:.2f}" if price is not None else "—"
+        rip = a.rip_edge
+        flip = a.flip_edge_to_10
+        rip_str = f"${rip:.2f}" if rip is not None else None
+        flip_str = f"${flip:.2f}" if flip is not None else None
+        # Lead with the larger of the two edges.
+        if a.is_rip and (not a.is_flip or (rip is not None and flip is not None and rip >= flip)):
+            return (f"Deal on {name} — listing {price_str} vs market, RIP edge {rip_str}. "
+                    f"Verify before buying.")
+        if a.is_flip and flip_str is not None:
+            return (f"Deal on {name} — listing {price_str}, PSA-10 flip spread {flip_str} "
+                    f"after grading. Verify before buying.")
+        return f"Deal on {name} — listing {price_str}. Verify before buying."
+
+    def _deal_context(self, a) -> str:
+        def _pp(p):
+            if p is None:
+                return None
+            return {"price": p.price, "source": p.source, "source_updated_at": p.source_updated_at}
+        return json.dumps({
+            "listing_id": a.listing_id,
+            "url": a.url,
+            "listing_price": a.listing_price,
+            "currency": a.currency,
+            "condition": a.condition,
+            "rip_edge": a.rip_edge,
+            "flip_edge_to_10": a.flip_edge_to_10,
+            "is_rip": a.is_rip,
+            "is_flip": a.is_flip,
+            "deal_score": a.deal_score,
+            "raw_market": _pp(getattr(a, "raw_market", None)),
+        })
 
     # ------------------------------------------------------- price_target
 

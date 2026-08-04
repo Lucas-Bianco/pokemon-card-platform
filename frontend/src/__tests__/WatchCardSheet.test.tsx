@@ -180,6 +180,35 @@ describe("WatchCardSheet", () => {
     expect(onCreated).not.toHaveBeenCalled();
   });
 
+  it("Deal: picking the Deal chip submits a deal watch with alert_type=deal", async () => {
+    const spy = stubFetch();
+    const onCreated = vi.fn();
+
+    const { container } = render(
+      <WatchCardSheet cardId="base1-4" onClose={noop} onCreated={onCreated} />,
+    );
+
+    const chips = [...container.querySelectorAll(".watch-type-chip")] as HTMLButtonElement[];
+    const dealChip = chips.find((c) => /deal/i.test(c.textContent ?? ""))!;
+    fireEvent.click(dealChip);
+
+    const submit = [...container.querySelectorAll("button")].find((b) =>
+      /^watch$/i.test(b.textContent ?? ""),
+    ) as HTMLButtonElement;
+    fireEvent.click(submit);
+
+    await waitFor(() => {
+      expect(spy.mock.calls.some(([u, i]) => String(u).includes("/watchlist") && (i as RequestInit)?.method === "POST")).toBe(true);
+    });
+    const postCall = spy.mock.calls.find(
+      ([u, i]) => String(u).includes("/watchlist") && (i as RequestInit)?.method === "POST",
+    )!;
+    const body = JSON.parse((postCall[1] as RequestInit).body as string);
+    expect(body.alert_type).toBe("deal");
+    expect(body.card_id).toBe("base1-4");
+    expect(onCreated).toHaveBeenCalledTimes(1);
+  });
+
   it("Restock: shows the 'requires a listings source key' honest note", async () => {
     stubFetch();
 

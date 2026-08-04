@@ -51,6 +51,12 @@ const TYPE_INFO: Record<
     needsCard: false,
     needsListings: false,
   },
+  deal: {
+    label: "Deal",
+    description: "Ping me when a new listing clears the RIP/flip deal thresholds.",
+    needsCard: true,
+    needsListings: true,
+  },
 };
 
 // A bottom-sheet modal for creating a watch. The alert-type picker shows the
