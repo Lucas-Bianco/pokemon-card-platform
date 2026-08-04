@@ -66,7 +66,7 @@ log = logging.getLogger(__name__)
 
 # Alert types the watchlist accepts on POST. Validation lives in the endpoint
 # (not Pydantic) because the required-fields-per-type rule is conditional.
-_ALERT_TYPES = {"restock", "new_listing", "price_target", "auction_ending", "drop_time"}
+_ALERT_TYPES = {"restock", "new_listing", "price_target", "auction_ending", "drop_time", "deal"}
 
 
 def _get_database() -> Database:
@@ -856,6 +856,11 @@ def create_app() -> FastAPI:
             raise HTTPException(
                 status_code=422,
                 detail="drop_at is required for alert_type 'drop_time'",
+            )
+        if payload.alert_type == "deal" and payload.card_id is None:
+            raise HTTPException(
+                status_code=422,
+                detail="card_id is required for alert_type 'deal'",
             )
         if payload.card_id is not None:
             _require_card(session, payload.card_id)

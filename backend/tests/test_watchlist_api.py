@@ -110,6 +110,25 @@ def test_create_drop_time_with_drop_at_succeeds(client):
     assert response.json()["drop_at"].startswith("2026-08-15T18:30")
 
 
+def test_create_deal_watch_requires_card_id(client):
+    response = client.post(
+        "/watchlist",
+        json={"alert_type": "deal", "variant": ""},
+    )
+    assert response.status_code == 422
+    assert "card_id is required" in response.json()["detail"].lower()
+
+
+def test_create_deal_watch_succeeds(client):
+    response = client.post(
+        "/watchlist",
+        json={"alert_type": "deal", "card_id": "base1-4", "variant": ""},
+    )
+    assert response.status_code == 201
+    assert response.json()["alert_type"] == "deal"
+    assert response.json()["card_id"] == "base1-4"
+
+
 def test_list_watches_filter_by_card_and_active(client):
     # One active restock + one active price_target on base1-4, one inactive
     # restock on base1-58.
