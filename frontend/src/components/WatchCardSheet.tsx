@@ -53,7 +53,7 @@ const TYPE_INFO: Record<
   },
   deal: {
     label: "Deal",
-    description: "Ping me when a deal is detected for this card.",
+    description: "Ping me when a new listing clears the RIP/flip deal thresholds.",
     needsCard: true,
     needsListings: true,
   },

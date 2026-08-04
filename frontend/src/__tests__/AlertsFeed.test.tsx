@@ -49,6 +49,18 @@ function sampleEvents(): AlertEvent[] {
       read_at: null,
       created_at: new Date(now - 24 * 60 * 60 * 1000).toISOString(),
     },
+    {
+      id: 4,
+      watch_id: 13,
+      card_id: "base1-4",
+      alert_type: "deal",
+      message: "Charizard listing cleared the RIP/flip deal thresholds",
+      context: null,
+      delivered_push: false,
+      delivered_email: false,
+      read_at: null,
+      created_at: new Date(now - 5 * 60 * 1000).toISOString(),
+    },
   ];
 }
 
@@ -104,6 +116,33 @@ describe("AlertsFeed", () => {
 
     const filtered = container.textContent ?? "";
     expect(filtered).toContain("Charizard is back in stock");
+    expect(filtered).not.toContain("Charizard hit your target");
+    expect(filtered).not.toContain("Pokemon Center drop soon");
+  });
+
+  it("filters to deal alerts when the Deals chip is tapped", async () => {
+    const events = sampleEvents();
+    stubFetch(events);
+
+    const { container } = render(
+      <AlertsFeed onOpenCard={noop} onWatchCard={noop} />,
+    );
+
+    await waitFor(() => {
+      expect(container.textContent ?? "").toContain("Charizard is back in stock");
+    });
+    const text = container.textContent ?? "";
+    expect(text).toContain("Charizard hit your target");
+    expect(text).toContain("Pokemon Center drop soon");
+    expect(text).toContain("Charizard listing cleared the RIP/flip deal thresholds");
+
+    const chips = [...container.querySelectorAll(".alert-chip")] as HTMLButtonElement[];
+    const dealsChip = chips.find((c) => /deals/i.test(c.textContent ?? ""))!;
+    fireEvent.click(dealsChip);
+
+    const filtered = container.textContent ?? "";
+    expect(filtered).toContain("Charizard listing cleared the RIP/flip deal thresholds");
+    expect(filtered).not.toContain("Charizard is back in stock");
     expect(filtered).not.toContain("Charizard hit your target");
     expect(filtered).not.toContain("Pokemon Center drop soon");
   });
