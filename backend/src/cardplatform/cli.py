@@ -194,6 +194,7 @@ def check_alerts(_args: argparse.Namespace) -> int:
     from cardplatform.alerts.engine import AlertEngine
     from cardplatform.alerts.notify import NotificationService
     from cardplatform.api import _catalog_lookup
+    from cardplatform.deals.engine import DealEngine
     from cardplatform.prices.ebay_listings import EbayListingsProvider
     from cardplatform.prices.listings_service import ListingsService
 
@@ -201,11 +202,15 @@ def check_alerts(_args: argparse.Namespace) -> int:
     db.create_all()
 
     with db.session() as session:
+        listings = ListingsService(
+            session, EbayListingsProvider(catalog=_catalog_lookup(session))
+        )
         engine = AlertEngine(
             session,
-            ListingsService(session, EbayListingsProvider(catalog=_catalog_lookup(session))),
+            listings,
             NotificationService(session, db.settings),
             db.settings,
+            deal_engine=DealEngine(session, db.settings, listings_service=listings),
         )
         n = engine.check_alerts()
 

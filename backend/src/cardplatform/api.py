@@ -1177,11 +1177,15 @@ def create_app() -> FastAPI:
                     db = Database(settings)
                     db.create_all()
                     with db.session() as session:
+                        listings = ListingsService(
+                            session, EbayListingsProvider(catalog=_catalog_lookup(session))
+                        )
                         engine = AlertEngine(
                             session,
-                            ListingsService(session, EbayListingsProvider(catalog=_catalog_lookup(session))),
+                            listings,
                             NotificationService(session, settings),
                             settings,
+                            deal_engine=DealEngine(session, settings, listings_service=listings),
                         )
                         engine.check_alerts()
                 except Exception:
