@@ -54,6 +54,7 @@ from cardplatform.db.models import (
     Watch,
 )
 from cardplatform.db.session import Database
+from cardplatform.prices import sold_comps_api_models as sold_models
 from cardplatform.prices.ebay_listings import EbayListingsProvider
 from cardplatform.prices.listings_service import ListingsService
 from cardplatform.prices.service import PriceService
@@ -1063,6 +1064,46 @@ def create_app() -> FastAPI:
                 deal_rip_min_pct=settings.deal_rip_min_pct,
                 deal_flip_min_abs=settings.deal_flip_min_abs,
             ),
+        )
+
+    @app.get("/cards/{card_id}/sold-comps", response_model=sold_models.SoldCompsResponse)
+    def card_sold_comps(
+        card_id: str,
+        variant: str | None = Query(default=None),
+        limit: int = Query(default=3, ge=1),
+        session: Session = Depends(get_session),
+    ) -> sold_models.SoldCompsResponse:
+        """Recent eBay *sold* listings for a card — sale evidence backing the
+        raw market price ("market $120 because these 3 just sold at
+        $118/$121/$119"). Honest flags: `sold_comps_unavailable` is True when
+        no `listings_api_key` is configured (no provider); `sold_comps_empty`
+        is True when a key IS set but eBay returned no sold comps. On-demand
+        read — sold comps are NEVER persisted (no snapshot writes). Unknown
+        card is 404.
+
+        Backed by the deprecated findCompletedItems (still functional for free
+        App IDs; degrades to [] if retired). Sold comps are evidence, not a
+        price target.
+        """
+        _require_card(session, card_id)
+        v = variant or ""
+        limit = min(limit, 10)  # clamp to max 10
+        provider = EbayListingsProvider(catalog=_catalog_lookup(session))
+        comps = provider.fetch_sold_listings(card_id, v, limit=limit)
+        unavailable = settings.listings_api_key is None
+        return sold_models.SoldCompsResponse(
+            card_id=card_id,
+            variant=v,
+            sold_comps=[
+                sold_models.SoldCompOut(
+                    listing_id=c.listing_id, title=c.title, price=c.price,
+                    currency=c.currency, url=c.url, condition=c.condition,
+                    sold_at=c.sold_at, source=c.source,
+                )
+                for c in comps
+            ],
+            sold_comps_unavailable=unavailable,
+            sold_comps_empty=(not unavailable and not comps),
         )
 
     # --------------------------------------------------------------- push
