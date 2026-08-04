@@ -44,6 +44,29 @@ class ListingQuote:
     source_updated_at: str | None = None
 
 
+@dataclass(frozen=True)
+class SoldComp:
+    """One recently-sold eBay listing for a (card, variant) — sale evidence.
+
+    Backs the raw market price in the UI ("market $120 because these 3 just
+    sold at $118/$121/$119"). Distinct from ListingQuote: a sold comp carries
+    `sold_at` (the sale close, from listingInfo.endTime) and no listing_type /
+    auction_end_at — completed listings are historical, not active. Sold comps
+    are NEVER persisted (on-demand evidence only); `source="ebay"`.
+    """
+
+    card_id: str
+    variant: str
+    listing_id: str
+    price: float
+    title: str | None = None
+    currency: str | None = None
+    url: str | None = None
+    condition: str | None = None
+    sold_at: datetime | None = None
+    source: str = "ebay"
+
+
 class ListingsProvider(Protocol):
     name: str
 
