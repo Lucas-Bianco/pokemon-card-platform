@@ -1590,3 +1590,83 @@ h1 { font-size: 1.25rem; margin: 4px 0 16px; }
 .deal-chip.rip { background: color-mix(in srgb, var(--ok, #2ea043) 14%, var(--surface)); border-color: color-mix(in srgb, var(--ok, #2ea043) 45%, var(--line)); }
 .deal-chip.flip { background: color-mix(in srgb, var(--accent) 14%, var(--surface)); border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
 .deal-caveat { margin: 2px 0 0; }
+
+/* =========================================================================
+   Phase 4 — bulk scan review grid
+   Additive: one binder-page photo → N independent result cells in a responsive
+   grid. Reuses the existing .result card aesthetic (surface + line border);
+   only the grid container + per-cell wrapper + variant selector are new.
+   Never overrides an existing selector's meaning.
+   ========================================================================= */
+
+/* The toggle in the Scan pane header. Styled like .header-toggle so it reads
+   as the same control the header uses, with the aria-pressed state showing
+   the active mode. */
+.bulk-toggle { margin-top: var(--sp-2); align-self: flex-start; }
+
+/* Responsive grid: auto-fill at 220px min so a 3x3 binder page lays out 3-up on
+   a wide phone and collapses to 1 column on narrow viewports. */
+.bulk-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--sp-3);
+  margin-top: var(--sp-3);
+}
+/* Each cell wraps one ScanResult (.result) plus a variant selector + log
+   status. Borders the existing .result card rather than restyling it. */
+.bulk-cell {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: var(--sp-2);
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+/* The .result ScanResult renders has its own margin-top; neutralize it inside
+   a cell so the grid gap is the only spacing. */
+.bulk-cell > .result { margin-top: 0; }
+
+.bulk-variant {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.8rem;
+  color: var(--fg-dim);
+}
+.bulk-variant select {
+  width: 100%;
+  padding: 9px 10px;
+  min-height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 0.95rem;
+}
+
+.bulk-log-status {
+  align-self: flex-start;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  border: 1px solid var(--line);
+}
+.bulk-log-status.saved {
+  color: var(--ok);
+  border-color: color-mix(in srgb, var(--ok) 45%, var(--line));
+  background: color-mix(in srgb, var(--ok) 12%, var(--surface));
+}
+.bulk-log-status.failed {
+  color: var(--down);
+  border-color: color-mix(in srgb, var(--down) 45%, var(--line));
+  background: color-mix(in srgb, var(--down) 12%, var(--surface));
+}
+
+.bulk-add-all { margin-top: var(--sp-3); }
+
+@media (max-width: 600px) {
+  .bulk-grid { grid-template-columns: 1fr; }
+}
