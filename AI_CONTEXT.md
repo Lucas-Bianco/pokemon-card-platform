@@ -43,12 +43,12 @@ Site: https://lucas-bianco.github.io/pokemon-card-platform/
 | 3 | Grade predictor: CV grading + grading EV | In progress — data infrastructure shipped (§10); full predictor still planned |
 | 3b | Grading data infrastructure: rectified-crop persistence, grade-label schema + self-annotation, graded-price provider, grading-upside spread | ✅ Complete |
 | 3c | Watchlist + restock/price/drop/auction alerts (CollectorVault-style 5-tab UI) | ✅ Complete (§11) |
-| 4 | Bulk cataloger: many cards per photo | Planned |
+| 4 | Bulk cataloger: many cards per photo | ✅ Complete (§14) |
 | 5 | Deal sniper + sealed EV | In progress — deal sniper / rip-vs-flip shipped (§12); deal alerts + sold-comps evidence shipped (§13); sealed EV still planned |
 | 6 | Set-completion optimizer | Planned |
 | 7 | Counterfeit detector | Planned |
 
-**Tests:** 485 backend (pytest) + 102 frontend (vitest).
+**Tests:** 505 backend (pytest) + 106 frontend (vitest).
 
 ### UI — "Grading Lab" (2026-08-01)
 
@@ -149,11 +149,20 @@ backend/src/cardplatform/
                      ranked by deal_score desc, nulls last; writes nothing) +
                      api_models.py (DealAssessmentOut, DealsResponse — Pydantic v2)
   collection/        store.py — add/remove/list/valuation + portfolio/summary/set_cost_basis
-  recognition/       detectors.py, rectify.py, encoder.py, index.py, ocr.py, fusion.py, service.py
-                     (persists the rectified crop to data/rectified/ + stamps scan_logs.variant)
+  recognition/       detectors.py (detect_candidates = single-card path; detect_all_quads = Phase 4
+                     multi-quad: all canny+otsu_rect contours, both Otsu polarities, IoU NMS),
+                     rectify.py, encoder.py, index.py, ocr.py, fusion.py, service.py
+                     (recognize = single-card; recognize_many = Phase 4 batched: rectify each quad,
+                     embed_many ONCE, index.search per vector, _fuse_for per crop, parallel OCR pool —
+                     one deep-copied reader per worker since RapidOCR is not thread-safe;
+                     persists the rectified crop to data/rectified/ + stamps scan_logs.variant)
   grading/           store.py (GradingLabelStore — self-annotation), upside.py (GradingUpsideService —
                      the raw/PSA-9/PSA-10 spread, honest nulls, never a prediction)
-  scans/             store.py — logs every scan as ground truth (rectified_path + variant columns)
+  scans/             store.py — logs every scan as ground truth (rectified_path + variant columns;
+                     record_batch = Phase 4 one photo → N rows sharing image_path, per-crop commit,
+                     batch_id+batch_index stamped; accuracy() is batch-aware — one representative
+                     per batch_id, NULL batch_id rows are singleton batches so the 105-scan baseline
+                     is not inflated)
   api.py             FastAPI, cli.py  CLI
 backend/scripts/     evaluate_recognition.py, evaluate_detection.py, spot_check.py
 frontend/src/        api/, lib/ (format, cameraCrop, time — shared relativeTime), components/
@@ -164,7 +173,10 @@ frontend/src/        api/, lib/ (format, cameraCrop, time — shared relativeTim
                      SoldComps "Recent sold (eBay)" evidence block under the market price; Browse,
                      AlertsFeed (type-filter incl. a Deals chip + 💰 deal icon), WatchCardSheet (6
                      alert types incl. a Deal chip), Deals — the Phase 05 deal feed, More — the
-                     Phase 3c alert/watchlist UI)
+                     Phase 3c alert/watchlist UI; BulkPane — Phase 04 bulk-cataloger mode:
+                     single↔bulk toggle in the Scan pane, one binder-page capture → CSS grid of N
+                     ScanResult cells, per-cell variant selector + fix-ups, bulk-add to collection;
+                     single-card path unchanged)
 frontend/public/     manifest.webmanifest, icon-192/512/icon-maskable-512.png, icon-source.svg
 frontend/scripts/    gen-icons.py (rasterize icon-source.svg → PNGs)
 site/                Next.js 15 marketing app — app/sections/ (Hero, Problem, Pipeline, Roadmap,
@@ -201,6 +213,13 @@ api.py Phase 05b endpoints: GET /cards/{card_id}/sold-comps?variant=&limit=3 (th
                      mirrors _eval_new_listing's last_seen_listing_ids baseline dedupe (first poll
                      never fires, fires only for NEW listings clearing rip/flip thresholds, baseline
                      always advances). The poll loop + CLI check-alerts inject the shared DealEngine.
+api.py Phase 04 endpoints: POST /recognize/batch (one binder-page photo → N independent RecognizeOut
+                     + a uuid4 batch_id grouping them; detect_all_quads → cap max_cards [1,18] →
+                     recognize_many → latest_price per confident card; per-card statuses NEVER
+                     collapsed into one batch status; not_found → card/price null, never $0;
+                     does NOT write scan_logs — the client logs per card via POST /scans threading
+                     batch_id+batch_index+rectified_path). Additive scan_logs.batch_id (indexed) +
+                     batch_index via the migration helper; 105 existing rows stay NULL.
 data/                GITIGNORED — 20,391 card images, 40 MB FAISS index, SQLite db, 105 real scans
 ```
 
@@ -725,3 +744,94 @@ follow-up, not this phase.
 staleness surfaced (`sold_at`); honest empty states (no `$0`, never a fabricated sale, never a
 fabricated deal event); no `data/` contents deleted; snapshots still immutable; `func.lower(...).like`
 for text search.
+
+---
+
+## 14. Phase 4 — bulk cataloger (many cards per photo)
+
+Shipped 2026-08-04 on `main`. **505 backend + 106 frontend tests.** One binder-page photo → N
+identified + valued cards in one scan, with a batch review grid where each card is fixed up
+independently. The phase splits **detection** (run once → N non-overlapping quads via IoU NMS)
+from **recognition** (per-quad, batched embedding, parallel OCR). Additive to the single-card
+pipeline — the single-card `POST /recognize` + `detect_candidates` path is byte-for-byte unchanged,
+and the 105-scan baseline replays with **0 regressions**. No external API added this phase.
+
+**Architecture:** `detect_all_quads` collects every card-shaped contour from `canny` +
+`otsu_rect` (both Otsu polarities), IoU-NMS-dedupes (no NMS existed anywhere before) → N quads.
+`recognize_many` rectifies each, calls `embed_many` **once** (the encoder already supported
+batching — `embed()` delegates to it), searches the index per vector, then fuses + OCRs each
+winning crop. OCR (~1 s/crop) is parallelized across a `ThreadPoolExecutor` with one
+`copy.deepcopy` reader per worker (RapidOCR is not thread-safe). `POST /recognize/batch` caps
+to `max_cards` (default 9, clamped `[1,18]`), resolves price per confident card via
+`PriceService.latest_price`, returns `BatchRecognizeOut{batch_id, count, results: [RecognizeOut]}`.
+Per-card statuses are NEVER collapsed into one batch status. The client logs each card via the
+existing `POST /scans`, threading `batch_id` + `batch_index`.
+
+**Recognition is still the arbiter, not geometry.** A card-shaped sleeve/glare slot still embeds
+to a low `visual_score` and stays `not_found` per crop — never auto-promoted on geometry. The
+`-inf` best-score floor and the "found a card-shaped quad != found the card" invariant hold per
+crop. `MAX_AREA_FRACTION=0.98` is kept — it rejects the whole-frame blob adaptive thresholding
+produced on 101/101 real scans; a binder card is ~0.11 of a 9-card frame.
+
+What shipped (TDD, subagent-driven; inline spec+quality reviews per task):
+- **T1 — multi-quad detection + IoU NMS.** `recognition/detectors.py` `detect_all_quads` +
+  `_all_polygon_quads`/`_all_rotated_rect_quads`/`_canny_quads`/`_otsu_rect_quads` (multi-quad
+  siblings of the single-quad `_largest_*` helpers — iterate all contours above
+  `MIN_AREA_FRACTION`, not just the first) + `_iou` (convex-quad IoU via
+  `cv2.intersectConvexConvex`) + `_nms` (largest-first greedy, threshold 0.3). `detect_candidates`
+  and all constants unchanged. 6 new tests on synthetic grids.
+- **T2 — batched recognition.** `recognition/service.py` `recognize_many` (additive; rectify →
+  `embed_many` once → per-vector search → per-crop `_fuse_for` with a per-worker reader) +
+  `_fuse_for` refactored to accept an optional `reader=None` (the only change to the single-card
+  path — `recognize` calls it with no reader, unchanged). `config.py` `batch_ocr_workers` (default
+  2, clamped `[1,4]` via a pydantic v2 `field_validator`). 4 new tests.
+- **T3 — batch scan logging.** `ScanLog` gains nullable `batch_id` (indexed) + `batch_index`,
+  added to the model AND `_ADDITIVE_COLUMNS` in the same change (schema drift between them 500s).
+  `ScanStore.record_batch` writes the source photo once → N rows sharing `image_path`, per-crop
+  commit, logs `not_found` too. `accuracy()` is batch-aware: one representative per `batch_id`
+  (first by id); NULL-`batch_id` rows are keyed `("singleton", row.id)` so each of the 105
+  single-card scans still counts as its own batch — the baseline is NOT inflated. `ScanAccuracy`
+  fields unchanged. 3 new tests.
+- **T4 — batch endpoint + wire types.** `POST /recognize/batch` (mirrors `POST /recognize`
+  field-for-field; `detect_all_quads` → `max_cards` clamp → `recognize_many` → `latest_price` per
+  confident card; `not_found` → `card=None, price=None`, never `$0`; `max_cards` 422 on >18;
+  imports the `detectors` module so the test's monkeypatch on `detectors.detect_all_quads` takes
+  effect). `BatchRecognizeOut` + frontend `BatchRecognizeResponse` + `batchRecognize` client;
+  `recordScan` extended with optional `{batch_id, batch_index, rectified_path, variant}`. 4 new tests.
+- **T5 — batch review grid.** `AppShell.tsx` `BulkPane` — single↔bulk toggle in the Scan pane
+  (default single; single-card branch verbatim), one binder-page capture → CSS grid of N
+  `ScanResult` cells (reused unchanged) with per-cell variant selector (refetches price for that
+  cell on change) + per-cell fix-ups, bulk-add to collection via the existing `addToCollection`
+  (duplicates merge). `formatMoney(null)` → `—`, never `$0.00`. 4 new tests.
+- **T6 — eval harness.** `scripts/make_batch_fixtures.py` (synthetic 3×3 + 2×2 binder pages with
+  per-card ground-truth JSON — additive under `data/scans/batch_fixtures/`, 4 files) +
+  `evaluate_detection.py` `--batch` mode (per-card IoU>0.5 recall, fails if any page <0.8; the
+  single-card 105-scan path is untouched). Recall 1.00 on both fixtures. 3 new tests.
+- **T7 — integrate + verify + ship.** Two harness fixes: `evaluate_detection.py` now calls
+  `database.create_all()` at startup (it opened a stale DB that lacked the T3 `batch_id` column
+  — `select(ScanLog)` 500s without the migration; the app/cli self-heal via `create_all()` but the
+  script didn't) and unpacks `recognize()`'s `(result, centering)` tuple (a pre-existing Phase 3a
+  breakage — the harness hadn't been run since centering was added). Neither was a Phase 4
+  regression. Baseline green: 105 scans, 0 regressions. Docs + memory updated, merged, pushed.
+
+**Open questions resolved (auto-mode defaults, in the design spec):** synthetic fixtures (real
+binder capture is a documented follow-up — we cannot claim real-photo coverage without real
+fixtures); extend canny+otsu_rect+IoU NMS (defer line/segment grid); `batch_ocr_workers` default
+2 clamped `[1,4]`; all N rows share the source `image_path`; `max_cards` default 9 clamped
+`[1,18]`; default `normal` variant + per-cell selector; bulk-add merges duplicates (per-lot
+cost-basis deferred from Phase 2); in-pane mode toggle (not a 7th nav tab — avoids 6-item
+overflow on narrow phones); per-crop commit.
+
+**Documented follow-ups (not solved):** line/segment grid detection (a measured follow-up if
+blob+NMS underperforms on real binder photos); real-binder fixture capture (synthetic only this
+phase); per-lot cost-basis model (still deferred from Phase 2); persisting a parent batch row
+(the shared `batch_id` + `batch_index` on each row is sufficient grouping); auto-rotating/
+flattening the binder page (assume the photo is oriented like the cards).
+
+**Sacred constraints held:** no ad-hoc price resolution (only `latest_price`); honest empty
+states (no `$0`, never a fabricated card or status, per-card statuses never collapsed);
+snapshots immutable; no `data/` contents deleted (only additions under
+`data/scans/batch_fixtures/`); **additive schema only** (nullable `batch_id`/`batch_index` via
+the idempotent migration helper, 105 rows stay NULL); recognition is the arbiter (low-visual-score
+kept quads stay `not_found`); single-card path unchanged; the 105-scan baseline replays with 0
+regressions.
