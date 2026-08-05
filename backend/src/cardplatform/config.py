@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 def _find_repo_root() -> Path:
@@ -46,6 +46,16 @@ class Settings(BaseSettings):
     encoder_pretrained: str = Field(default="laion2b_s34b_b79k")
     rectified_size: tuple[int, int] = Field(default=(600, 825))
     visual_top_k: int = Field(default=5)
+
+    # Phase 4: parallel OCR workers for recognize_many. RapidOCR is not thread-safe,
+    # so each worker constructs its own engine. Capped to [1, 4] — OCR is ~1 s/crop
+    # and each engine is a meaningful memory cost.
+    batch_ocr_workers: int = Field(default=2)
+
+    @field_validator("batch_ocr_workers")
+    @classmethod
+    def _clamp_batch_ocr_workers(cls, v: int) -> int:
+        return max(1, min(4, int(v)))
 
     # --- grading (Phase 3b) ---
     # PSA bulk ~$25 per card. T5 uses this as the cost basis when computing the
