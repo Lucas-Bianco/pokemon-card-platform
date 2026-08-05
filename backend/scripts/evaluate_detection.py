@@ -93,7 +93,13 @@ def main() -> int:
         evaluate_batch()
         return 0
 
+    # Migrate the on-disk DB like the app/cli do at startup (create_all adds new
+    # tables; run_migrations adds nullable columns idempotently). Without this the
+    # harness would query a stale DB — e.g. after the additive batch_id/batch_index
+    # columns (Phase 4), select(ScanLog) maps those columns and fails on an unmigrated
+    # DB. The 105 sacred rows gain NULL batch_id/batch_index; no data is touched.
     database = Database()
+    database.create_all()
     encoder = CardEncoder(database.settings)
     index = CardIndex(database.settings).load()
     reader = CollectorNumberReader()
@@ -129,7 +135,9 @@ def main() -> int:
             for name, _ in detect_candidates(image):
                 strategy_wins[name] += 1
 
-            result = service.recognize(image, rectify=True)
+            # recognize() returns (RecognitionResult, CenteringResult) since Phase 3a
+            # added centering to the return; the harness only scores the result.
+            result, _centering = service.recognize(image, rectify=True)
             was_counts[was_status] += 1
             now_counts[result.status] += 1
 
