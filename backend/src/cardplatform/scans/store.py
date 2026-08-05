@@ -76,6 +76,40 @@ class ScanStore:
         self.session.commit()
         return scan
 
+    def record_batch(
+        self,
+        image_bytes: bytes,
+        batch_id: str,
+        results: "list",
+        variants: "list[str | None] | None" = None,
+    ) -> list[ScanLog]:
+        """Log N cards from one source photo (Phase 4). Writes the photo once; all N
+        rows share image_path. Commits per row so a mid-batch failure keeps the audit
+        trail. Logs every card including not_found."""
+        name = f"{uuid.uuid4().hex}.png"
+        (self.directory / name).write_bytes(image_bytes)
+        image_path = f"scans/{name}"
+        if variants is None:
+            variants = [None for _ in results]
+        scans: list[ScanLog] = []
+        for idx, result in enumerate(results):
+            scan = ScanLog(
+                image_path=image_path,
+                predicted_card_id=result.card_id,
+                status=result.status,
+                confidence=result.confidence,
+                visual_margin=result.visual_margin,
+                collector_number_read=result.ocr.collector_number if result.ocr else None,
+                rectified_path=result.rectified_path,
+                variant=variants[idx] if idx < len(variants) else None,
+                batch_id=batch_id,
+                batch_index=idx,
+            )
+            self.session.add(scan)
+            self.session.commit()  # per-crop: durable
+            scans.append(scan)
+        return scans
+
     def get(self, scan_id: int) -> ScanLog | None:
         return self.session.get(ScanLog, scan_id)
 
@@ -107,21 +141,31 @@ class ScanStore:
 
     def accuracy(self) -> ScanAccuracy:
         rows = list(self.session.scalars(select(ScanLog)).all())
+        # Batch-aware: one representative (first by id) per batch_id; NULL batch_id
+        # rows are singleton batches (one each). N rows per bulk photo must not
+        # inflate the 105-scan baseline. A NULL batch_id collapses to nothing —
+        # each NULL-batch row is its own singleton batch keyed by its own id.
+        seen: dict[object, ScanLog] = {}
+        for row in sorted(rows, key=lambda r: r.id):
+            key = row.batch_id if row.batch_id is not None else ("singleton", row.id)
+            seen.setdefault(key, row)
+        rep = list(seen.values())
+
         by_status: dict[str, int] = {}
-        for row in rows:
+        for row in rep:
             by_status[row.status] = by_status.get(row.status, 0) + 1
 
-        answered = [r for r in rows if r.predicted_card_id is not None]
+        answered = [r for r in rep if r.predicted_card_id is not None]
         # Only reviewed predictions are evidence; an unreviewed one is neither.
         predicted = [r for r in answered if r.confirmed]
         correct = [r for r in predicted if r.corrected_card_id is None]
 
         return ScanAccuracy(
-            total=len(rows),
+            total=len(rep),
             answered=len(answered),
             predicted=len(predicted),
             correct=len(correct),
             precision=len(correct) / len(predicted) if predicted else 0.0,
-            coverage=len(answered) / len(rows) if rows else 0.0,
+            coverage=len(answered) / len(rep) if rep else 0.0,
             by_status=by_status,
         )

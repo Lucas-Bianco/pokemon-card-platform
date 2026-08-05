@@ -29,12 +29,77 @@ from cardplatform.recognition.ocr import CollectorNumberReader
 from cardplatform.recognition.service import RecognitionService
 
 
+def _quad_iou(a, b):
+    """Intersection-over-union of two convex quads (per-card batch scoring, Phase 4)."""
+    import cv2
+    import numpy as np
+
+    a2 = np.asarray(a, dtype="float32")
+    b2 = np.asarray(b, dtype="float32")
+    inter, _ = cv2.intersectConvexConvex(a2, b2)
+    inter = max(float(inter), 0.0)
+    ua = cv2.contourArea(a2) + cv2.contourArea(b2) - inter
+    return inter / ua if ua > 0 else 0.0
+
+
+def evaluate_batch(fixtures_dir: str = "data/scans/batch_fixtures"):
+    """Per-card multi-page detection scoring (Phase 4). Returns per-page recall.
+
+    Additive to the single-card 105-scan path — does not touch it. Loads each
+    manifest JSON under fixtures_dir, runs detect_all_quads on its page PNG, matches
+    detected quads to ground-truth quads by IoU > 0.5, and reports per-page recall.
+    Fails (non-zero exit) if any page's recall drops below 0.8 (allow one edge miss
+    on a 9-card page). The single-card "one confident regression fails" rule stays
+    in the separate single-card path above.
+    """
+    import json
+    from pathlib import Path
+
+    from cardplatform.recognition.detectors import detect_all_quads
+
+    d = Path(fixtures_dir)
+    results = []
+    for jf in sorted(d.glob("*.json")):
+        manifest = json.loads(jf.read_text())
+        img = Image.open(d / manifest["page"]).convert("RGB")
+        detected = detect_all_quads(img)
+        det_quads = [q for _, q in detected]
+        matched = 0
+        for card in manifest["cards"]:
+            gt = card["quad"]
+            if any(_quad_iou(gt, dq) > 0.5 for dq in det_quads):
+                matched += 1
+        total = len(manifest["cards"])
+        recall = matched / total if total else 0.0
+        results.append((manifest["page"], matched, total, recall))
+        print(f"{manifest['page']}: matched {matched}/{total} (recall {recall:.2f})")
+    failed = [name for name, m, t, r in results if r < 0.8]
+    if failed:
+        raise SystemExit(f"batch detection regression on: {failed}")
+    return results
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--limit", type=int, default=0, help="0 means all")
+    parser.add_argument(
+        "--batch",
+        action="store_true",
+        help="Score multi-card binder-page fixtures (Phase 4) instead of the single-card scans",
+    )
     args = parser.parse_args()
 
+    if args.batch:
+        evaluate_batch()
+        return 0
+
+    # Migrate the on-disk DB like the app/cli do at startup (create_all adds new
+    # tables; run_migrations adds nullable columns idempotently). Without this the
+    # harness would query a stale DB — e.g. after the additive batch_id/batch_index
+    # columns (Phase 4), select(ScanLog) maps those columns and fails on an unmigrated
+    # DB. The 105 sacred rows gain NULL batch_id/batch_index; no data is touched.
     database = Database()
+    database.create_all()
     encoder = CardEncoder(database.settings)
     index = CardIndex(database.settings).load()
     reader = CollectorNumberReader()
@@ -70,7 +135,9 @@ def main() -> int:
             for name, _ in detect_candidates(image):
                 strategy_wins[name] += 1
 
-            result = service.recognize(image, rectify=True)
+            # recognize() returns (RecognitionResult, CenteringResult) since Phase 3a
+            # added centering to the return; the harness only scores the result.
+            result, _centering = service.recognize(image, rectify=True)
             was_counts[was_status] += 1
             now_counts[result.status] += 1
 

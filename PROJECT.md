@@ -2,7 +2,10 @@
 
 **Owner:** Lucas
 **Started:** 2026-07-28
-**Status:** Phase 05b (deal alerts + eBay sold-comps evidence) shipped 2026-08-04 — see
+**Status:** Phase 4 (bulk cataloger — many cards per photo) shipped 2026-08-04 — see
+[design spec](docs/superpowers/specs/2026-08-04-phase-4-bulk-cataloger-design.md) +
+[plan](docs/superpowers/plans/2026-08-04-phase-4-bulk-cataloger.md). Phase 05b (deal alerts + eBay
+sold-comps evidence) shipped 2026-08-04 — see
 [design spec](docs/superpowers/specs/2026-08-04-deal-alerts-sold-comps-design.md) +
 [plan](docs/superpowers/plans/2026-08-04-deal-alerts-sold-comps.md). Phase 05 (deal sniper /
 rip-vs-flip) shipped 2026-08-03 — see
@@ -52,7 +55,7 @@ Each phase ships independently usable functionality and gets its own spec → pl
 | 3b | Grading data infrastructure — rectified-crop persistence, grade-label schema + self-annotation, graded-price provider, grading-upside spread | **Complete** |
 | 3c | Watchlist + restock/price/drop/auction alerts — CollectorVault-style 5-tab UI | **Complete** |
 | 3 | Grade Predictor — corner/edge/surface scoring + P(grade) + grading EV | In progress — data infra unblocked (3b); full predictor still planned |
-| 4 | Bulk cataloger — detect every card in one photo | Planned |
+| 4 | Bulk cataloger — detect every card in one photo | **Complete** |
 | 5 | Deal sniper + sealed EV — listings vs. sold comps, rip-vs-flip | In progress — deal sniper / rip-vs-flip + deal alerts + sold-comps evidence shipped; sealed EV still planned |
 | 6 | Set-completion optimizer — cheapest path to finish a set | Planned |
 | 7 | Counterfeit detector — holo pattern, rosette, texture analysis | Planned |
@@ -509,6 +512,68 @@ Marketplace Insights migration is a documented follow-up, not this phase.
 **Sacred constraints held** — no ad-hoc price resolution; no snapshot writes for sold comps; no
 schema change / no new table; staleness surfaced (`sold_at`); honest empty states (no `$0`, never a
 fabricated sale, never a fabricated deal event); no `data/` deletion; snapshots still immutable.
+
+## Phase 4 (bulk cataloger) — shipped
+
+Bulk cataloger — many cards per photo, built 2026-08-04
+([spec](docs/superpowers/specs/2026-08-04-phase-4-bulk-cataloger-design.md) +
+[plan](docs/superpowers/plans/2026-08-04-phase-4-bulk-cataloger.md)). **505 backend + 106 frontend
+tests.** One binder-page photo → N identified + valued cards in one scan, with a batch review grid
+where each card is fixed up independently (corner drag, candidate pick, per-card variant) and
+bulk-added to the collection. Additive to the single-card pipeline — `POST /recognize` +
+`detect_candidates` are byte-for-byte unchanged, and the 105-scan baseline replays with **0
+regressions**. No external API added this phase.
+
+The phase splits **detection** (run once → N non-overlapping quads via IoU NMS) from **recognition**
+(per-quad, batched embedding, parallel OCR):
+
+- **Multi-quad detection + IoU NMS** — `detect_all_quads` collects every card-shaped contour from
+  `canny` + `otsu_rect` (both Otsu polarities), IoU-NMS-dedupes (no NMS existed anywhere before) → N
+  quads largest-first. `MAX_AREA_FRACTION=0.98` is kept (rejects the whole-frame blob adaptive
+  thresholding made on 101/101 real scans); a binder card is ~0.11 of a 9-card frame.
+- **Batched recognition** — `recognize_many` rectifies each quad, calls `embed_many` **once** (the
+  encoder already supported batching), searches the index per vector, then fuses + OCRs each winning
+  crop. OCR (~1 s/crop) is parallelized across a per-worker reader pool — one `copy.deepcopy` reader
+  per worker because RapidOCR is not thread-safe. **Recognition is still the arbiter, not geometry:**
+  a card-shaped sleeve/glare slot still embeds low and stays `not_found` per crop, never auto-promoted.
+- **Batch scan logging** — additive nullable `scan_logs.batch_id` (indexed) + `batch_index` via the
+  idempotent migration helper (the 105 existing rows stay NULL). `ScanStore.record_batch` writes the
+  source photo once → N rows sharing `image_path`, per-crop commit, logs `not_found` too. `accuracy()`
+  is batch-aware: one representative per `batch_id`; NULL-`batch_id` rows are singleton batches, so the
+  105-scan baseline is NOT inflated.
+- **`POST /recognize/batch`** — mirrors `POST /recognize` field-for-field: `detect_all_quads` → cap
+  `max_cards` (default 9, clamped `[1,18]`) → `recognize_many` → `latest_price` per confident card →
+  `BatchRecognizeOut{batch_id, count, results: [RecognizeOut]}`. Per-card statuses are NEVER collapsed
+  into one batch status; `not_found` → `card/price` null, never `$0`. The endpoint does NOT write
+  `scan_logs` — the client logs per card via `POST /scans` threading `batch_id`+`batch_index`.
+- **Batch review grid** — `BulkPane`: single↔bulk toggle in the Scan pane (default single; single-card
+  branch verbatim), one binder-page capture → CSS grid of N `ScanResult` cells (reused unchanged) with
+  per-cell variant selector + fix-ups, bulk-add to collection (duplicates merge). `formatMoney(null)` →
+  `—`, never `$0.00`.
+- **Eval harness** — `make_batch_fixtures.py` (synthetic 3×3 + 2×2 binder pages with per-card
+  ground-truth JSON) + `evaluate_detection.py --batch` (per-card IoU>0.5 recall, fails if any page
+  <0.8). Recall 1.00 on both fixtures. Two harness fixes in T7: the script now calls
+  `database.create_all()` at startup (it opened a stale DB lacking the T3 column — `select(ScanLog)`
+  500s without the migration; the app/cli self-heal but the script didn't) and unpacks `recognize()`'s
+  `(result, centering)` tuple (a pre-existing Phase 3a breakage — the harness hadn't been run since
+  centering was added). Neither was a Phase 4 regression.
+
+**Open questions resolved (auto-mode defaults)** — synthetic fixtures (real binder capture is a
+documented follow-up); extend canny+otsu_rect+IoU NMS (defer line/segment grid); `batch_ocr_workers`
+default 2 clamped `[1,4]`; all N rows share the source `image_path`; `max_cards` default 9 clamped
+`[1,18]`; default `normal` variant + per-cell selector; bulk-add merges duplicates (per-lot cost-basis
+deferred from Phase 2); in-pane mode toggle (not a 7th nav tab); per-crop commit.
+
+**Documented follow-ups** — line/segment grid detection (measured follow-up if blob+NMS underperforms
+on real binder photos); real-binder fixture capture (synthetic only this phase); per-lot cost-basis
+model (still deferred from Phase 2); persisting a parent batch row (the shared `batch_id` +
+`batch_index` on each row is sufficient grouping); auto-rotating/flattening the binder page.
+
+**Sacred constraints held** — no ad-hoc price resolution (only `latest_price`); honest empty states
+(no `$0`, never a fabricated card or status, per-card statuses never collapsed); snapshots immutable;
+no `data/` deletion (only additions under `data/scans/batch_fixtures/`); additive schema only
+(nullable columns via the idempotent migration helper, 105 rows stay NULL); recognition is the
+arbiter; single-card path unchanged; 105-scan baseline 0 regressions.
 
 ## Carried into Phase 1 (from the final Phase 0 review)
 

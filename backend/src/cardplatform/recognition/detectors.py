@@ -173,3 +173,126 @@ def detect_candidates(image: Image.Image) -> list[tuple[str, np.ndarray]]:
         if quad is not None:
             proposals.append((name, quad))
     return proposals
+
+
+# --- Phase 4: multi-quad detection (bulk cataloger) -------------------------
+#
+# detect_candidates returns ONE quad per strategy (single-card path, unchanged).
+# detect_all_quads returns EVERY card-shaped quad across both strategies + both
+# Otsu polarities, then IoU-NMS-dedupes. Recognition is still the arbiter: a kept
+# quad that embeds to a low visual_score is a not_found, never auto-promoted on
+# geometry. MAX_AREA_FRACTION is kept — it rejects the degenerate whole-frame blob
+# that adaptive thresholding produced on 101/101 real scans; a binder card is
+# ~0.11 of a 9-card frame, comfortably above MIN_AREA_FRACTION=0.05 and below 0.98.
+
+_NMS_IOU_THRESHOLD = 0.3
+
+
+def _all_polygon_quads(mask: np.ndarray, frame_area: float) -> list[np.ndarray]:
+    """Every card-shaped 4-vertex polygon quad in the mask (not just the largest)."""
+    quads: list[np.ndarray] = []
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    for contour in sorted(contours, key=cv2.contourArea, reverse=True):
+        if cv2.contourArea(contour) < frame_area * MIN_AREA_FRACTION:
+            break  # sorted desc — everything after is also too small
+        approx = cv2.approxPolyDP(contour, 0.02 * cv2.arcLength(contour, True), True)
+        if len(approx) == 4:
+            quad = order_corners(approx.reshape(4, 2).astype("float32"))
+            if quad_is_card_shaped(quad, frame_area):
+                quads.append(quad)
+    return quads
+
+
+def _all_rotated_rect_quads(mask: np.ndarray, frame_area: float) -> list[np.ndarray]:
+    """Every card-shaped rotated-rect quad in the mask (not just the largest)."""
+    quads: list[np.ndarray] = []
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    for contour in sorted(contours, key=cv2.contourArea, reverse=True):
+        if cv2.contourArea(contour) < frame_area * MIN_AREA_FRACTION:
+            break
+        quad = order_corners(cv2.boxPoints(cv2.minAreaRect(contour)).astype("float32"))
+        if quad_is_card_shaped(quad, frame_area):
+            quads.append(quad)
+    return quads
+
+
+def _canny_quads(image: Image.Image) -> list[np.ndarray]:
+    bgr = _to_bgr(image)
+    gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
+    edges = cv2.Canny(cv2.GaussianBlur(gray, (5, 5), 0), 50, 150)
+    edges = cv2.dilate(edges, np.ones((3, 3), np.uint8), iterations=1)
+    return _all_polygon_quads(edges, bgr.shape[0] * bgr.shape[1])
+
+
+def _otsu_rect_quads(image: Image.Image) -> list[np.ndarray]:
+    """Both Otsu polarities — a card may be lighter OR darker than its surroundings."""
+    bgr = _to_bgr(image)
+    gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
+    area = bgr.shape[0] * bgr.shape[1]
+    _, binary = cv2.threshold(
+        cv2.GaussianBlur(gray, (7, 7), 0), 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
+    )
+    quads: list[np.ndarray] = []
+    for mask in (binary, cv2.bitwise_not(binary)):
+        closed = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((9, 9), np.uint8))
+        quads.extend(_all_rotated_rect_quads(closed, area))
+    return quads
+
+
+def _iou(a: np.ndarray, b: np.ndarray) -> float:
+    """Intersection-over-union of two convex quads (order_corners output)."""
+    a2 = a.astype(np.float32)
+    b2 = b.astype(np.float32)
+    inter, _ = cv2.intersectConvexConvex(a2, b2)
+    inter = max(float(inter), 0.0)
+    area_a = cv2.contourArea(a2)
+    area_b = cv2.contourArea(b2)
+    union = area_a + area_b - inter
+    return inter / union if union > 0 else 0.0
+
+
+def _nms(quads: list[np.ndarray], threshold: float = _NMS_IOU_THRESHOLD) -> list[np.ndarray]:
+    """Drop the smaller quad of any pair with IoU above threshold. Largest-first."""
+    order = sorted(
+        range(len(quads)),
+        key=lambda i: cv2.contourArea(quads[i].astype(np.float32)),
+        reverse=True,
+    )
+    kept: list[np.ndarray] = []
+    for i in order:
+        if not any(_iou(quads[i], kept_q) > threshold for kept_q in kept):
+            kept.append(quads[i])
+    return kept
+
+
+def detect_all_quads(image: Image.Image) -> list[tuple[str, np.ndarray]]:
+    """Every card-shaped quad across all strategies + polarities, NMS-deduped.
+
+    Returns one (strategy_name, quad) per surviving proposal, largest-area first.
+    The single-card detect_candidates path is unchanged; this is the bulk sibling.
+    """
+    proposals: list[tuple[str, np.ndarray]] = []
+    try:
+        for q in _canny_quads(image):
+            proposals.append(("canny", q))
+    except cv2.error:
+        pass
+    try:
+        for q in _otsu_rect_quads(image):
+            proposals.append(("otsu_rect", q))
+    except cv2.error:
+        pass
+    if not proposals:
+        return []
+    # NMS largest-first; keep the first (largest) proposer's name per survivor.
+    order = sorted(
+        range(len(proposals)),
+        key=lambda i: cv2.contourArea(proposals[i][1].astype(np.float32)),
+        reverse=True,
+    )
+    kept: list[tuple[str, np.ndarray]] = []
+    for i in order:
+        name_i, quad_i = proposals[i]
+        if not any(_iou(quad_i, quad_j) > _NMS_IOU_THRESHOLD for _, quad_j in kept):
+            kept.append((name_i, quad_i))
+    return kept

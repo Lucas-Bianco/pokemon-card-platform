@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import copy
 import dataclasses
 import logging
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 from PIL import Image
@@ -106,6 +108,58 @@ class RecognitionService:
         )
         return self._fuse_for(best_crop, best_found)
 
+    def recognize_many(
+        self,
+        image: Image.Image,
+        quads: list[np.ndarray],
+    ) -> list[tuple[np.ndarray, RecognitionResult, CenteringResult | None]]:
+        """Recognize every quad in one image (Phase 4 bulk cataloger).
+
+        Detection has already run (these are the N kept quads). Rectify each, embed
+        them in ONE batched call, search the index per vector, then fuse + OCR each
+        winning crop. OCR (~1 s/crop) is parallelized across a per-worker reader pool
+        (RapidOCR is not thread-safe). Recognition is the arbiter: a quad that embeds
+        low is a not_found per crop — geometry never auto-promotes.
+
+        Returns one (quad, result, centering) per input quad, in input order.
+        """
+        if not quads:
+            return []
+
+        crops = [
+            rectify_from_corners(image, quad, self.settings.rectified_size) for quad in quads
+        ]
+        vectors = self.encoder.embed_many(crops)
+        found_per_crop = [
+            tuple(self.index.search(vec, top_k=self.settings.visual_top_k))
+            for vec in vectors
+        ]
+
+        workers = max(1, min(4, getattr(self.settings, "batch_ocr_workers", 1) or 1))
+        # Each worker gets its own deep-copied reader (RapidOCR is not thread-safe).
+        worker_readers = [copy.deepcopy(self.reader) for _ in range(workers)]
+
+        results: list[tuple[np.ndarray, RecognitionResult, CenteringResult | None]] = [
+            None  # type: ignore[list-item]
+        ] * len(quads)
+
+        if workers == 1 or len(quads) == 1:
+            for i in range(len(quads)):
+                result, centering = self._fuse_for(
+                    crops[i], found_per_crop[i], reader=worker_readers[0]
+                )
+                results[i] = (quads[i], result, centering)
+        else:
+            def _job(i):
+                return i, self._fuse_for(
+                    crops[i], found_per_crop[i], reader=worker_readers[i % workers]
+                )
+
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                for i, (result, centering) in pool.map(_job, range(len(quads))):
+                    results[i] = (quads[i], result, centering)
+        return results
+
     def _recognize_crop(
         self, crop: Image.Image
     ) -> tuple[RecognitionResult, CenteringResult | None]:
@@ -115,7 +169,10 @@ class RecognitionService:
         return self._fuse_for(crop, found)
 
     def _fuse_for(
-        self, crop: Image.Image, found: tuple
+        self,
+        crop: Image.Image,
+        found: tuple,
+        reader=None,
     ) -> tuple[RecognitionResult, CenteringResult | None]:
         catalog_numbers = self._collector_numbers([c.card_id for c in found])
         # Drop index entries the catalog no longer knows about.
@@ -134,7 +191,11 @@ class RecognitionService:
                 ", ".join(stale),
             )
 
-        reading = self.reader.read(crop)
+        # The worker pool passes its own per-worker reader so the shared self.reader
+        # is never mutated across threads (RapidOCR is not thread-safe). The single-card
+        # recognize path calls _fuse_for without a reader and uses self.reader.
+        ocr_reader = reader if reader is not None else self.reader
+        reading = ocr_reader.read(crop)
         result = fuse(candidates, reading, catalog_numbers, config=self.fusion_config)
         # The rectified crop is the canonical input Phase 3's grader needs, and the
         # only signal worth re-measuring centering on. Persist it once, here, on the

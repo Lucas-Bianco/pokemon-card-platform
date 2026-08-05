@@ -158,6 +158,12 @@ class ScanLog(Base):
     # 101 existing rows get NULL; added via run_migrations, not create_all.
     rectified_path: Mapped[str | None] = mapped_column(String, default=None)
     variant: Mapped[str | None] = mapped_column(String, default=None)
+    # Phase 4: groups the N rows of one bulk-cataloger photo. NULL for single-card
+    # scans (treated as a singleton batch). batch_index is the slot position within
+    # the batch. Both nullable, added via run_migrations, not create_all — the 105
+    # existing rows stay NULL.
+    batch_id: Mapped[str | None] = mapped_column(String, index=True, default=None)
+    batch_index: Mapped[int | None] = mapped_column(Integer, default=None)
 
 
 class GradingLabel(Base):
