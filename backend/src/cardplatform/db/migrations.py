@@ -38,6 +38,8 @@ logger = logging.getLogger(__name__)
 _ADDITIVE_COLUMNS: tuple[tuple[str, str, str], ...] = (
     ("scan_logs", "rectified_path", "VARCHAR"),
     ("scan_logs", "variant", "VARCHAR"),
+    ("scan_logs", "batch_id", "VARCHAR"),
+    ("scan_logs", "batch_index", "INTEGER"),
 )
 
 
