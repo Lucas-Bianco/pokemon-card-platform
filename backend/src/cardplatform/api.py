@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
+import uuid
 from datetime import datetime, timezone
 from typing import Iterator
 
@@ -58,6 +59,7 @@ from cardplatform.prices import sold_comps_api_models as sold_models
 from cardplatform.prices.ebay_listings import EbayListingsProvider
 from cardplatform.prices.listings_service import ListingsService
 from cardplatform.prices.service import PriceService
+from cardplatform.recognition import detectors
 from cardplatform.scans.store import ScanStore
 
 _database: Database | None = None
@@ -242,6 +244,20 @@ class RecognizeOut(BaseModel):
     # Phase 3b: the persisted rectified crop's relative path, surfaced so the
     # frontend can pass it back to /scans and record it on the scan_logs row.
     rectified_path: str | None = None
+
+
+class BatchRecognizeOut(BaseModel):
+    """One binder-page photo → N independent scan verdicts (Phase 4).
+
+    Each result carries its own status/price/rectified_path; the batch_id groups
+    them so the client can thread it back through POST /scans per card. Per-card
+    statuses are NEVER collapsed into one batch status — that would fabricate
+    confidence across cards that may each have recognised differently.
+    """
+
+    batch_id: str
+    count: int
+    results: list[RecognizeOut]
 
 
 class ScanOut(BaseModel):
@@ -734,6 +750,59 @@ def create_app() -> FastAPI:
             collector_number_read=result.ocr.collector_number,
             centering=_centering_out(centering) if centering is not None else None,
             rectified_path=result.rectified_path,
+        )
+
+    @app.post("/recognize/batch", response_model=BatchRecognizeOut)
+    async def recognize_batch(
+        file: UploadFile = File(...),
+        variant: str = Query(default="normal"),
+        max_cards: int = Query(default=9, ge=1, le=18),
+        session: Session = Depends(get_session),
+        service=Depends(get_recognition_service),
+    ) -> BatchRecognizeOut:
+        """Detect every card in one binder-page photo, recognise each, price each.
+
+        Additive to POST /recognize (unchanged): detect once via detect_all_quads
+        (largest-area first), cap to max_cards, recognise_many, then resolve a
+        price per CONFIDENT card via PriceService.latest_price — the only
+        sanctioned price path. A not_found card returns card=None, price=None
+        (never $0, never fabricated). This endpoint reads + recognises + prices
+        only; it does NOT write ScanLog (preserving the recognise/log split).
+        The client logs each card via POST /scans, threading batch_id back.
+        """
+        image = _decode_upload(await file.read())
+        # Reference through the module so tests can monkeypatch
+        # cardplatform.recognition.detectors.detect_all_quads.
+        quads = detectors.detect_all_quads(image)
+        if not quads:
+            return BatchRecognizeOut(batch_id=uuid.uuid4().hex, count=0, results=[])
+        # detect_all_quads returns largest-area first; clamp to the cap.
+        quads = quads[:max_cards]
+        recognized = service.recognize_many(image, [q for _, q in quads])
+        price_service = PriceService(session)
+        out_results: list[RecognizeOut] = []
+        for _, result, centering in recognized:
+            card = session.get(Card, result.card_id) if result.card_id else None
+            price = (
+                price_service.latest_price(card.id, variant)
+                if card is not None
+                else None
+            )
+            out_results.append(
+                RecognizeOut(
+                    status=result.status,
+                    confidence=result.confidence,
+                    visual_margin=result.visual_margin,
+                    card=CardOut.from_card(card) if card is not None else None,
+                    price=_price_out(price) if price else None,
+                    candidates=_candidates_out(session, result.candidates),
+                    collector_number_read=result.ocr.collector_number,
+                    centering=_centering_out(centering) if centering is not None else None,
+                    rectified_path=result.rectified_path,
+                )
+            )
+        return BatchRecognizeOut(
+            batch_id=uuid.uuid4().hex, count=len(out_results), results=out_results
         )
 
     @app.post("/collection", response_model=CollectionItemOut, status_code=201)

@@ -53,6 +53,22 @@ export interface RecognizeResponse {
   candidates: Candidate[];
   collector_number_read: string | null;
   centering: Centering | null;
+  // Phase 3b: the persisted rectified crop's relative path ("rectified/<uuid>.png"),
+  // or null when no crop was produced. Surfaced so the frontend can pass it back
+  // to POST /scans and record it on the scan_logs row. Optional on the TS side
+  // only to keep existing mock literals compiling; the backend always sends it.
+  rectified_path?: string | null;
+}
+
+// Phase 4 bulk cataloger: one binder-page photo → N independent scan verdicts.
+// Each result carries its own status/price/rectified_path; per-card statuses are
+// NEVER collapsed into one batch status. `batch_id` groups the cards so the
+// client can thread it back through POST /scans per card. Mirrors
+// BatchRecognizeOut in backend api.py field-for-field.
+export interface BatchRecognizeResponse {
+  batch_id: string;
+  count: number;
+  results: RecognizeResponse[];
 }
 
 export interface CollectionItem {

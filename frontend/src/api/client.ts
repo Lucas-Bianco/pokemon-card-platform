@@ -1,6 +1,7 @@
 import type {
   AlertEvent,
   AlertType,
+  BatchRecognizeResponse,
   CardSearchResult,
   CollectionItem,
   DealsResponse,
@@ -62,6 +63,25 @@ export async function recognize(
   );
 }
 
+// Phase 4 bulk cataloger: detect + recognise N cards in one binder-page photo.
+// Mirrors `recognize`'s FormData/expectJson/query-string style. `maxCards`
+// defaults to 9 (a 3x3 binder page) and the backend clamps to [1, 18]. Each
+// result in the response carries its own status/price/rectified_path — the
+// caller logs each card via recordScan, threading batch_id + batch_index back.
+export async function batchRecognize(
+  image: Blob,
+  variant = "normal",
+  maxCards = 9,
+): Promise<BatchRecognizeResponse> {
+  const params = new URLSearchParams({ variant, max_cards: String(maxCards) });
+  const body = new FormData();
+  body.append("file", image, "page.jpg");
+
+  return expectJson<BatchRecognizeResponse>(
+    await fetch(`${BASE}/recognize/batch?${params}`, { method: "POST", body }),
+  );
+}
+
 export async function getResolvedPrice(cardId: string, variant: string): Promise<Price | null> {
   const params = new URLSearchParams({ variant });
   return jsonOrNull<Price>(await fetch(`${BASE}/cards/${cardId}/price?${params}`));
@@ -74,7 +94,16 @@ export async function refreshPrice(cardId: string, variant: string): Promise<Pri
   );
 }
 
-export async function recordScan(image: Blob, result: RecognizeResponse): Promise<Scan> {
+export async function recordScan(
+  image: Blob,
+  result: RecognizeResponse,
+  options?: {
+    batch_id?: string;
+    batch_index?: number;
+    rectified_path?: string | null;
+    variant?: string | null;
+  },
+): Promise<Scan> {
   const params = new URLSearchParams({ status: result.status });
   if (result.card) params.set("predicted_card_id", result.card.id);
   params.set("confidence", String(result.confidence));
@@ -82,6 +111,15 @@ export async function recordScan(image: Blob, result: RecognizeResponse): Promis
   if (result.collector_number_read) {
     params.set("collector_number_read", result.collector_number_read);
   }
+  // Phase 4: thread batch grouping + the rectified crop + variant through to
+  // the scan_logs row. All optional — omitted (the default) leaves existing
+  // single-card behaviour unchanged.
+  if (options?.batch_id) params.set("batch_id", options.batch_id);
+  if (options?.batch_index !== undefined) {
+    params.set("batch_index", String(options.batch_index));
+  }
+  if (options?.rectified_path) params.set("rectified_path", options.rectified_path);
+  if (options?.variant) params.set("variant", options.variant);
   const body = new FormData();
   body.append("file", image, "scan.jpg");
 
