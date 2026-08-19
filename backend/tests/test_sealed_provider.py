@@ -15,7 +15,7 @@ def _completed_items_payload(items):
     return {"findCompletedItemsResponse": [{"searchResult": [{"item": items}]}]}
 
 
-def _item(item_id, price, title="Sealed Box", listing_type="FixedPrice", state=None, cond=None):
+def _item(item_id, price, title="Sealed Box", listing_type="FixedPrice", state=None, cond=None, end_time=None):
     item = {
         "itemId": [str(item_id)],
         "title": [title],
@@ -27,6 +27,8 @@ def _item(item_id, price, title="Sealed Box", listing_type="FixedPrice", state=N
         item["sellingStatus"][0]["sellingState"] = [state]
     if cond is not None:
         item["condition"] = [{"conditionDisplayName": [cond]}]
+    if end_time is not None:
+        item["listingInfo"][0]["endTime"] = [end_time]
     return item
 
 
@@ -40,7 +42,7 @@ def test_no_key_returns_empty_listings_without_network(monkeypatch):
 
 def test_fetch_listings_by_query_parses_items_into_sealed_listings(monkeypatch):
     provider = EbayListingsProvider(Settings(listings_api_key="app-id"))
-    payload = _find_items_payload([_item(1, 120.0), _item(2, 135.0, listing_type="Auction")])
+    payload = _find_items_payload([_item(1, 120.0), _item(2, 135.0, listing_type="Auction", end_time="2026-09-15T18:30:00.000Z")])
     monkeypatch.setattr(provider, "_search", lambda q: payload)
     listings = provider.fetch_listings_by_query("scarlet violet booster box")
     assert len(listings) == 2
@@ -54,7 +56,8 @@ def test_fetch_listings_by_query_parses_items_into_sealed_listings(monkeypatch):
     # No card_id on sealed listings (they are query-keyed, not card-keyed):
     assert not hasattr(listings[0], "card_id")
     assert listings[1].listing_type == "auction"
-    assert listings[1].auction_end_at is None or hasattr(listings[1], "auction_end_at", "tzinfo")
+    assert listings[1].auction_end_at is not None  # endTime present -> parsed, not None
+    assert hasattr(listings[1].auction_end_at, "tzinfo")  # tz-aware UTC auction end
 
 
 def test_fetch_listings_skips_items_missing_price_never_fabricates(monkeypatch):

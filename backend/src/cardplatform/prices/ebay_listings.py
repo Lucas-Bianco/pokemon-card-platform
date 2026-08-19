@@ -316,6 +316,8 @@ class EbayListingsProvider:
         listing_info = _first(item, "listingInfo")
         ltype_raw = _first(listing_info, "listingType") if isinstance(listing_info, dict) else None
         listing_type = "auction" if (isinstance(ltype_raw, str) and ltype_raw.startswith("Auction")) else "fixed_price"
+        # endTime is the auction close; for fixed-price listings it is not an auction end,
+        # so ignore it (never synthesize an auction_end_at).
         auction_end_at = (
             _parse_iso(_first(listing_info, "endTime"))
             if isinstance(listing_info, dict) and listing_type == "auction"
