@@ -8,6 +8,7 @@ import sys
 
 from cardplatform.catalog.dump import DumpClient
 from cardplatform.catalog.loader import CatalogLoader
+from cardplatform.config import settings
 from cardplatform.db.session import Database
 from cardplatform.prices.pkmnprices import PkmnPricesProvider
 from cardplatform.prices.pokemontcg import PokemonTcgIoProvider
@@ -264,6 +265,47 @@ def find_deals(args: argparse.Namespace) -> int:
     return 0
 
 
+def find_sealed_deals(args: argparse.Namespace) -> int:
+    """Assess a sealed-product query's active listings for flip-edge deals and print them.
+
+    Mirrors the /sealed/deals endpoint: the SealedDealEngine composes the eBay provider +
+    settings and is read-only — no DB session, no snapshot writes, no catalog lookup
+    (sealed products have no card_id). Honest messages for the no-key / no-listings /
+    no-comps cases — never fabricates an edge.
+    """
+    from cardplatform.prices.ebay_listings import EbayListingsProvider
+    from cardplatform.sealed.engine import SealedDealEngine
+
+    if not settings.listings_api_key:
+        print(
+            "No listings source key set — set CARDPLATFORM_LISTINGS_API_KEY "
+            "(eBay App ID) to find sealed deals."
+        )
+        return 0
+
+    provider = EbayListingsProvider(settings)
+    engine = SealedDealEngine(provider, settings=settings)
+    result = engine.assess(args.query, limit=max(1, min(args.limit, 50)))
+
+    if result.listings_count == 0:
+        print(f"No active listings for {args.query!r}.")
+        return 0
+    if result.sealed_market is None:
+        print(
+            f"No recent sold comps to establish a market price for {args.query!r} "
+            "— flip edges unavailable."
+        )
+    else:
+        print(f"Sealed market (median sold): ${result.sealed_market.price:.2f}")
+    print(f"Deals for {args.query!r}:")
+    for a in result.assessments:
+        edge = f"${a.flip_edge:.2f}" if a.flip_edge is not None else "—"
+        price = f"${a.listing_price:.2f}" if a.listing_price is not None else "—"
+        flag = "  [FLIP]" if a.is_flip else ""
+        print(f"  {price:>8}  flip={edge:>8}  {a.listing_id}  {a.title}{flag}")
+    return 0
+
+
 def build_index(args: argparse.Namespace) -> int:
     """Download every catalog image, embed it, and persist a FAISS index.
 
@@ -401,6 +443,17 @@ def build_parser() -> argparse.ArgumentParser:
     find.add_argument("card_id", metavar="CARD_ID", help="e.g. base1-4")
     find.add_argument("--variant", default="", help="e.g. holofoil (default empty)")
     find.set_defaults(handler=find_deals)
+
+    sealed = subparsers.add_parser(
+        "find-sealed-deals",
+        help="Ranked flip-edge deals for a sealed product query (eBay, Phase 05c).",
+    )
+    sealed.add_argument(
+        "--query", required=True,
+        help="Sealed product search, e.g. 'scarlet violet booster box'",
+    )
+    sealed.add_argument("--limit", type=int, default=20, help="Max listings to assess (1-50).")
+    sealed.set_defaults(handler=find_sealed_deals)
 
     index = subparsers.add_parser(
         "build-index",

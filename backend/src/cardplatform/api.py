@@ -61,6 +61,13 @@ from cardplatform.prices.listings_service import ListingsService
 from cardplatform.prices.service import PriceService
 from cardplatform.recognition import detectors
 from cardplatform.scans.store import ScanStore
+from cardplatform.sealed.api_models import (
+    SealedDealAssessmentOut,
+    SealedDealsResponse,
+    SealedPricePointOut,
+    SealedThresholdsOut,
+)
+from cardplatform.sealed.engine import SealedDealEngine
 
 _database: Database | None = None
 
@@ -1137,6 +1144,51 @@ def create_app() -> FastAPI:
                 deal_rip_min_abs=settings.deal_rip_min_abs,
                 deal_rip_min_pct=settings.deal_rip_min_pct,
                 deal_flip_min_abs=settings.deal_flip_min_abs,
+            ),
+        )
+
+    # --------------------------------------------------------------- sealed deals
+    @app.get("/sealed/deals", response_model=SealedDealsResponse)
+    def sealed_deals_feed(
+        q: str = Query(
+            ..., min_length=2,
+            description="Sealed product search, e.g. 'scarlet violet booster box'",
+        ),
+        limit: int = Query(20, ge=1, le=50),
+    ) -> SealedDealsResponse:
+        """Ranked flip-edge deals for a sealed-product free-text query (Phase 05c).
+
+        Sealed products (booster boxes, ETBs, collection boxes, packs) are queried on eBay
+        via the same Finding API + App ID as listings — no separate key. Honest empty
+        states: no key -> listings_unavailable/comps_unavailable; key set but no listings
+        -> listings_empty; no sold comps -> sealed_market null -> every flip_edge null
+        (never $0). Read-only: no snapshot writes, no DB session. Rip EV (opening for
+        expected pull value) is deferred — needs pull-rate data we don't have.
+        """
+        q = q.strip()
+        if not q or len(q) < 2:
+            raise HTTPException(
+                status_code=422, detail="query must be at least 2 non-space chars",
+            )
+        provider = EbayListingsProvider(settings)
+        engine = SealedDealEngine(provider, settings=settings)
+        result = engine.assess(q, limit=limit)
+        key_set = bool(settings.listings_api_key)
+        return SealedDealsResponse(
+            query=q,
+            limit=limit,
+            listings_unavailable=not key_set,
+            listings_empty=key_set and result.listings_count == 0,
+            comps_unavailable=not key_set,
+            comps_empty=key_set and result.comps_count == 0,
+            sealed_market=(
+                SealedPricePointOut.model_validate(result.sealed_market)
+                if result.sealed_market is not None else None
+            ),
+            deals=[SealedDealAssessmentOut.model_validate(a) for a in result.assessments],
+            thresholds=SealedThresholdsOut(
+                sealed_flip_min_abs=settings.sealed_flip_min_abs,
+                sealed_flip_min_pct=settings.sealed_flip_min_pct,
             ),
         )
 
