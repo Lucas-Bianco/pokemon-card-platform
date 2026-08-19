@@ -114,6 +114,17 @@ class Settings(BaseSettings):
     deal_rip_min_pct: float = Field(default=0.10)
     deal_flip_min_abs: float = Field(default=20.0)
 
+    # Phase 05c — sealed-product flip-edge (reuses CARDPLATFORM_LISTINGS_API_KEY;
+    # sealed products ARE eBay listings, so no separate sealed key is needed).
+    sealed_flip_min_abs: float = 20.0
+    sealed_flip_min_pct: float = 0.05
+    sealed_sold_comp_limit: int = 10  # how many sold comps drive the market median
+
+    @field_validator("sealed_sold_comp_limit")
+    @classmethod
+    def _clamp_sealed_sold_comp_limit(cls, v: int) -> int:
+        return max(1, min(v, 100))
+
     @property
     def db_path(self) -> Path:
         return self.data_dir / "cardplatform.sqlite3"
