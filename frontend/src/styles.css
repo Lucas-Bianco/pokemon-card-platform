@@ -1546,6 +1546,24 @@ h1 { font-size: 1.25rem; margin: 4px 0 16px; }
 }
 .deals-error { display: flex; flex-direction: column; gap: var(--sp-2); }
 
+/* Phase 05c — Sealed tab Find button. The toolbar row + search input reuse
+   .deals-toolbar / .deals-search; the feed reuses the .deal-* card classes
+   verbatim, so this single button rule is the only new CSS the tab adds.
+   Mirrors the .deals-search input height + surface/line tokens so the button
+   aligns with the input row. */
+.sealed-deals-btn {
+  padding: 8px 16px;
+  min-height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--fg);
+  font-size: 0.9rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.sealed-deals-btn:disabled { opacity: 0.5; }
+
 .deal-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-3); }
 .deal-card {
   display: flex;

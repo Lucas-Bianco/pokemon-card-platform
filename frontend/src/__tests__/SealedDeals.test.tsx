@@ -84,7 +84,7 @@ describe("SealedDeals", () => {
     fireEvent.click(container.querySelector('button[type="submit"]') as HTMLButtonElement);
 
     await waitFor(() => {
-      expect(container.querySelector(".sealed-deal")).not.toBeNull();
+      expect(container.querySelector(".deal-card")).not.toBeNull();
     });
     const text = container.textContent ?? "";
     expect(text).toContain("SV Booster Box");
@@ -92,8 +92,8 @@ describe("SealedDeals", () => {
     expect(text).toMatch(/\$95\.00/);
     // Flip edge renders as $25.00.
     expect(text).toMatch(/\$25\.00/);
-    // Flip chip present because is_flip is true.
-    expect(container.querySelector(".sealed-deal__chip")).not.toBeNull();
+    // Flip chip present because is_flip is true (reuses .deal-chip.flip).
+    expect(container.querySelector(".deal-chip.flip")).not.toBeNull();
   });
 
   it("shows an honest 'set a key' empty state when listings_unavailable", async () => {
@@ -117,7 +117,7 @@ describe("SealedDeals", () => {
     await waitFor(() => {
       expect(container.textContent ?? "").toMatch(/set.*CARDPLATFORM_LISTINGS_API_KEY|ebay app id/i);
     });
-    expect(container.querySelector(".sealed-deal")).toBeNull();
+    expect(container.querySelector(".deal-card")).toBeNull();
   });
 
   it("shows an honest 'no sold comps / market price' state when sealed_market is null", async () => {
@@ -144,7 +144,7 @@ describe("SealedDeals", () => {
     fireEvent.click(container.querySelector('button[type="submit"]') as HTMLButtonElement);
 
     await waitFor(() => {
-      expect(container.querySelector(".sealed-deal")).not.toBeNull();
+      expect(container.querySelector(".deal-card")).not.toBeNull();
     });
     expect(container.textContent ?? "").toMatch(/no.*sold.*comp|market price/i);
     // Flip edge renders as an em dash, never a fabricated $0.00.
@@ -167,7 +167,7 @@ describe("SealedDeals", () => {
     fireEvent.click(container.querySelector('button[type="submit"]') as HTMLButtonElement);
 
     await waitFor(() => {
-      expect(container.querySelector(".sealed-deal")).not.toBeNull();
+      expect(container.querySelector(".deal-card")).not.toBeNull();
     });
     expect(container.textContent ?? "").not.toMatch(/\$0\.00/);
   });
