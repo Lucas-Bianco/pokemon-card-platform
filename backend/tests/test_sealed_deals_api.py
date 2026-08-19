@@ -86,9 +86,12 @@ def test_sealed_deals_returns_ranked_deals(monkeypatch):
     assert body["listings_unavailable"] is False
     assert body["listings_empty"] is False
     assert body["comps_unavailable"] is False
+    assert body["comps_empty"] is False  # comps present
     assert body["sealed_market"]["price"] == 120.0
     assert len(body["deals"]) == 2
     assert body["deals"][0]["flip_edge"] == 20.0
+    assert body["thresholds"]["sealed_flip_min_abs"] == 20.0
+    assert body["thresholds"]["sealed_flip_min_pct"] == 0.05
 
 
 def test_sealed_deals_no_key_means_listings_and_comps_unavailable(monkeypatch):
@@ -124,8 +127,18 @@ def test_sealed_deals_missing_query_returns_422(monkeypatch):
     assert client.get("/sealed/deals").status_code == 422
 
 
+def test_sealed_deals_listings_empty_when_key_set_but_no_listings(monkeypatch):
+    client = _client(monkeypatch, _stub_result(query="box", listings=0, comps=3, market=120.0))
+    body = client.get("/sealed/deals", params={"q": "box"}).json()
+    assert body["listings_unavailable"] is False
+    assert body["listings_empty"] is True       # key set, but 0 listings
+    assert body["comps_empty"] is False          # comps present
+    assert body["deals"] == []
+
+
 def test_sealed_deals_no_comps_means_sealed_market_null_and_flip_edges_null(monkeypatch):
     client = _client(monkeypatch, _stub_result(listings=1, comps=0, market=None))
     body = client.get("/sealed/deals", params={"q": "box"}).json()
     assert body["sealed_market"] is None
+    assert body["comps_empty"] is True  # key set, 0 comps
     assert body["deals"][0]["flip_edge"] is None  # never $0
