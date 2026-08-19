@@ -49,6 +49,7 @@ from tenacity import (
 
 from cardplatform.config import Settings, settings as default_settings
 from cardplatform.prices.listings_provider import ListingQuote, SoldComp
+from cardplatform.sealed.provider import SealedListing, SealedSoldComp
 
 logger = logging.getLogger(__name__)
 
@@ -118,6 +119,41 @@ class EbayListingsProvider:
             return self._parse_completed(card_id, variant, payload, limit)
         except (TypeError, ValueError, KeyError, AttributeError) as exc:
             logger.warning("ebay sold-comps parse failure for %s: %s", card_id, exc)
+            return []
+
+    def fetch_listings_by_query(self, query: str) -> list[SealedListing]:
+        """Active eBay listings for a sealed-product free-text query (Phase 05c).
+
+        Query-keyed sibling of `fetch_listings`: no card_id, no catalog lookup — the query
+        IS the keyword. Same never-raise discipline: no key -> [] without a request; bad
+        JSON / unexpected shape -> []; transport/5xx/429 retry then [].
+        """
+        if not self.settings.listings_api_key:
+            return []
+        payload = self._search(query)
+        if payload is None:
+            return []
+        try:
+            return self._parse_by_query(query, payload)
+        except (TypeError, ValueError, KeyError, AttributeError) as exc:
+            logger.warning("ebay sealed listings parse failure for %r: %s", query, exc)
+            return []
+
+    def fetch_sold_listings_by_query(self, query: str, limit: int = 3) -> list[SealedSoldComp]:
+        """Recently-sold eBay listings for a sealed-product query (Phase 05c, sale evidence).
+
+        Query-keyed sibling of `fetch_sold_listings`. Same EndedWithSales gate (never
+        fabricate a sale), same never-raise discipline, never persisted.
+        """
+        if not self.settings.listings_api_key:
+            return []
+        payload = self._search_completed(query, limit)
+        if payload is None:
+            return []
+        try:
+            return self._parse_completed_by_query(query, payload, limit)
+        except (TypeError, ValueError, KeyError, AttributeError) as exc:
+            logger.warning("ebay sealed sold-comps parse failure for %r: %s", query, exc)
             return []
 
     def _build_query(self, card_id: str) -> str:
@@ -248,20 +284,63 @@ class EbayListingsProvider:
             return None
 
     @staticmethod
+    def _extract_listing_fields(item: dict[str, Any]) -> dict[str, Any] | None:
+        """Pull the common listing fields from one Finding-API item, or None if it should be
+        skipped (missing itemId or unparseable/missing price — never fabricate). Shared by
+        the card-keyed `_parse` and the query-keyed `_parse_by_query`.
+        """
+        def _first(node, key):
+            v = node.get(key)
+            return v[0] if isinstance(v, list) and v else None
+
+        listing_id = _first(item, "itemId")
+        if not listing_id:
+            return None
+
+        price: float | None = None
+        currency: str | None = None
+        selling = _first(item, "sellingStatus")
+        if isinstance(selling, dict):
+            price_block = _first(selling, "currentPrice")
+            if isinstance(price_block, dict):
+                currency = price_block.get("@currencyId")
+                raw_value = price_block.get("__value__")
+                if raw_value is not None:
+                    try:
+                        price = float(raw_value)
+                    except (TypeError, ValueError):
+                        return None  # price present but unparseable — skip, don't fake
+        if price is None:
+            return None  # missing price — skip, never fabricate (SACRED)
+
+        listing_info = _first(item, "listingInfo")
+        ltype_raw = _first(listing_info, "listingType") if isinstance(listing_info, dict) else None
+        listing_type = "auction" if (isinstance(ltype_raw, str) and ltype_raw.startswith("Auction")) else "fixed_price"
+        auction_end_at = (
+            _parse_iso(_first(listing_info, "endTime"))
+            if isinstance(listing_info, dict) and listing_type == "auction"
+            else None
+        )
+        condition = None
+        cond_block = _first(item, "condition")
+        if isinstance(cond_block, dict):
+            condition = _first(cond_block, "conditionDisplayName")
+        return {
+            "listing_id": str(listing_id),
+            "title": _first(item, "title"),
+            "price": price,
+            "currency": currency,
+            "listing_type": listing_type,
+            "auction_end_at": auction_end_at,
+            "url": _first(item, "viewItemURL"),
+            "condition": condition,
+        }
+
+    @staticmethod
     def _parse(card_id: str, variant: str, payload: dict[str, Any]) -> list[ListingQuote]:
         """Map eBay Finding API `findItemsByKeywordsResponse.searchResult.item`
-        -> ListingQuotes.
-
-        The Finding API is XML-first; serialized to JSON it wraps EVERY field
-        in a single-element array, so each access is `[0]`. For each item:
-        listing_id from itemId, price/currency from sellingStatus.currentPrice
-        (skip if present-but-unparseable — never fabricate), url from
-        viewItemURL, listing_type from listingInfo.listingType
-        (Auction/AuctionWithBIN -> "auction", else "fixed_price"),
-        auction_end_at from listingInfo.endTime (tz-aware UTC, or None),
-        condition from condition.conditionDisplayName. source="ebay";
-        source_updated_at None (Finding API exposes no per-listing updated
-        stamp). Skip rows missing itemId — never fabricate.
+        -> ListingQuotes. (Card-keyed; sealed queries use `_parse_by_query`.) Field
+        extraction is shared via `_extract_listing_fields` — behavior unchanged.
         """
         def _first(node, key):
             v = node.get(key)
@@ -276,67 +355,73 @@ class EbayListingsProvider:
         items = search.get("item")
         if not isinstance(items, list):
             return []
-
         quotes: list[ListingQuote] = []
         for item in items:
             if not isinstance(item, dict):
                 continue
-            listing_id = _first(item, "itemId")
-            if not listing_id:
+            f = EbayListingsProvider._extract_listing_fields(item)
+            if f is None:
                 continue
-
-            price: float | None = None
-            currency: str | None = None
-            selling = _first(item, "sellingStatus")
-            if isinstance(selling, dict):
-                price_block = _first(selling, "currentPrice")
-                if isinstance(price_block, dict):
-                    currency = price_block.get("@currencyId")
-                    raw_value = price_block.get("__value__")
-                    if raw_value is not None:
-                        try:
-                            price = float(raw_value)
-                        except (TypeError, ValueError):
-                            continue  # price present but unparseable — skip, don't fake
-            if price is None:
-                continue  # missing price — skip, never fabricate (SACRED)
-
-            listing_info = _first(item, "listingInfo")
-            ltype_raw = _first(listing_info, "listingType") if isinstance(listing_info, dict) else None
-            listing_type = "auction" if (isinstance(ltype_raw, str) and ltype_raw.startswith("Auction")) else "fixed_price"
-            # endTime is the auction close; for fixed-price listings it is not
-            # an auction end, so ignore it (never synthesize an auction_end_at).
-            auction_end_at = (
-                _parse_iso(_first(listing_info, "endTime"))
-                if isinstance(listing_info, dict) and listing_type == "auction"
-                else None
-            )
-
-            condition = None
-            cond_block = _first(item, "condition")
-            if isinstance(cond_block, dict):
-                condition = _first(cond_block, "conditionDisplayName")
-
-            quotes.append(
-                ListingQuote(
-                    card_id=card_id, variant=variant, listing_id=str(listing_id),
-                    title=_first(item, "title"), price=price, currency=currency,
-                    listing_type=listing_type, auction_end_at=auction_end_at,
-                    url=_first(item, "viewItemURL"), condition=condition,
-                    source="ebay", source_updated_at=None,
-                )
-            )
+            quotes.append(ListingQuote(
+                card_id=card_id, variant=variant, listing_id=f["listing_id"],
+                title=f["title"], price=f["price"], currency=f["currency"],
+                listing_type=f["listing_type"], auction_end_at=f["auction_end_at"],
+                url=f["url"], condition=f["condition"], source="ebay", source_updated_at=None,
+            ))
         return quotes
 
     @staticmethod
-    def _parse_completed(card_id: str, variant: str, payload: dict[str, Any], limit: int) -> list[SoldComp]:
-        """Map findCompletedItemsResponse.searchResult.item -> SoldComps.
+    def _extract_sold_fields(item: dict[str, Any]) -> dict[str, Any] | None:
+        """Pull the common sold-comp fields from one completed item, or None if it should be
+        skipped (not EndedWithSales, missing itemId, or missing price — never fabricate a
+        sale). Shared by `_parse_completed` and `_parse_completed_by_query`.
+        """
+        def _first(node, key):
+            v = node.get(key)
+            return v[0] if isinstance(v, list) and v else None
 
-        Same single-element-array unwrap as _parse. CRITICAL: skip any item
-        whose sellingState != "EndedWithSales" — EndedWithoutSales (and any
-        other state) is NOT a sold comp; never fabricate a sale. Skip items
-        missing itemId or a parseable price (sacred never-fabricate). sold_at
-        is the sale close from listingInfo.endTime (tz-aware UTC, or None).
+        listing_id = _first(item, "itemId")
+        if not listing_id:
+            return None
+        selling = _first(item, "sellingStatus")
+        if not isinstance(selling, dict):
+            return None
+        if _first(selling, "sellingState") != "EndedWithSales":
+            return None  # only confirmed sales — never fabricate
+        price: float | None = None
+        currency: str | None = None
+        price_block = _first(selling, "currentPrice")
+        if isinstance(price_block, dict):
+            currency = price_block.get("@currencyId")
+            raw_value = price_block.get("__value__")
+            if raw_value is not None:
+                try:
+                    price = float(raw_value)
+                except (TypeError, ValueError):
+                    return None
+        if price is None:
+            return None
+        listing_info = _first(item, "listingInfo")
+        sold_at = _parse_iso(_first(listing_info, "endTime")) if isinstance(listing_info, dict) else None
+        condition = None
+        cond_block = _first(item, "condition")
+        if isinstance(cond_block, dict):
+            condition = _first(cond_block, "conditionDisplayName")
+        return {
+            "listing_id": str(listing_id),
+            "price": price,
+            "currency": currency,
+            "title": _first(item, "title"),
+            "url": _first(item, "viewItemURL"),
+            "condition": condition,
+            "sold_at": sold_at,
+        }
+
+    @staticmethod
+    def _parse_completed(card_id: str, variant: str, payload: dict[str, Any], limit: int) -> list[SoldComp]:
+        """Map findCompletedItemsResponse.searchResult.item -> SoldComps. (Card-keyed; sealed
+        queries use `_parse_completed_by_query`.) Extraction shared via
+        `_extract_sold_fields` (incl. the EndedWithSales gate) — behavior unchanged.
         """
         def _first(node, key):
             v = node.get(key)
@@ -351,57 +436,83 @@ class EbayListingsProvider:
         items = search.get("item")
         if not isinstance(items, list):
             return []
-
         comps: list[SoldComp] = []
         for item in items:
             if not isinstance(item, dict):
                 continue
-            listing_id = _first(item, "itemId")
-            if not listing_id:
+            f = EbayListingsProvider._extract_sold_fields(item)
+            if f is None:
                 continue
+            comps.append(SoldComp(
+                card_id=card_id, variant=variant, listing_id=f["listing_id"],
+                price=f["price"], currency=f["currency"], title=f["title"],
+                url=f["url"], condition=f["condition"], sold_at=f["sold_at"], source="ebay",
+            ))
+            if len(comps) >= limit:
+                break
+        return comps
 
-            selling = _first(item, "sellingStatus")
-            if not isinstance(selling, dict):
+    @staticmethod
+    def _parse_by_query(query: str, payload: dict[str, Any]) -> list[SealedListing]:
+        """Map findItemsByKeywordsResponse -> SealedListings (query-keyed). Same shape unwrap
+        as `_parse`; field extraction shared via `_extract_listing_fields`."""
+        def _first(node, key):
+            v = node.get(key)
+            return v[0] if isinstance(v, list) and v else None
+
+        resp = payload.get("findItemsByKeywordsResponse")
+        if not isinstance(resp, list) or not resp:
+            return []
+        search = _first(resp[0], "searchResult")
+        if not isinstance(search, dict):
+            return []
+        items = search.get("item")
+        if not isinstance(items, list):
+            return []
+        listings: list[SealedListing] = []
+        for item in items:
+            if not isinstance(item, dict):
                 continue
-            state = _first(selling, "sellingState")
-            # Only confirmed sales. Never fabricate a sale from an unsold item.
-            if state != "EndedWithSales":
+            f = EbayListingsProvider._extract_listing_fields(item)
+            if f is None:
                 continue
+            listings.append(SealedListing(
+                query=query, listing_id=f["listing_id"], source="ebay",
+                title=f["title"], price=f["price"], currency=f["currency"],
+                listing_type=f["listing_type"], auction_end_at=f["auction_end_at"],
+                url=f["url"], condition=f["condition"], source_updated_at=None,
+            ))
+        return listings
 
-            price: float | None = None
-            currency: str | None = None
-            price_block = _first(selling, "currentPrice")
-            if isinstance(price_block, dict):
-                currency = price_block.get("@currencyId")
-                raw_value = price_block.get("__value__")
-                if raw_value is not None:
-                    try:
-                        price = float(raw_value)
-                    except (TypeError, ValueError):
-                        continue
-            if price is None:
-                continue  # missing price — skip, never fabricate (SACRED)
+    @staticmethod
+    def _parse_completed_by_query(query: str, payload: dict[str, Any], limit: int) -> list[SealedSoldComp]:
+        """Map findCompletedItemsResponse -> SealedSoldComps (query-keyed). EndedWithSales
+        gate + extraction shared via `_extract_sold_fields` — never fabricates a sale."""
+        def _first(node, key):
+            v = node.get(key)
+            return v[0] if isinstance(v, list) and v else None
 
-            listing_info = _first(item, "listingInfo")
-            sold_at = (
-                _parse_iso(_first(listing_info, "endTime"))
-                if isinstance(listing_info, dict)
-                else None
-            )
-
-            condition = None
-            cond_block = _first(item, "condition")
-            if isinstance(cond_block, dict):
-                condition = _first(cond_block, "conditionDisplayName")
-
-            comps.append(
-                SoldComp(
-                    card_id=card_id, variant=variant, listing_id=str(listing_id),
-                    price=price, currency=currency, title=_first(item, "title"),
-                    url=_first(item, "viewItemURL"), condition=condition,
-                    sold_at=sold_at, source="ebay",
-                )
-            )
+        resp = payload.get("findCompletedItemsResponse")
+        if not isinstance(resp, list) or not resp:
+            return []
+        search = _first(resp[0], "searchResult")
+        if not isinstance(search, dict):
+            return []
+        items = search.get("item")
+        if not isinstance(items, list):
+            return []
+        comps: list[SealedSoldComp] = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            f = EbayListingsProvider._extract_sold_fields(item)
+            if f is None:
+                continue
+            comps.append(SealedSoldComp(
+                query=query, listing_id=f["listing_id"], price=f["price"],
+                currency=f["currency"], title=f["title"], url=f["url"],
+                condition=f["condition"], sold_at=f["sold_at"], source="ebay",
+            ))
             if len(comps) >= limit:
                 break
         return comps
