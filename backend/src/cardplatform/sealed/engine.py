@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from cardplatform.config import Settings, settings as default_settings
-from cardplatform.sealed.provider import SealedListing, SealedListingsProvider, SealedSoldComp
+from cardplatform.sealed.provider import SealedListingsProvider
 
 
 @dataclass(frozen=True)

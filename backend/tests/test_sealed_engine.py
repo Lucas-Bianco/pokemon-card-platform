@@ -15,9 +15,11 @@ class FakeProvider:
     def __init__(self, listings=(), comps=()):
         self._listings = list(listings)
         self._comps = list(comps)
+        self.last_comp_limit = None
     def fetch_listings_by_query(self, query):
         return list(self._listings)
     def fetch_sold_listings_by_query(self, query, limit=3):
+        self.last_comp_limit = limit
         return list(self._comps)
 
 
@@ -107,3 +109,10 @@ def test_deal_score_is_flip_edge_or_null():
     e2 = _engine(listings=[_listing(1, 90.0)], comps=[])
     a2 = e2.assess("q", limit=20).assessments[0]
     assert a2.deal_score is None  # nulls last
+
+
+def test_engine_passes_sealed_sold_comp_limit_to_provider():
+    provider = FakeProvider(comps=[_comp(1, 120.0)])
+    e = SealedDealEngine(provider, settings=Settings(sealed_sold_comp_limit=10))
+    e.assess("q", limit=20)
+    assert provider.last_comp_limit == 10
