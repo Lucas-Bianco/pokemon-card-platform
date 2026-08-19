@@ -428,3 +428,71 @@ export interface SoldCompsResponse {
   sold_comps_unavailable: boolean;
   sold_comps_empty: boolean;
 }
+
+// Phase 05c — sealed-product flip-edge (query-keyed, eBay). Mirrors backend
+// SealedPricePointOut / SealedThresholdsOut / SealedDealAssessmentOut /
+// SealedDealsResponse field-for-field. Sealed products (booster boxes, ETBs,
+// collection boxes, packs) are query-keyed — they carry the free-text `query`
+// the user searched for, never a card_id/variant. Every nullable field
+// surfaces as null when the source omits it; `flip_edge` / `deal_score` /
+// `sealed_market` are null when there are no sold comps — never a fabricated
+// $0 (the project's sacred convention; the UI renders an em dash).
+
+// The market reference a sealed listing was compared against (median of recent
+// sold comps). `source` + `source_updated_at` travel with the figure so a deal
+// card never presents a number without saying where it came from — sold comps
+// expose no per-sale source stamp, so `source_updated_at` is null.
+export interface SealedPricePoint {
+  price: number;
+  source: string;
+  source_updated_at: string | null;
+}
+
+// The deal thresholds the engine applied; echoed in the response so the UI can
+// label why a listing was flagged (or not). Mirrors SealedThresholdsOut.
+export interface SealedThresholds {
+  sealed_flip_min_abs: number;
+  sealed_flip_min_pct: number;
+}
+
+// One ranked sealed listing with its flip-edge + flag. `flip_edge` /
+// `deal_score` are null when `sealed_market` is null (no sold comps) or the
+// listing price is missing — never a fabricated $0. `sealed_market` is null
+// when no sold comps exist. `is_flip` is an honest boolean against the
+// thresholds; a null edge is never a deal. Mirrors SealedDealAssessmentOut
+// field-for-field.
+export interface SealedDealAssessment {
+  query: string;
+  listing_id: string;
+  title: string | null;
+  listing_price: number | null;
+  currency: string | null;
+  url: string | null;
+  condition: string | null;
+  listing_type: string | null;
+  auction_end_at: string | null;
+  fetched_at: string;
+  sealed_market: SealedPricePoint | null;
+  flip_edge: number | null;
+  deal_score: number | null;
+  is_flip: boolean;
+}
+
+// The GET /sealed/deals?q=&limit= response. `listings_unavailable` is true when
+// no listings_api_key is configured (sealed reuses the eBay listings key — no
+// separate sealed key); `listings_empty` is true when a key IS set but no
+// active listings were found. `comps_unavailable` / `comps_empty` mirror that
+// for the sold comps that establish `sealed_market`. `sealed_market` is null
+// when no sold comps -> every `flip_edge` is null (honest, never $0). Mirrors
+// SealedDealsResponse field-for-field.
+export interface SealedDealsResponse {
+  query: string;
+  limit: number;
+  listings_unavailable: boolean;
+  listings_empty: boolean;
+  comps_unavailable: boolean;
+  comps_empty: boolean;
+  sealed_market: SealedPricePoint | null;
+  deals: SealedDealAssessment[];
+  thresholds: SealedThresholds;
+}

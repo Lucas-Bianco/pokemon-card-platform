@@ -1471,10 +1471,12 @@ h1 { font-size: 1.25rem; margin: 4px 0 16px; }
 
 /* ============================================================ Phase 05 — deals */
 
-/* The bottom nav grew to 6 tabs (Scan/Vault/Alerts/Deals/Browse/More). 6 equal
-   flex children fit a 360px phone only when each is more compact than the 5-tab
-   sizing, so the per-tab font/padding/glyph shrink slightly. Touch targets
-   stay >=44px via min-height. Kept scoped to .app-shell so the in-browser
+/* The bottom nav grew to 7 tabs (Scan/Vault/Alerts/Deals/Sealed/Browse/More).
+   7 equal flex children fit a 360px phone only when each is more compact than
+   the 5-tab sizing, so the per-tab font/padding/glyph shrink slightly. Touch
+   targets stay >=44px via min-height. The flex:1 + justify-content:
+   space-around layout distributes evenly, so no rule change was needed to add
+   the 7th — only this comment. Kept scoped to .app-shell so the in-browser
    header-toggle path is untouched. */
 .app-shell .bottom-nav button {
   padding: 7px 2px;

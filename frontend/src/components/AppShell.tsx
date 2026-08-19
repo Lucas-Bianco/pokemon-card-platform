@@ -11,6 +11,7 @@ import Deals from "./Deals";
 import More from "./More";
 import PortfolioView from "./PortfolioView";
 import ScanResult from "./ScanResult";
+import SealedDeals from "./SealedDeals";
 import WatchCardSheet from "./WatchCardSheet";
 
 // The scan flow stays owned by App (which holds the recognition state and the
@@ -60,7 +61,7 @@ export interface ScanFlow {
   bulk: BulkFlow | null;
 }
 
-type TabView = "scan" | "vault" | "alerts" | "deals" | "browse" | "more";
+type TabView = "scan" | "vault" | "alerts" | "deals" | "sealed" | "browse" | "more";
 
 interface Props {
   scan: ScanFlow;
@@ -71,6 +72,7 @@ const TAB_TITLES: Record<TabView, string> = {
   vault: "Vault",
   alerts: "Alerts",
   deals: "Deals",
+  sealed: "Sealed",
   browse: "Browse",
   more: "More",
 };
@@ -150,6 +152,8 @@ export default function AppShell({ scan }: Props) {
           />
         ) : view === "deals" ? (
           <Deals onOpenCard={(c) => setSelectedCard(c)} />
+        ) : view === "sealed" ? (
+          <SealedDeals />
         ) : view === "browse" ? (
           <Browse onSelectCard={(c) => setSelectedCard(c)} />
         ) : (
@@ -181,6 +185,12 @@ export default function AppShell({ scan }: Props) {
           active={view === "deals" && !selectedCard}
           onClick={() => selectTab("deals")}
           glyph={<TagGlyph />}
+        />
+        <TabButton
+          label="Sealed"
+          active={view === "sealed" && !selectedCard}
+          onClick={() => selectTab("sealed")}
+          glyph={<BoxGlyph />}
         />
         <TabButton label="Browse" active={view === "browse" && !selectedCard} onClick={() => selectTab("browse")} glyph={<SearchGlyph />} />
         <TabButton label="More" active={view === "more" && !selectedCard} onClick={() => selectTab("more")} glyph={<MoreGlyph />} />
@@ -482,6 +492,26 @@ function TagGlyph() {
         strokeLinejoin="round"
       />
       <circle cx="9.5" cy="9.5" r="1.6" stroke="currentColor" strokeWidth="1.8" />
+    </svg>
+  );
+}
+// A sealed booster box — the Sealed tab's glyph (query-keyed flip-edge deals).
+function BoxGlyph() {
+  return (
+    <svg className="nav-glyph" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M4 8l8-4 8 4-8 4-8-4z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M4 8v8l8 4 8-4V8"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+      <path d="M12 12v8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
     </svg>
   );
 }

@@ -15,6 +15,7 @@ import type {
   PushSubscription,
   RecognizeResponse,
   Scan,
+  SealedDealsResponse,
   SoldCompsResponse,
   Valuation,
   Watch,
@@ -493,5 +494,24 @@ export async function getSoldComps(
   const params = new URLSearchParams({ variant: variant || "", limit: String(limit) });
   return expectJson<SoldCompsResponse>(
     await fetch(`${BASE}/cards/${encodeURIComponent(cardId)}/sold-comps?${params}`),
+  );
+}
+
+// ----- Sealed deals ------------------------------------------------------
+// Phase 05c sealed-product flip-edge. Query-keyed (not card-keyed): a sealed
+// product (booster box, ETB, collection box, pack) is searched by free text on
+// eBay via the same Finding API + App ID as listings — no separate key.
+// Mirrors GET /deals style (URLSearchParams + expectJsonOrDetail so a 422 from
+// a whitespace/short/missing query surfaces the backend's detail message rather
+// than a bare status). Honest empty states: no key -> listings_unavailable;
+// key set but no listings -> listings_empty; no sold comps -> sealed_market
+// null -> every flip_edge null (never $0).
+export async function getSealedDeals(
+  query: string,
+  limit = 20,
+): Promise<SealedDealsResponse> {
+  const params = new URLSearchParams({ q: query, limit: String(limit) });
+  return expectJsonOrDetail<SealedDealsResponse>(
+    await fetch(`${BASE}/sealed/deals?${params}`),
   );
 }

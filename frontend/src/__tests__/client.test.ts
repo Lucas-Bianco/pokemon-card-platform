@@ -7,6 +7,7 @@ import {
   getPriceHistory,
   getResolvedPrice,
   getPortfolio,
+  getSealedDeals,
   patchCollectionItem,
   recognize,
   recordScan,
@@ -282,5 +283,92 @@ describe("getPriceHistory", () => {
 
     expect(history.points).toHaveLength(1);
     expect(history.points[0].market).toBe(100.0);
+  });
+});
+
+describe("getSealedDeals", () => {
+  it("calls /api/sealed/deals?q=&limit=", async () => {
+    const spy = mockFetch(200, {
+      query: "scarlet violet booster box",
+      limit: 20,
+      listings_unavailable: false,
+      listings_empty: false,
+      comps_unavailable: false,
+      comps_empty: false,
+      sealed_market: null,
+      deals: [],
+      thresholds: { sealed_flip_min_abs: 20.0, sealed_flip_min_pct: 0.05 },
+    });
+
+    await getSealedDeals("scarlet violet booster box", 20);
+
+    const url = spy.mock.calls[0][0] as string;
+    expect(url).toContain("/api/sealed/deals");
+    expect(url).toContain("q=scarlet+violet+booster+box");
+    expect(url).toContain("limit=20");
+  });
+
+  it("defaults limit to 20", async () => {
+    const spy = mockFetch(200, {
+      query: "box",
+      limit: 20,
+      listings_unavailable: false,
+      listings_empty: false,
+      comps_unavailable: false,
+      comps_empty: false,
+      sealed_market: null,
+      deals: [],
+      thresholds: { sealed_flip_min_abs: 20.0, sealed_flip_min_pct: 0.05 },
+    });
+
+    await getSealedDeals("box");
+
+    const url = spy.mock.calls[0][0] as string;
+    expect(url).toContain("limit=20");
+  });
+
+  it("throws with the backend detail on 422", async () => {
+    mockFetch(422, { detail: "query must be at least 2 non-space chars" });
+
+    await expect(getSealedDeals("  ")).rejects.toThrow(
+      /query must be at least 2 non-space chars/,
+    );
+  });
+
+  it("returns the sealed deals response on 200", async () => {
+    mockFetch(200, {
+      query: "box",
+      limit: 20,
+      listings_unavailable: false,
+      listings_empty: false,
+      comps_unavailable: false,
+      comps_empty: false,
+      sealed_market: { price: 120.0, source: "ebay", source_updated_at: null },
+      deals: [
+        {
+          query: "box",
+          listing_id: "1",
+          title: "Booster Box",
+          listing_price: 95.0,
+          currency: "USD",
+          url: "https://ebay/1",
+          condition: "New",
+          listing_type: "fixed_price",
+          auction_end_at: null,
+          fetched_at: "2026-08-19T00:00:00Z",
+          sealed_market: { price: 120.0, source: "ebay", source_updated_at: null },
+          flip_edge: 25.0,
+          deal_score: 25.0,
+          is_flip: true,
+        },
+      ],
+      thresholds: { sealed_flip_min_abs: 20.0, sealed_flip_min_pct: 0.05 },
+    });
+
+    const res = await getSealedDeals("box");
+
+    expect(res.deals).toHaveLength(1);
+    expect(res.deals[0].flip_edge).toBe(25.0);
+    expect(res.sealed_market?.price).toBe(120.0);
   });
 });
