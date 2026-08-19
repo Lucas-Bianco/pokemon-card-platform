@@ -44,11 +44,11 @@ Site: https://lucas-bianco.github.io/pokemon-card-platform/
 | 3b | Grading data infrastructure: rectified-crop persistence, grade-label schema + self-annotation, graded-price provider, grading-upside spread | ✅ Complete |
 | 3c | Watchlist + restock/price/drop/auction alerts (CollectorVault-style 5-tab UI) | ✅ Complete (§11) |
 | 4 | Bulk cataloger: many cards per photo | ✅ Complete (§14) |
-| 5 | Deal sniper + sealed EV | In progress — deal sniper / rip-vs-flip shipped (§12); deal alerts + sold-comps evidence shipped (§13); sealed EV still planned |
+| 5 | Deal sniper + sealed EV | In progress — deal sniper / rip-vs-flip shipped (§12); deal alerts + sold-comps evidence shipped (§13); sealed flip-edge shipped (§15); rip EV (expected pull value) still planned — needs pull-rate data |
 | 6 | Set-completion optimizer | Planned |
 | 7 | Counterfeit detector | Planned |
 
-**Tests:** 505 backend (pytest) + 106 frontend (vitest).
+**Tests:** 530 backend (pytest) + 115 frontend (vitest).
 
 ### UI — "Grading Lab" (2026-08-01)
 
@@ -835,3 +835,75 @@ snapshots immutable; no `data/` contents deleted (only additions under
 the idempotent migration helper, 105 rows stay NULL); recognition is the arbiter (low-visual-score
 kept quads stay `not_found`); single-card path unchanged; the 105-scan baseline replays with 0
 regressions.
+
+---
+
+## 15. Phase 05c — sealed-product flip-edge
+
+Shipped 2026-08-19 on `main`. **530 backend + 115 frontend tests.** The flip-side of the
+Phase 05 deal sniper, applied to sealed products (booster boxes, ETBs, etc.) that have no
+`card_id`/`variant` — they are keyed by a free-text query. The same "never fake missing data"
+discipline: `flip_edge` is null when `sealed_market` (median sold comp) is None or the listing
+has no price; `is_flip` is False when `flip_edge` is None; `deal_score` is null-last. No
+recognition code changed this phase — the 105-scan baseline replays with **0 regressions**.
+
+**The deal model (read-only `SealedDealEngine.assess(query, limit) -> SealedDealResult`):**
+`sealed_market = median(sold_comp_prices)` (None if no sold comps → all `flip_edge` null);
+per listing: `flip_edge = sealed_market − listing.price` (None if either missing);
+`is_flip = flip_edge is not None AND flip_edge >= sealed_flip_min_abs AND
+flip_edge >= sealed_flip_min_pct * sealed_market` (default `$20` / `0.05`);
+`deal_score = flip_edge if flip_edge is not None else None`, sorted desc, nulls last.
+`sealed_market` is a **median** (robust to one outlier comp), an **indicative lead**
+("investigate before buying"), not guaranteed arbitrage — the same framing as the Phase 05
+deal sniper. Selling fees are intentionally NOT subtracted (gross edge), matching
+`DealEngine`; the UI says so. The engine writes nothing (on-demand from the latest sold comps,
+so deals never go stale in storage — no `sealed_snapshots` table).
+
+What shipped (TDD, subagent-driven; inline spec+quality reviews T1–T5):
+- **T1 — `SealedListingsProvider` Protocol + eBay `*_by_query` fetch + DRY refactor.** New
+  `sealed/provider.py` defines `SealedListing` / `SealedSoldComp` (frozen dataclasses, no
+  `card_id`/`variant` — they carry `query`) and the `SealedListingsProvider` Protocol
+  (`fetch_listings_by_query`, `fetch_sold_listings_by_query`). The eBay adapter
+  (`prices/ebay_listings.py`) gains `fetch_listings_by_query` (Finding API
+  `findItemsByKeywords`) and `fetch_sold_listings_by_query` (`findCompletedItems` +
+  `EndedWithSales`-gating, `sortOrder=EndTimeSoonest`, `SERVICE-VERSION=1.13.0`). Shared
+  `_extract_listing_fields` / `_extract_sold_fields` helpers are DRY-extracted so the
+  existing single-card `_parse` / `_parse_completed` paths are byte-for-byte unchanged. Same
+  never-raise discipline (no key → `[]` without a network call; 404/401/bad-JSON terminal one
+  attempt; 5xx/429/transport retry → `[]`); price-less items skipped, never fabricated;
+  `auction_end_at` set only for auctions.
+- **T2 — read-only `SealedDealEngine`.** `sealed/engine.py` composes a `SealedListingsProvider`
+  + `settings`; never resolves a price ad hoc (the only "price" is the median sold comp,
+  which IS the market reference). `SealedPricePoint` / `SealedThresholds` /
+  `SealedDealAssessment` / `SealedDealResult` frozen dataclasses. Missing inputs null the
+  edge they feed; thresholds filter noise without manufacturing deals.
+- **T3 — API + CLI + wire models.** `sealed/api_models.py` (`SealedPricePointOut`,
+  `SealedThresholdsOut`, `SealedDealAssessmentOut`, `SealedDealsResponse`, Pydantic v2
+  `from_attributes`) + `GET /sealed/deals?query=&limit=` (ranked deals, honest flags:
+  `listings_unavailable` vs `listings_empty` vs `comps_unavailable` vs `comps_empty`,
+  thresholds in response) + `cardplatform find-sealed-deals --query --limit` CLI. API
+  `limit` is `Query(20, ge=1, le=50)` (rejects out-of-range with 422); CLI clamps
+  (`max(1, min(limit, 50))`) for friendliness — documented difference.
+- **T4 — frontend.** 7th bottom-nav **Sealed** tab (`SealedDeals.tsx` — search a sealed query
+  → ranked flip-edge feed with flip chips, sealed-market banner, staleness, "investigate
+  before buying" caveat; honest empty states: set-a-key / no active listings / no sold comps
+  / no market price) + `getSealedDeals(query, limit)` client + `SealedDealAssessment` /
+  `SealedPricePoint` / `SealedThresholds` / `SealedDealsResponse` types. Reuses the existing
+  `.deal-*` styles; `formatMoney`'s no-comma convention preserved.
+- **T5 — site + docs + ship.** Roadmap row 05 → "sealed flip-edge shipped; rip EV still
+  planned — needs pull-rate data". `AI_CONTEXT.md` §2 + new §15 (this section). `PROJECT.md`
+  roadmap + next-step. Design-spec reconciliation (§4 `deal_score` null-last to match §7;
+  §8 API-rejects vs CLI-clamps). Rebuilt → `docs/` (`.nojekyll` + `docs/superpowers/`
+  preserved).
+
+**Sacred constraints held:** no ad-hoc price resolution (only the median sold comp via the
+provider); **read-only engine (no writes, no new table, no schema change)**; degrade to `[]`
+never raise; honest empty states (no `$0`, never a fabricated edge or sale, distinct
+unavailable/empty flags); staleness surfaced (`sold_at`); no `data/` contents deleted;
+recognition + 105-scan baseline untouched (0 regressions).
+
+**Documented follow-ups (not solved):** rip EV / expected pull value (needs pull-rate data +
+a product master — the "product" is currently the user's free-text query, no `SealedProduct`
+master yet); a sealed snapshot table (deals are on-demand now, never stale in storage);
+TCGplayer sealed API (eBay Finding API is the only source; a second swappable source is the
+upgrade path); a separate `sealed_*` API key if a non-eBay sealed source is added.

@@ -10,9 +10,13 @@ sold-comps evidence) shipped 2026-08-04 — see
 [plan](docs/superpowers/plans/2026-08-04-deal-alerts-sold-comps.md). Phase 05 (deal sniper /
 rip-vs-flip) shipped 2026-08-03 — see
 [design spec](docs/superpowers/specs/2026-08-03-deal-sniper-design.md) +
-[plan](docs/superpowers/plans/2026-08-03-deal-sniper.md).
-Next: sealed-product EV (Phase 05's other leg) or the full Grade predictor (corner/edge/surface +
-P(grade)), pending labelled-data accrual.
+[plan](docs/superpowers/plans/2026-08-03-deal-sniper.md). Phase 05c (sealed-product flip-edge)
+shipped 2026-08-19 — see
+[design spec](docs/superpowers/specs/2026-08-19-sealed-product-ev-design.md) +
+[plan](docs/superpowers/plans/2026-08-19-sealed-product-ev.md).
+Next: rip EV (expected pull value — blocked on pull-rate data) or the full Grade predictor
+(corner/edge/surface + P(grade), pending labelled-data accrual) or Phase 6 (set-completion
+optimizer).
 
 **Shape:** ONE platform built in phases, not seven apps. All modules share a card-recognition core,
 a pricing layer, and a collection store. Responsive PWA (phone + desktop): React/TypeScript
@@ -56,7 +60,7 @@ Each phase ships independently usable functionality and gets its own spec → pl
 | 3c | Watchlist + restock/price/drop/auction alerts — CollectorVault-style 5-tab UI | **Complete** |
 | 3 | Grade Predictor — corner/edge/surface scoring + P(grade) + grading EV | In progress — data infra unblocked (3b); full predictor still planned |
 | 4 | Bulk cataloger — detect every card in one photo | **Complete** |
-| 5 | Deal sniper + sealed EV — listings vs. sold comps, rip-vs-flip | In progress — deal sniper / rip-vs-flip + deal alerts + sold-comps evidence shipped; sealed EV still planned |
+| 5 | Deal sniper + sealed EV — listings vs. sold comps, rip-vs-flip | In progress — deal sniper / rip-vs-flip + deal alerts + sold-comps evidence shipped; sealed flip-edge shipped; rip EV (expected pull value) still planned — needs pull-rate data |
 | 6 | Set-completion optimizer — cheapest path to finish a set | Planned |
 | 7 | Counterfeit detector — holo pattern, rosette, texture analysis | Planned |
 | 8 | On-device inference — quantized model in-browser, no server | Planned |
@@ -611,17 +615,26 @@ different inputs, so the system knows when it is unsure.
 
 ## Next step
 
-Two candidates, both honestly framed:
+The sealed-product flip-edge (Phase 05's flip-side of the deal sniper, applied to query-keyed
+sealed products) shipped 2026-08-19 (Phase 05c) — see
+[design spec](docs/superpowers/specs/2026-08-19-sealed-product-ev-design.md) +
+[plan](docs/superpowers/plans/2026-08-19-sealed-product-ev.md). Three candidates now, all honestly
+framed:
 
-1. **Sealed-product EV** — Phase 05's other leg. Joins the deal sniper's edge thinking to sealed
-   booster/product economics. Needs a sealed-product price provider we don't have yet (the deals +
-   graded-price provider patterns make one swappable in).
+1. **Rip EV (expected pull value)** — the remaining Phase 05 leg. What is a sealed product worth to
+   *rip open* vs. *flip sealed*? Needs **pull-rate data** we don't have yet (the per-set pull odds
+   for the expected-value math) plus a `SealedProduct` master (the "product" is currently the
+   user's free-text query). The sealed flip-edge provider + engine patterns make a rip-EV engine
+   swappable in once the data lands.
 2. **The full Grade predictor** (corner/edge/surface scoring + P(grade) + grading EV). The data
    infrastructure is unblocked (3b): rectified crops persist, grade-labels + self-annotation collect
    the only honest labelled dataset, and the graded-price provider + grading-upside spread are live.
    What remains is the corner/edge/surface scoring and the P(grade) model — which needs the labelled
    dataset to accrue from real mailed-in grades.
+3. **Phase 6 — set-completion optimizer** (cheapest path to finishing a set). Unblocked by the
+   catalog + pricing layer; no new external data dependency.
 
 The deal sniper's natural follow-up — **deal alerts** (fire a 3c alert when a new listing clears
 the rip/flip thresholds) plus **eBay sold-comps evidence** backing the raw market price — shipped in
-Phase 05b (2026-08-04). The remaining Phase 05 leg is sealed-product EV.
+Phase 05b (2026-08-04). The sealed flip-edge shipped 2026-08-19; the remaining Phase 05 leg is rip
+EV (expected pull value), blocked on pull-rate data.
