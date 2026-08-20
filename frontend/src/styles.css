@@ -1735,3 +1735,110 @@ h1 { font-size: 1.25rem; margin: 4px 0 16px; }
   --content-max: 1180px;
   --content-pad: clamp(16px, 3vw, 40px);
 }
+
+/* Desktop sidebar nav (>=1024px). Hidden on mobile; the bottom-nav is hidden on
+   desktop — the two are never both visible (and never both mounted, via JS). */
+.app-sidebar {
+  display: none;
+  position: fixed;
+  inset: 0 auto 0 0;
+  width: var(--sidebar-w);
+  padding: 24px 16px;
+  gap: 18px;
+  flex-direction: column;
+  background: var(--glass-bg-strong);
+  border-right: 1px solid var(--glass-border);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  z-index: 20;
+}
+.app-sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 8px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.app-sidebar-mark {
+  font-size: 20px;
+  background: var(--grad-accent);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.app-sidebar-title {
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  color: var(--fg);
+}
+.app-sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.app-sidebar .app-sidebar-nav button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 12px;
+  min-height: 44px;
+  border-radius: var(--r-2);
+  color: var(--fg-dim);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: background var(--t-fast) ease, color var(--t-fast) ease;
+}
+.app-sidebar .app-sidebar-nav button:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--fg);
+}
+.app-sidebar .app-sidebar-nav button[aria-current="true"] {
+  background: var(--grad-accent-soft);
+  color: var(--fg);
+  box-shadow: inset 0 0 0 1px var(--glass-border);
+}
+.app-sidebar .nav-glyph { width: 22px; height: 22px; }
+.app-sidebar .nav-glyph-wrap { position: relative; display: inline-flex; }
+.app-sidebar .nav-badge { position: absolute; top: -6px; right: -10px; }
+
+@media (min-width: 1024px) {
+  .bottom-nav { display: none !important; }
+  .app.app-shell {
+    max-width: none;
+    margin: 0;
+    padding: 0 0 0 var(--sidebar-w);
+    min-height: 100dvh;
+    display: block;
+  }
+  .app-shell .persistent-header {
+    position: sticky;
+    top: 0;
+    margin-left: 0;
+    padding: 18px var(--content-pad);
+    background: var(--glass-bg);
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    border-bottom: 1px solid var(--glass-border);
+  }
+  .app-shell .app-content {
+    max-width: var(--content-max);
+    margin: 0 auto;
+    padding: var(--content-pad);
+    padding-bottom: 64px;
+    width: 100%;
+  }
+  .app-sidebar { display: flex; }
+}
+@media (min-width: 1440px) {
+  :root { --sidebar-w: 264px; --content-max: 1320px; }
+}
+
+/* Page gradient backdrop — additive behind the existing .app. */
+body {
+  background: var(--bg);
+  background-image: var(--grad-page);
+  background-attachment: fixed;
+  min-height: 100dvh;
+}

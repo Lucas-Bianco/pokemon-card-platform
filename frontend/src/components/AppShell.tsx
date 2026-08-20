@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 
+import { useIsDesktop } from "../lib/useIsDesktop";
 import { getUnreadCount } from "../api/client";
 import type { RecognizeResponse } from "../api/types";
 import AlertsFeed from "./AlertsFeed";
@@ -89,6 +90,7 @@ export default function AppShell({ scan }: Props) {
   const [view, setView] = useState<TabView>("alerts");
   const [selectedCard, setSelectedCard] = useState<{ cardId: string; variant?: string } | null>(null);
   const [unread, setUnread] = useState(0);
+  const isDesktop = useIsDesktop();
   // The WatchCardSheet is app-level so any surface (AlertsFeed empty-state
   // CTA, CardDetail "Watch this card", the scan onboarding nudge) can open it
   // preselected to a card. `card` is undefined for the no-preselect CTA.
@@ -174,38 +176,73 @@ export default function AppShell({ scan }: Props) {
         />
       )}
 
-      <nav className="bottom-nav" aria-label="Primary">
-        <TabButton label="Scan" active={view === "scan" && !selectedCard} onClick={() => selectTab("scan")} glyph={<ScanGlyph />} />
-        <TabButton label="Vault" active={view === "vault" && !selectedCard} onClick={() => selectTab("vault")} glyph={<VaultGlyph />} />
-        <TabButton
-          label="Alerts"
-          active={view === "alerts" && !selectedCard}
-          onClick={() => selectTab("alerts")}
-          glyph={<BellGlyph />}
-          badge={unread}
-        />
-        <TabButton
-          label="Deals"
-          active={view === "deals" && !selectedCard}
-          onClick={() => selectTab("deals")}
-          glyph={<TagGlyph />}
-        />
-        <TabButton
-          label="Sealed"
-          active={view === "sealed" && !selectedCard}
-          onClick={() => selectTab("sealed")}
-          glyph={<BoxGlyph />}
-        />
-        <TabButton
-          label="Ledger"
-          active={view === "ledger" && !selectedCard}
-          onClick={() => selectTab("ledger")}
-          glyph={<LedgerGlyph />}
-        />
-        <TabButton label="Browse" active={view === "browse" && !selectedCard} onClick={() => selectTab("browse")} glyph={<SearchGlyph />} />
-        <TabButton label="More" active={view === "more" && !selectedCard} onClick={() => selectTab("more")} glyph={<MoreGlyph />} />
-      </nav>
+      {isDesktop ? (
+        <DesktopNav view={view} selectedCard={!!selectedCard} unread={unread} onSelect={selectTab} />
+      ) : (
+        <nav className="bottom-nav" aria-label="Primary">
+          <TabButton label="Scan" active={view === "scan" && !selectedCard} onClick={() => selectTab("scan")} glyph={<ScanGlyph />} />
+          <TabButton label="Vault" active={view === "vault" && !selectedCard} onClick={() => selectTab("vault")} glyph={<VaultGlyph />} />
+          <TabButton
+            label="Alerts"
+            active={view === "alerts" && !selectedCard}
+            onClick={() => selectTab("alerts")}
+            glyph={<BellGlyph />}
+            badge={unread}
+          />
+          <TabButton
+            label="Deals"
+            active={view === "deals" && !selectedCard}
+            onClick={() => selectTab("deals")}
+            glyph={<TagGlyph />}
+          />
+          <TabButton
+            label="Sealed"
+            active={view === "sealed" && !selectedCard}
+            onClick={() => selectTab("sealed")}
+            glyph={<BoxGlyph />}
+          />
+          <TabButton
+            label="Ledger"
+            active={view === "ledger" && !selectedCard}
+            onClick={() => selectTab("ledger")}
+            glyph={<LedgerGlyph />}
+          />
+          <TabButton label="Browse" active={view === "browse" && !selectedCard} onClick={() => selectTab("browse")} glyph={<SearchGlyph />} />
+          <TabButton label="More" active={view === "more" && !selectedCard} onClick={() => selectTab("more")} glyph={<MoreGlyph />} />
+        </nav>
+      )}
     </main>
+  );
+}
+
+function DesktopNav({
+  view,
+  selectedCard,
+  unread,
+  onSelect,
+}: {
+  view: TabView;
+  selectedCard: boolean;
+  unread: number;
+  onSelect: (tab: TabView) => void;
+}) {
+  return (
+    <aside className="app-sidebar" aria-label="Primary">
+      <div className="app-sidebar-brand">
+        <span className="app-sidebar-mark" aria-hidden="true">✦</span>
+        <span className="app-sidebar-title">Card Scan</span>
+      </div>
+      <nav className="app-sidebar-nav">
+        <TabButton label="Scan" active={view === "scan" && !selectedCard} onClick={() => onSelect("scan")} glyph={<ScanGlyph />} />
+        <TabButton label="Vault" active={view === "vault" && !selectedCard} onClick={() => onSelect("vault")} glyph={<VaultGlyph />} />
+        <TabButton label="Alerts" active={view === "alerts" && !selectedCard} onClick={() => onSelect("alerts")} glyph={<BellGlyph />} badge={unread} />
+        <TabButton label="Deals" active={view === "deals" && !selectedCard} onClick={() => onSelect("deals")} glyph={<TagGlyph />} />
+        <TabButton label="Sealed" active={view === "sealed" && !selectedCard} onClick={() => onSelect("sealed")} glyph={<BoxGlyph />} />
+        <TabButton label="Ledger" active={view === "ledger" && !selectedCard} onClick={() => onSelect("ledger")} glyph={<LedgerGlyph />} />
+        <TabButton label="Browse" active={view === "browse" && !selectedCard} onClick={() => onSelect("browse")} glyph={<SearchGlyph />} />
+        <TabButton label="More" active={view === "more" && !selectedCard} onClick={() => onSelect("more")} glyph={<MoreGlyph />} />
+      </nav>
+    </aside>
   );
 }
 
