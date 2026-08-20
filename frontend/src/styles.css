@@ -1711,3 +1711,27 @@ h1 { font-size: 1.25rem; margin: 4px 0 16px; }
   .ledger-form { grid-template-columns: 1fr 1fr; }
   .ledger-form .deals-search { grid-column: 1 / span 2; }
 }
+
+/* === UI Overhaul 2026-08-20 — refined dark + responsive + motion tokens === */
+:root {
+  --glass-bg: rgba(20, 24, 33, 0.72);
+  --glass-bg-strong: rgba(16, 19, 27, 0.86);
+  --glass-border: rgba(255, 255, 255, 0.06);
+  --glass-blur: 14px;
+  --grad-accent: linear-gradient(135deg, #ffcb05 0%, #ffd84d 48%, #f5a623 100%);
+  --grad-accent-soft: linear-gradient(135deg, rgba(255,203,5,0.16), rgba(59,109,240,0.12));
+  --grad-surface: linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0));
+  --grad-page: radial-gradient(1200px 600px at 50% -10%, rgba(59,109,240,0.10), transparent 70%),
+               radial-gradient(900px 500px at 100% 0%, rgba(255,203,5,0.06), transparent 65%);
+  --r-1: 8px;
+  --r-2: 12px;
+  --r-3: 18px;
+  --r-pill: 999px;
+  --shadow-glass: 0 1px 0 rgba(255,255,255,0.04) inset, 0 8px 30px rgba(0,0,0,0.36);
+  --t-fast: 120ms;
+  --t-base: 220ms;
+  --t-slow: 360ms;
+  --sidebar-w: 240px;
+  --content-max: 1180px;
+  --content-pad: clamp(16px, 3vw, 40px);
+}
