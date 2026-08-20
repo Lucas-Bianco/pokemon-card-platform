@@ -14,6 +14,9 @@ dependencies = [
     # Phase 3c alerts: Web Push delivery (VAPID). Pulls py-vapid (used by the
     # gen-vapid CLI to generate keypairs) and http-ece for payload encryption.
     "pywebpush>=2.0",
+    # Phase 05d: Google Sheets sync (OAuth browser sign-in + Sheets v4 write).
+    "google-auth-oauthlib>=1.2",
+    "google-api-python-client>=2.100",
 ]
 
 [project.optional-dependencies]

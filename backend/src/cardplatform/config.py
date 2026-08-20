@@ -125,9 +125,21 @@ class Settings(BaseSettings):
     def _clamp_sealed_sold_comp_limit(cls, v: int) -> int:
         return max(1, min(v, 100))
 
+    # Phase 05d — Google Sheets sync (OAuth browser sign-in; local-first, opt-in).
+    google_sheet_id: str | None = Field(default=None)
+    google_sheet_tab: str = Field(default="Sealed Ledger")
+
     @property
     def db_path(self) -> Path:
         return self.data_dir / "cardplatform.sqlite3"
+
+    @property
+    def google_client_secret_path(self) -> Path:
+        return self.data_dir / "credentials.json"
+
+    @property
+    def google_token_path(self) -> Path:
+        return self.data_dir / "google_token.json"
 
     @property
     def database_url(self) -> str:
