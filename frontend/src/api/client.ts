@@ -16,8 +16,11 @@ import type {
   RecognizeResponse,
   Scan,
   SealedDealsResponse,
+  SealedLedgerResponse,
+  SealedPurchaseOut,
   SoldCompsResponse,
   Valuation,
+  ValuationRefreshResult,
   Watch,
   WatchCreate,
   WatchPatch,
@@ -513,5 +516,51 @@ export async function getSealedDeals(
   const params = new URLSearchParams({ q: query, limit: String(limit) });
   return expectJsonOrDetail<SealedDealsResponse>(
     await fetch(`${BASE}/sealed/deals?${params}`),
+  );
+}
+
+// ----- Sealed ledger -----------------------------------------------------
+// Phase 05d sealed-purchase ledger. The user logs sealed boxes/packs they
+// bought (query-keyed, like sealed deals); the backend values them against the
+// eBay sold-comps median. Mirrors getSealedDeals (expectJsonOrDetail so a 422
+// from a short/missing query surfaces the backend's detail) for the GET,
+// addToCollection (POST JSON) for logging, and removeFromCollection (DELETE)
+// for removal. Honest empty: an unvalued purchase renders "—" via formatMoney,
+// never $0.00.
+
+export async function getSealedLedger(): Promise<SealedLedgerResponse> {
+  return expectJsonOrDetail<SealedLedgerResponse>(
+    await fetch(`${BASE}/sealed/ledger`),
+  );
+}
+
+export async function logSealedPurchase(body: {
+  query: string;
+  quantity?: number;
+  cost_per_unit: number;
+  product_type?: string | null;
+  source?: string | null;
+  listing_url?: string | null;
+  notes?: string | null;
+}): Promise<SealedPurchaseOut> {
+  const response = await fetch(`${BASE}/sealed/ledger`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error(`request failed: ${response.status}`);
+  return response.json();
+}
+
+export async function deleteSealedPurchase(purchaseId: number): Promise<void> {
+  const response = await fetch(`${BASE}/sealed/ledger/${purchaseId}`, {
+    method: "DELETE",
+  });
+  if (!response.ok) throw new Error(`request failed: ${response.status}`);
+}
+
+export async function valuateSealedLedger(): Promise<ValuationRefreshResult> {
+  return expectJsonOrDetail<ValuationRefreshResult>(
+    await fetch(`${BASE}/sealed/ledger/valuate`, { method: "POST" }),
   );
 }

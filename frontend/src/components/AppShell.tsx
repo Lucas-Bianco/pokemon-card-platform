@@ -12,6 +12,7 @@ import More from "./More";
 import PortfolioView from "./PortfolioView";
 import ScanResult from "./ScanResult";
 import SealedDeals from "./SealedDeals";
+import SealedLedger from "./SealedLedger";
 import WatchCardSheet from "./WatchCardSheet";
 
 // The scan flow stays owned by App (which holds the recognition state and the
@@ -61,7 +62,7 @@ export interface ScanFlow {
   bulk: BulkFlow | null;
 }
 
-type TabView = "scan" | "vault" | "alerts" | "deals" | "sealed" | "browse" | "more";
+type TabView = "scan" | "vault" | "alerts" | "deals" | "ledger" | "sealed" | "browse" | "more";
 
 interface Props {
   scan: ScanFlow;
@@ -72,6 +73,7 @@ const TAB_TITLES: Record<TabView, string> = {
   vault: "Vault",
   alerts: "Alerts",
   deals: "Deals",
+  ledger: "Ledger",
   sealed: "Sealed",
   browse: "Browse",
   more: "More",
@@ -152,6 +154,8 @@ export default function AppShell({ scan }: Props) {
           />
         ) : view === "deals" ? (
           <Deals onOpenCard={(c) => setSelectedCard(c)} />
+        ) : view === "ledger" ? (
+          <SealedLedger />
         ) : view === "sealed" ? (
           <SealedDeals />
         ) : view === "browse" ? (
@@ -191,6 +195,12 @@ export default function AppShell({ scan }: Props) {
           active={view === "sealed" && !selectedCard}
           onClick={() => selectTab("sealed")}
           glyph={<BoxGlyph />}
+        />
+        <TabButton
+          label="Ledger"
+          active={view === "ledger" && !selectedCard}
+          onClick={() => selectTab("ledger")}
+          glyph={<LedgerGlyph />}
         />
         <TabButton label="Browse" active={view === "browse" && !selectedCard} onClick={() => selectTab("browse")} glyph={<SearchGlyph />} />
         <TabButton label="More" active={view === "more" && !selectedCard} onClick={() => selectTab("more")} glyph={<MoreGlyph />} />
@@ -512,6 +522,15 @@ function BoxGlyph() {
         strokeLinejoin="round"
       />
       <path d="M12 12v8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+// A ledger book — the Ledger tab's glyph (sealed-purchase purchase log).
+function LedgerGlyph() {
+  return (
+    <svg className="nav-glyph" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <rect x="4" y="3" width="16" height="18" rx="2" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M8 7h8M8 11h8M8 15h5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
     </svg>
   );
 }

@@ -1690,3 +1690,24 @@ h1 { font-size: 1.25rem; margin: 4px 0 16px; }
 @media (max-width: 600px) {
   .bulk-grid { grid-template-columns: 1fr; }
 }
+
+/* =========================================================================
+   Phase 05d — sealed-purchase ledger form + profit coloring
+   Additive: the Ledger tab reuses the .deal-* card classes (surface + line
+   border, row label alignment, chip pill, caveat) for visual consistency with
+   the Deals/Sealed tabs. Only the log form grid + the input/select style +
+   profit coloring + the delete button are new. Never overrides an existing
+   selector's meaning.
+   ========================================================================= */
+
+.ledger-form { display: grid; grid-template-columns: 1fr repeat(4, minmax(0, 1fr)) auto; gap: var(--sp-2); align-items: center; }
+.ledger-form .deals-search { grid-column: 1 / span 1; }
+.ledger-input { padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--fg); font: inherit; min-width: 0; }
+.ledger-profit.pos { color: var(--ok); }
+.ledger-profit.neg { color: var(--down); }
+.ledger-delete { background: transparent; border: 1px solid var(--line); border-radius: 8px; color: var(--fg); padding: 4px 10px; cursor: pointer; font: inherit; }
+.ledger-delete:hover { border-color: var(--accent); }
+@media (max-width: 720px) {
+  .ledger-form { grid-template-columns: 1fr 1fr; }
+  .ledger-form .deals-search { grid-column: 1 / span 2; }
+}

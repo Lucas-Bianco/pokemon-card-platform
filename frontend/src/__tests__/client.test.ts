@@ -8,11 +8,14 @@ import {
   getResolvedPrice,
   getPortfolio,
   getSealedDeals,
+  getSealedLedger,
+  logSealedPurchase,
   patchCollectionItem,
   recognize,
   recordScan,
   refreshPrice,
   removeFromCollection,
+  valuateSealedLedger,
 } from "../api/client";
 import type { RecognizeResponse } from "../api/types";
 
@@ -370,5 +373,35 @@ describe("getSealedDeals", () => {
     expect(res.deals).toHaveLength(1);
     expect(res.deals[0].flip_edge).toBe(25.0);
     expect(res.sealed_market?.price).toBe(120.0);
+  });
+});
+
+describe("sealed ledger client", () => {
+  it("getSealedLedger hits /api/sealed/ledger", async () => {
+    const spy = mockFetch(200, { purchases: [], listings_unavailable: false });
+    vi.stubGlobal("fetch", spy);
+    await getSealedLedger();
+    expect(String(spy.mock.calls[0][0])).toContain("/api/sealed/ledger");
+    vi.unstubAllGlobals();
+  });
+
+  it("logSealedPurchase POSTs JSON to /api/sealed/ledger", async () => {
+    const spy = mockFetch(201, { id: 1, query: "x", product_type: null, quantity: 1, cost_per_unit: 1, source: null, listing_url: null, notes: null, bought_at: "", created_at: "" });
+    vi.stubGlobal("fetch", spy);
+    await logSealedPurchase({ query: "box", cost_per_unit: 10 });
+    const call = spy.mock.calls[0];
+    expect(String(call[0])).toContain("/api/sealed/ledger");
+    expect(call[1]?.method).toBe("POST");
+    expect(JSON.parse(call[1]?.body as string).query).toBe("box");
+    vi.unstubAllGlobals();
+  });
+
+  it("valuateSealedLedger POSTs /api/sealed/ledger/valuate", async () => {
+    const spy = mockFetch(200, { valued: 1, skipped_no_comps: 0, skipped_no_key: false });
+    vi.stubGlobal("fetch", spy);
+    await valuateSealedLedger();
+    expect(String(spy.mock.calls[0][0])).toContain("/api/sealed/ledger/valuate");
+    expect(spy.mock.calls[0][1]?.method).toBe("POST");
+    vi.unstubAllGlobals();
   });
 });

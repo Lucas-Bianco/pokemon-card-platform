@@ -496,3 +496,72 @@ export interface SealedDealsResponse {
   deals: SealedDealAssessment[];
   thresholds: SealedThresholds;
 }
+
+// Phase 05d — sealed-purchase ledger. The user logs sealed boxes/packs they
+// bought (query-keyed, like sealed deals); the backend periodically values them
+// against the eBay sold-comps median and tracks profit. Every nullable market
+// field surfaces as null when unvalued — never a fabricated $0 (the project's
+// sacred convention; the UI renders an em dash via formatMoney). Mirrors
+// backend SealedPurchaseOut / SealedLedgerResponse / ValuationRefreshResult
+// field-for-field.
+
+// One logged purchase, enriched with its latest valuation. `value_per_unit` /
+// `total_current_value` / `profit` / `profit_pct` are null until the purchase is
+// valued against sold comps — never $0. `market_fetched_at` / `market_source`
+// travel with the valuation so a card never presents a number without saying
+// where it came from. `valued` is the honest boolean the UI branches on.
+export interface SealedLedgerEntry {
+  id: number;
+  query: string;
+  product_type: string | null;
+  quantity: number;
+  cost_per_unit: number;
+  total_cost: number;
+  source: string | null;
+  listing_url: string | null;
+  notes: string | null;
+  bought_at: string;
+  created_at: string;
+  value_per_unit: number | null;
+  total_current_value: number | null;
+  profit: number | null;
+  profit_pct: number | null;
+  market_fetched_at: string | null;
+  market_source: string | null;
+  valued: boolean;
+}
+
+// The GET /sealed/ledger response. `listings_unavailable` is true when no
+// listings provider key is configured (honest — no provider, never fake comps);
+// false means valuations can run, just possibly all unvalued.
+export interface SealedLedgerResponse {
+  purchases: SealedLedgerEntry[];
+  listings_unavailable: boolean;
+}
+
+// The POST /sealed/ledger/valuate response. `valued` is the count refreshed;
+// `skipped_no_comps` is the count with no sold comps to value against;
+// `skipped_no_key` is true when the eBay key is missing (the UI shows the
+// "set CARDPLATFORM_LISTINGS_API_KEY" notice instead of a count).
+export interface ValuationRefreshResult {
+  valued: number;
+  skipped_no_comps: number;
+  skipped_no_key: boolean;
+}
+
+// The POST /sealed/ledger response (one logged purchase, echoed back). Mirrors
+// SealedPurchaseOut in backend api.py — the valuation fields are NOT here (a
+// freshly logged purchase is unvalued); the client reloads the ledger to fetch
+// the enriched SealedLedgerEntry shape.
+export interface SealedPurchaseOut {
+  id: number;
+  query: string;
+  product_type: string | null;
+  quantity: number;
+  cost_per_unit: number;
+  source: string | null;
+  listing_url: string | null;
+  notes: string | null;
+  bought_at: string;
+  created_at: string;
+}
