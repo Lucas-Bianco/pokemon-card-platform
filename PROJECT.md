@@ -14,7 +14,9 @@ rip-vs-flip) shipped 2026-08-03 — see
 shipped 2026-08-19 — see
 [design spec](docs/superpowers/specs/2026-08-19-sealed-product-ev-design.md) +
 [plan](docs/superpowers/plans/2026-08-19-sealed-product-ev.md). Phase 05d (sealed purchase
-ledger + profit tracker + Google Sheets sync) shipped 2026-08-20.
+ledger + profit tracker + Google Sheets sync) shipped 2026-08-20. Responsive UI overhaul (refined
+dark-glass identity + desktop sidebar + Framer Motion — phone to any desktop) shipped 2026-08-20 —
+see [plan](docs/superpowers/plans/2026-08-20-responsive-ui-overhaul.md).
 Next: rip EV (expected pull value — blocked on pull-rate data + a sealed-product master) or
 the full Grade predictor (corner/edge/surface + P(grade), pending labelled-data accrual) or
 Phase 6 (set-completion optimizer).
@@ -642,3 +644,33 @@ the rip/flip thresholds) plus **eBay sold-comps evidence** backing the raw marke
 Phase 05b (2026-08-04). The sealed flip-edge shipped 2026-08-19 (Phase 05c); the sealed purchase
 ledger + profit tracker + Google Sheets sync shipped 2026-08-20 (Phase 05d); the remaining Phase 05
 leg is rip EV (expected pull value), blocked on pull-rate data.
+
+## Responsive UI overhaul — shipped 2026-08-20
+
+A full visual + responsive overhaul of the frontend
+([plan](docs/superpowers/plans/2026-08-20-responsive-ui-overhaul.md)), front-end-only (backend,
+`data/`, and the 105-scan baseline untouched). **126 frontend tests stayed green throughout;
+build clean.**
+
+- **Responsive shell** — `useIsDesktop()` (matchMedia `min-width:1024px`, jsdom-safe → `false` in
+  tests) decides between a desktop left **sidebar** nav (`<aside class="app-sidebar">`) and the
+  mobile **bottom-nav**; exactly one is mounted at a time so `getByRole("button", { name: "Scan" })`
+  still resolves to a single element. The sidebar reuses the existing `TabButton` + glyphs verbatim,
+  so all 8 tab accessible names are byte-identical. Desktop: sidebar pinned left, content
+  max-width 1180px centered with `clamp()` padding, sticky glass header; `1440px` widens to a
+  264px sidebar + 1320px content. Mobile layout untouched.
+- **Polished motion (Framer Motion 12)** — `<AnimatePresence mode="wait">` + `PageTransition`
+  fade+slide on every tab switch and the CardDetail overlay; `WatchCardSheet` overlay fades and the
+  sheet springs in (reduced-motion: opacity-only); list surfaces stagger their items on mount
+  (`motion.ul` + `staggerContainer` → `motion.li` + `staggerItem`) with hover-lift / tap-scale.
+  All motion is `useReducedMotion`-gated.
+- **Refined dark-glass identity** — glass surfaces (backdrop-filter + hairline border + top-highlight
+  gradient) layered on the existing card classes; primary CTAs get the yellow gradient fill + glow;
+  RIP/flip chips and up/down pills get gradient treatments; inputs get glass insets + focus rings.
+  All additive CSS — no class renamed, the flat `--surface` backgrounds remain as fallback.
+- **Desktop multi-column grids** — deal/alert/browse lists lay out in 2–3 columns on desktop; the
+  portfolio table widens; mobile stacked-card layout untouched.
+
+**Do-not-break contract held** — every class name, `input[name]`, `aria-label`, button accessible
+name, `data-label`, and honest-empty-state string the 126 tests query was preserved; motion wraps
+existing elements (a `motion.button` still renders `<button>`), CSS is additive.

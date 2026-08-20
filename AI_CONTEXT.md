@@ -45,6 +45,7 @@ Site: https://lucas-bianco.github.io/pokemon-card-platform/
 | 3c | Watchlist + restock/price/drop/auction alerts (CollectorVault-style 5-tab UI) | ✅ Complete (§11) |
 | 4 | Bulk cataloger: many cards per photo | ✅ Complete (§14) |
 | 5 | Deal sniper + sealed EV | In progress — deal sniper / rip-vs-flip shipped (§12); deal alerts + sold-comps evidence shipped (§13); sealed flip-edge shipped (§15); sealed purchase ledger + profit tracker + Google Sheets sync (OAuth) shipped (§16); rip EV (expected pull value) still planned — needs pull-rate data |
+| UI | Responsive UI overhaul — refined dark-glass + desktop sidebar + Framer Motion (phone→any desktop) | ✅ Complete 2026-08-20 (§17) — frontend-only; 126 tests green; 105-scan baseline untouched |
 | 6 | Set-completion optimizer | Planned |
 | 7 | Counterfeit detector | Planned |
 
@@ -963,3 +964,49 @@ deletion; recognition + 105-scan baseline untouched (0 regressions).
 (minor, no blocker); rip EV (expected pull value) still data-blocked (no pull rates) —
 deferred, mirrors 05c; a `SealedProduct` master (the "product" is currently the user's
 free-text query).
+
+## 17. Responsive UI overhaul — refined dark + responsive + polished motion (2026-08-20)
+
+A full visual + responsive overhaul of the **frontend only**
+([plan](docs/superpowers/plans/2026-08-20-responsive-ui-overhaul.md)). Backend, `data/`, and the
+105-scan baseline are untouched. **126 frontend tests stayed green throughout; build clean.**
+The 8-tab bottom-nav "tight on narrow screens" follow-up from §16 is now resolved on desktop (the
+sidebar replaces it ≥1024px) and remains tight only on phones.
+
+- **Responsive shell** — `frontend/src/lib/useIsDesktop.ts` (matchMedia `min-width:1024px`,
+  jsdom-safe → `false` in tests so the test DOM keeps the mobile bottom-nav) is the single source of
+  truth: AppShell mounts EITHER a desktop left sidebar (`<aside class="app-sidebar">`, reusing the
+  existing `TabButton` + glyphs so the 8 tab accessible names are byte-identical) OR the mobile
+  `.bottom-nav` — never both, so `getByRole("button", { name: "Scan" })` still resolves to one
+  element. Desktop: sidebar pinned left, content max-width 1180px centered with `clamp()` padding,
+  sticky glass header; `@media (min-width:1440px)` widens to 264px sidebar + 1320px content. Mobile
+  layout untouched.
+- **Polished motion (Framer Motion 12, new dep)** — `frontend/src/components/motion.tsx` exports
+  `PageTransition` / `StaggerList` / `StaggerItem` / `MotionCard` + shared variants, all
+  `useReducedMotion`-gated. AppShell wraps each view branch in `<AnimatePresence mode="wait">` +
+  `<PageTransition>` (fade+slide, keyed by view / `"card"` for the CardDetail overlay).
+  `WatchCardSheet` overlay fades in and the sheet springs in (reduced-motion: opacity-only). List
+  surfaces (alerts/deals/browse/sealed/ledger) stagger their items on mount via `motion.ul` +
+  `staggerContainer` → `motion.li` + `staggerItem`, with hover-lift (`y:-4`) / tap-scale. Portfolio
+  table rows are NOT motion-wrapped (table-row constraint) — CSS hover only; the valuation summary
+  cards stagger.
+- **Refined dark-glass identity** — glass surfaces (backdrop-filter + hairline border + top-highlight
+  gradient) layered on the existing card classes (deal-card, alert-row, browse-result, bulk-cell,
+  channel-card, watchlist-row, result, camera-frame, sheet, portfolio-table-wrap, grading-upside,
+  centering, sold-comps, card-detail); primary CTAs get the yellow gradient fill + glow; RIP/flip
+  chips and up/down pills get gradient treatments; inputs get glass insets + focus rings. All
+  additive CSS — no class renamed, the flat `--surface` backgrounds remain as the no-backdrop
+  fallback. New tokens: `--glass-*`, `--grad-accent`/`--grad-surface`/`--grad-page`, `--r-1..3`,
+  `--shadow-glass`, `--t-fast/base/slow`, `--sidebar-w`, `--content-max`, `--content-pad`.
+- **Desktop multi-column grids** — deal/alert/browse lists lay out in 2–3 columns ≥1024px; the
+  portfolio table widens; the mobile stacked-card layout (≤639px) is untouched.
+
+**Do-not-break contract held** — every class name, `input[name]`, `aria-label`, button accessible
+name, `data-label`, and honest-empty-state string the 126 tests query was preserved. Motion wraps
+existing elements (a `motion.button` renders `<button>`; `motion.ul` renders `<ul class="…">`), and
+all CSS is additive — no existing rule renamed or removed (the three `@keyframes` + their
+reduced-motion guards kept). The one structural change (sidebar vs bottom-nav) is JS-gated so only
+one nav is ever mounted.
+
+**Sacred constraints held** — frontend-only by construction: no backend, no `data/`, no price
+resolution, no snapshots, no schema. 105-scan baseline 0 regressions.
