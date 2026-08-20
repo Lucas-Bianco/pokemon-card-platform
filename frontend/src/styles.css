@@ -1842,3 +1842,116 @@ body {
   background-attachment: fixed;
   min-height: 100dvh;
 }
+
+/* === UI Overhaul — glass + gradient surface elevation (additive on existing card classes) === */
+
+.deal-card,
+.alert-row,
+.browse-result,
+.bulk-cell,
+.channel-card,
+.watchlist-row,
+.result,
+.camera-frame,
+.sheet,
+.portfolio-table-wrap,
+.grading-upside,
+.centering,
+.sold-comps,
+.card-detail {
+  background-color: var(--glass-bg);
+  background-image: var(--grad-surface);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-3);
+  box-shadow: var(--shadow-glass);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+}
+
+.alert-row:hover,
+.browse-result:hover,
+.deal-card:hover,
+.watchlist-row:hover,
+.channel-card:hover {
+  border-color: rgba(255, 203, 5, 0.22);
+  background-image: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0));
+}
+
+.primary,
+.sealed-deals-btn,
+.bulk-add-all,
+.watch-card-btn {
+  background-image: var(--grad-accent);
+  border: none;
+  color: #1a1500;
+  font-weight: 650;
+  box-shadow: 0 6px 20px rgba(255, 203, 5, 0.18);
+  transition: transform var(--t-fast) ease, box-shadow var(--t-fast) ease, filter var(--t-fast) ease;
+}
+.primary:hover,
+.sealed-deals-btn:hover,
+.bulk-add-all:hover,
+.watch-card-btn:hover {
+  filter: brightness(1.05);
+  box-shadow: 0 10px 28px rgba(255, 203, 5, 0.26);
+}
+.primary:active,
+.sealed-deals-btn:active,
+.bulk-add-all:active,
+.watch-card-btn:active {
+  transform: translateY(1px) scale(0.99);
+}
+
+.deal-chip.rip {
+  background-image: linear-gradient(135deg, rgba(255,203,5,0.20), rgba(255,203,5,0.08));
+  border: 1px solid rgba(255, 203, 5, 0.35);
+  color: var(--accent);
+}
+.deal-chip.flip {
+  background-image: linear-gradient(135deg, rgba(59,109,240,0.22), rgba(59,109,240,0.08));
+  border: 1px solid rgba(59, 109, 240, 0.4);
+  color: #8fb0ff;
+}
+.valuation .up { color: #4ade80; }
+.valuation .unknown { color: var(--fg-faint); }
+.ledger-profit.pos { color: #4ade80; }
+.ledger-profit.neg { color: var(--down); }
+
+@media (min-width: 1024px) {
+  .app-shell .app-header h1 {
+    background: linear-gradient(90deg, var(--fg), var(--fg-dim));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+}
+
+.deals-search,
+.browse-input,
+.ledger-input,
+.watch-field input,
+.edit-price,
+.grading-label-form input,
+.grading-label-form select,
+.paid input {
+  background-color: rgba(0, 0, 0, 0.28);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-2);
+  transition: border-color var(--t-fast) ease, box-shadow var(--t-fast) ease;
+}
+.deals-search:focus,
+.browse-input:focus,
+.ledger-input:focus,
+.watch-field input:focus,
+.edit-price:focus {
+  border-color: rgba(255, 203, 5, 0.4);
+  box-shadow: 0 0 0 3px rgba(255, 203, 5, 0.12);
+  outline: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .primary, .sealed-deals-btn, .bulk-add-all, .watch-card-btn,
+  .alert-row, .browse-result, .deal-card, .watchlist-row, .channel-card {
+    transition: none;
+  }
+}
