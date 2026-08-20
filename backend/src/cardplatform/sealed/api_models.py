@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class SealedPricePointOut(BaseModel):
@@ -73,3 +73,88 @@ class SealedDealsResponse(BaseModel):
     sealed_market: SealedPricePointOut | None
     deals: list[SealedDealAssessmentOut]
     thresholds: SealedThresholdsOut
+
+
+# --------------------------------------------------------------- Phase 05d ledger
+
+
+class SealedPurchaseIn(BaseModel):
+    """Create payload for a logged sealed-product buy. `quantity`/`cost_per_unit` are
+    validated server-side too (LedgerService raises ValueError -> 422), but the Pydantic
+    bounds give a clean 422 before the service is even constructed."""
+
+    query: str
+    product_type: str | None = None
+    quantity: int = Field(default=1, ge=1)
+    cost_per_unit: float = Field(ge=0)
+    source: str | None = None
+    listing_url: str | None = None
+    notes: str | None = None
+    bought_at: datetime | None = None
+
+
+class SealedPurchaseOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    query: str
+    product_type: str | None
+    quantity: int
+    cost_per_unit: float
+    source: str | None
+    listing_url: str | None
+    notes: str | None
+    bought_at: datetime
+    created_at: datetime
+
+
+class SealedLedgerEntryOut(BaseModel):
+    """One ledger row — a purchase joined with its latest valuation + read-only profit.
+    Nulls are honest (unvalued), never $0. `valued` is the honest boolean for the front-end."""
+
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    query: str
+    product_type: str | None
+    quantity: int
+    cost_per_unit: float
+    total_cost: float
+    source: str | None
+    listing_url: str | None
+    notes: str | None
+    bought_at: datetime
+    created_at: datetime
+    value_per_unit: float | None
+    total_current_value: float | None
+    profit: float | None
+    profit_pct: float | None
+    market_fetched_at: datetime | None
+    market_source: str | None
+    valued: bool
+
+
+class SealedLedgerResponse(BaseModel):
+    """Full ledger view. `listings_unavailable` is True when no `listings_api_key` is
+    configured (the same eBay key sealed reuses) — the front-end shows the honest banner
+    instead of fabricated $0 valuations."""
+
+    purchases: list[SealedLedgerEntryOut]
+    listings_unavailable: bool
+
+
+class ValuationRefreshResultOut(BaseModel):
+    """Outcome of POST /sealed/ledger/valuate. `skipped_no_key` is True only when the key
+    was missing AND nothing was valued (honest diagnostic, not a blanket flag)."""
+
+    model_config = ConfigDict(from_attributes=True)
+    valued: int
+    skipped_no_comps: int
+    skipped_no_key: bool
+
+
+class SheetsSyncResultOut(BaseModel):
+    """Result of a Google Sheets sync push. Defined now (T3) but unused until T7 — the
+    sync route is a separate task. `reason` surfaces the honest no-key / no-rows case."""
+
+    synced: bool
+    rows: int
+    reason: str | None = None

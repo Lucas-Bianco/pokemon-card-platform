@@ -64,10 +64,17 @@ from cardplatform.scans.store import ScanStore
 from cardplatform.sealed.api_models import (
     SealedDealAssessmentOut,
     SealedDealsResponse,
+    SealedLedgerEntryOut,
+    SealedLedgerResponse,
     SealedPricePointOut,
+    SealedPurchaseIn,
+    SealedPurchaseOut,
     SealedThresholdsOut,
+    SheetsSyncResultOut,
+    ValuationRefreshResultOut,
 )
 from cardplatform.sealed.engine import SealedDealEngine
+from cardplatform.sealed.ledger import LedgerService
 
 _database: Database | None = None
 
@@ -1191,6 +1198,87 @@ def create_app() -> FastAPI:
                 sealed_flip_min_pct=settings.sealed_flip_min_pct,
             ),
         )
+
+    # --------------------------------------------------------------- sealed ledger (05d)
+    @app.get("/sealed/ledger", response_model=SealedLedgerResponse)
+    def sealed_ledger(session: Session = Depends(get_session)) -> SealedLedgerResponse:
+        """Full reseller ledger — purchases joined with latest valuation + read-only profit.
+
+        Read-only DB view; the provider is constructed but not called here (refresh_* is the
+        only write path). `listings_unavailable` is the honest banner: True when no
+        `listings_api_key` is configured (sealed reuses the eBay listings key), so the
+        front-end never shows fabricated $0 valuations.
+        """
+        provider = EbayListingsProvider(settings)
+        svc = LedgerService(session, provider=provider, settings=settings)
+        entries = svc.list_ledger()
+        return SealedLedgerResponse(
+            purchases=[SealedLedgerEntryOut.model_validate(e) for e in entries],
+            listings_unavailable=not bool(settings.listings_api_key),
+        )
+
+    @app.post("/sealed/ledger", response_model=SealedPurchaseOut, status_code=201)
+    def create_sealed_purchase(
+        payload: SealedPurchaseIn, session: Session = Depends(get_session)
+    ) -> SealedPurchaseOut:
+        """Log a sealed-product buy. Pydantic bounds catch the obvious client mistakes; the
+        LedgerService also validates and raises ValueError -> 422 (not a 500)."""
+        provider = EbayListingsProvider(settings)
+        svc = LedgerService(session, provider=provider, settings=settings)
+        try:
+            p = svc.create_purchase(
+                query=payload.query,
+                product_type=payload.product_type,
+                quantity=payload.quantity,
+                cost_per_unit=payload.cost_per_unit,
+                source=payload.source,
+                listing_url=payload.listing_url,
+                notes=payload.notes,
+                bought_at=payload.bought_at,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return SealedPurchaseOut.model_validate(p)
+
+    @app.delete("/sealed/ledger/{purchase_id}")
+    def delete_sealed_purchase(
+        purchase_id: int, session: Session = Depends(get_session)
+    ) -> Response:
+        """Remove a purchase + its append-only valuations (explicit cascade — don't rely on
+        a SQLite FK-cascade pragma). 404 on unknown, 204 on success."""
+        provider = EbayListingsProvider(settings)
+        svc = LedgerService(session, provider=provider, settings=settings)
+        if not svc.delete_purchase(purchase_id):
+            raise HTTPException(status_code=404, detail="unknown purchase")
+        return Response(status_code=204)
+
+    @app.post("/sealed/ledger/valuate", response_model=ValuationRefreshResultOut)
+    def valuate_sealed_ledger(session: Session = Depends(get_session)) -> ValuationRefreshResultOut:
+        """Refresh the latest market snapshot for every purchase (append-only inserts).
+        `skipped_no_key` is True only when the key was missing AND nothing was valued — an
+        honest diagnostic, not a blanket flag. Registered BEFORE the {purchase_id} route so
+        FastAPI matches the static path first."""
+        provider = EbayListingsProvider(settings)
+        svc = LedgerService(session, provider=provider, settings=settings)
+        return ValuationRefreshResultOut.model_validate(svc.refresh_all())
+
+    @app.post("/sealed/ledger/{purchase_id}/valuate", response_model=SealedLedgerEntryOut)
+    def valuate_one_sealed_purchase(
+        purchase_id: int, session: Session = Depends(get_session)
+    ) -> SealedLedgerEntryOut:
+        """Refresh the valuation for a single purchase and return the refreshed ledger row.
+        404 on unknown purchase. Registered AFTER the static `/valuate` route to avoid
+        shadowing it via the {purchase_id} path param."""
+        provider = EbayListingsProvider(settings)
+        svc = LedgerService(session, provider=provider, settings=settings)
+        if svc.get_purchase(purchase_id) is None:
+            raise HTTPException(status_code=404, detail="unknown purchase")
+        svc.refresh_valuation(purchase_id)
+        entries = svc.list_ledger()
+        entry = next((e for e in entries if e.id == purchase_id), None)
+        if entry is None:
+            raise HTTPException(status_code=404, detail="unknown purchase")
+        return SealedLedgerEntryOut.model_validate(entry)
 
     @app.get("/cards/{card_id}/sold-comps", response_model=sold_models.SoldCompsResponse)
     def card_sold_comps(
