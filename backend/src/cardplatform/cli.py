@@ -306,6 +306,77 @@ def find_sealed_deals(args: argparse.Namespace) -> int:
     return 0
 
 
+def log_sealed_purchase(args: argparse.Namespace) -> int:
+    from cardplatform.prices.ebay_listings import EbayListingsProvider
+    from cardplatform.sealed.ledger import LedgerService
+    db = Database()
+    db.create_all()
+    with db.session() as session:
+        svc = LedgerService(session, provider=EbayListingsProvider(db.settings), settings=db.settings)
+        try:
+            p = svc.create_purchase(
+                query=args.query,
+                product_type=args.type,
+                quantity=args.quantity,
+                cost_per_unit=args.cost,
+                source=args.source,
+                listing_url=args.url,
+                notes=args.notes,
+            )
+        except ValueError as exc:
+            print(f"Could not log purchase: {exc}")
+            return 1
+        print(f"Logged purchase #{p.id}: {p.quantity}× {p.query} @ ${p.cost_per_unit:.2f}/unit"
+              f" (${p.quantity * p.cost_per_unit:.2f} total).")
+    return 0
+
+
+def list_sealed_ledger(args: argparse.Namespace) -> int:
+    from cardplatform.prices.ebay_listings import EbayListingsProvider
+    from cardplatform.sealed.ledger import LedgerService
+    db = Database()
+    db.create_all()
+    with db.session() as session:
+        svc = LedgerService(session, provider=EbayListingsProvider(db.settings), settings=db.settings)
+        entries = svc.list_ledger()
+        if not entries:
+            print("No purchases logged yet. Use 'log-sealed-purchase' to add one.")
+            return 0
+        key_set = bool(db.settings.listings_api_key)
+        for e in entries:
+            profit = "—" if e.profit is None else f"${e.profit:+.2f}"
+            valued = (f"${e.value_per_unit:.2f}/u (as of {e.market_fetched_at:%Y-%m-%d})"
+                      if e.valued else "not yet valued — run 'valuate-sealed-ledger'")
+            print(f"#{e.id}  {e.quantity}× {e.query}  cost ${e.total_cost:.2f}  market {valued}  profit {profit}")
+        if not key_set:
+            print("\nSet CARDPLATFORM_LISTINGS_API_KEY to value purchases (fetch sold comps).")
+    return 0
+
+
+def valuate_sealed_ledger(args: argparse.Namespace) -> int:
+    from cardplatform.prices.ebay_listings import EbayListingsProvider
+    from cardplatform.sealed.ledger import LedgerService
+    db = Database()
+    db.create_all()
+    if not db.settings.listings_api_key:
+        print("No listings source key set — set CARDPLATFORM_LISTINGS_API_KEY "
+              "(eBay App ID) to value purchases.")
+        return 0
+    with db.session() as session:
+        svc = LedgerService(session, provider=EbayListingsProvider(db.settings), settings=db.settings)
+        if args.purchase_id is not None:
+            v = svc.refresh_valuation(args.purchase_id)
+            if v is None:
+                print(f"No recent sold comps for purchase #{args.purchase_id} — no valuation recorded.")
+            else:
+                print(f"Valued purchase #{args.purchase_id} at ${v.value_per_unit:.2f}/unit "
+                      f"(median of {v.comp_count} sold comps).")
+            return 0
+        result = svc.refresh_all()
+        print(f"Valued {result.valued} purchase(s); {result.skipped_no_comps} had no sold comps.")
+    return 0
+
+
 def build_index(args: argparse.Namespace) -> int:
     """Download every catalog image, embed it, and persist a FAISS index.
 
@@ -454,6 +525,32 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sealed.add_argument("--limit", type=int, default=20, help="Max listings to assess (1-50).")
     sealed.set_defaults(handler=find_sealed_deals)
+
+    log_purchase = subparsers.add_parser(
+        "log-sealed-purchase",
+        help="Log a sealed product purchase to the ledger (Phase 05d).",
+    )
+    log_purchase.add_argument("--query", required=True, help="What you bought, e.g. 'scarlet violet booster box'")
+    log_purchase.add_argument("--quantity", type=int, default=1, help="Units bought (>=1).")
+    log_purchase.add_argument("--cost", type=float, required=True, help="Cost per unit in USD (>=0).")
+    log_purchase.add_argument("--type", default=None, help="booster_box|etb|pack|collection_box|other")
+    log_purchase.add_argument("--source", default=None, help="Where bought (eBay, local, etc.)")
+    log_purchase.add_argument("--url", default=None, help="Listing URL")
+    log_purchase.add_argument("--notes", default=None, help="Free-text notes")
+    log_purchase.set_defaults(handler=log_sealed_purchase)
+
+    list_ledger = subparsers.add_parser(
+        "list-sealed-ledger",
+        help="List the sealed purchase ledger with live profit (Phase 05d).",
+    )
+    list_ledger.set_defaults(handler=list_sealed_ledger)
+
+    valuate_ledger = subparsers.add_parser(
+        "valuate-sealed-ledger",
+        help="Refresh market valuations for sealed purchases (eBay sold comps, Phase 05d).",
+    )
+    valuate_ledger.add_argument("--purchase-id", type=int, default=None, help="Value one purchase; omit for all.")
+    valuate_ledger.set_defaults(handler=valuate_sealed_ledger)
 
     index = subparsers.add_parser(
         "build-index",
