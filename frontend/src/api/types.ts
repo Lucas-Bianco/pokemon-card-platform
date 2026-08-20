@@ -565,3 +565,15 @@ export interface SealedPurchaseOut {
   bought_at: string;
   created_at: string;
 }
+
+// The POST /sealed/ledger/sync response. `synced` is false when Google Sheets
+// isn't configured (no OAuth secret at data/credentials.json or no
+// CARDPLATFORM_GOOGLE_SHEET_ID) — the backend returns `reason: "not_configured"`
+// without making any network call or raising, so the UI can show honest setup
+// instructions rather than fabricating success. `rows` is the count written on
+// a successful sync. Mirrors SheetsSyncResult in backend api.py field-for-field.
+export interface SheetsSyncResult {
+  synced: boolean;
+  rows: number;
+  reason: string | null;
+}

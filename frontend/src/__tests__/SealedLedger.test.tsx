@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import SealedLedger from "../components/SealedLedger";
-import type { SealedLedgerResponse, ValuationRefreshResult } from "../api/types";
+import type { SealedLedgerResponse, SheetsSyncResult, ValuationRefreshResult } from "../api/types";
 
 function baseEntry(over: Partial<SealedLedgerResponse["purchases"][number]> = {}) {
   return {
@@ -30,6 +30,7 @@ function baseEntry(over: Partial<SealedLedgerResponse["purchases"][number]> = {}
 function stubFetch(opts: {
   ledger?: SealedLedgerResponse;
   refresh?: ValuationRefreshResult;
+  sync?: SheetsSyncResult;
   logStatus?: number;
   deleteStatus?: number;
 } = {}) {
@@ -40,11 +41,15 @@ function stubFetch(opts: {
   const refresh: ValuationRefreshResult = opts.refresh ?? {
     valued: 1, skipped_no_comps: 0, skipped_no_key: false,
   };
+  const sync: SheetsSyncResult = opts.sync ?? { synced: true, rows: 1, reason: null };
   const spy = vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
     const u = String(url);
     const method = init?.method ?? "GET";
     if (u.includes("/sealed/ledger/valuate") && method === "POST") {
       return { ok: true, status: 200, json: async () => refresh };
+    }
+    if (u.endsWith("/sealed/ledger/sync") && method === "POST") {
+      return { ok: true, status: 200, json: async () => sync };
     }
     if (u.match(/\/sealed\/ledger\/\d+$/) && method === "DELETE") {
       return { ok: (opts.deleteStatus ?? 204) < 400, status: opts.deleteStatus ?? 204, json: async () => ({}) };
@@ -120,5 +125,24 @@ describe("SealedLedger", () => {
       const del = spy.mock.calls.find((c) => c[1]?.method === "DELETE");
       expect(del).toBeTruthy();
     });
+  });
+
+  it("syncs to Google Sheets and reports rows", async () => {
+    stubFetch({ sync: { synced: true, rows: 2, reason: null } });
+    const { container } = render(<SealedLedger />);
+    await waitFor(() => expect(container.querySelector(".deal-card")).toBeTruthy());
+    const syncBtn = [...container.querySelectorAll("button")].find((b) => /sync to google/i.test(b.textContent || "")) as HTMLButtonElement;
+    expect(syncBtn).toBeTruthy();
+    fireEvent.click(syncBtn);
+    await waitFor(() => expect(container.textContent).toMatch(/synced 2 row/i));
+  });
+
+  it("shows setup instructions when sync is not configured", async () => {
+    stubFetch({ sync: { synced: false, rows: 0, reason: "not_configured" } });
+    const { container } = render(<SealedLedger />);
+    await waitFor(() => expect(container.querySelector(".deal-card")).toBeTruthy());
+    const syncBtn = [...container.querySelectorAll("button")].find((b) => /sync to google/i.test(b.textContent || "")) as HTMLButtonElement;
+    fireEvent.click(syncBtn);
+    await waitFor(() => expect(container.textContent).toMatch(/not configured/i));
   });
 });

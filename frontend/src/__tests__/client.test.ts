@@ -15,6 +15,7 @@ import {
   recordScan,
   refreshPrice,
   removeFromCollection,
+  syncSealedLedger,
   valuateSealedLedger,
 } from "../api/client";
 import type { RecognizeResponse } from "../api/types";
@@ -401,6 +402,15 @@ describe("sealed ledger client", () => {
     vi.stubGlobal("fetch", spy);
     await valuateSealedLedger();
     expect(String(spy.mock.calls[0][0])).toContain("/api/sealed/ledger/valuate");
+    expect(spy.mock.calls[0][1]?.method).toBe("POST");
+    vi.unstubAllGlobals();
+  });
+
+  it("syncSealedLedger POSTs /api/sealed/ledger/sync", async () => {
+    const spy = mockFetch(200, { synced: true, rows: 1, reason: null });
+    vi.stubGlobal("fetch", spy);
+    await syncSealedLedger();
+    expect(String(spy.mock.calls[0][0])).toContain("/api/sealed/ledger/sync");
     expect(spy.mock.calls[0][1]?.method).toBe("POST");
     vi.unstubAllGlobals();
   });

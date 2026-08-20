@@ -18,6 +18,7 @@ import type {
   SealedDealsResponse,
   SealedLedgerResponse,
   SealedPurchaseOut,
+  SheetsSyncResult,
   SoldCompsResponse,
   Valuation,
   ValuationRefreshResult,
@@ -562,5 +563,15 @@ export async function deleteSealedPurchase(purchaseId: number): Promise<void> {
 export async function valuateSealedLedger(): Promise<ValuationRefreshResult> {
   return expectJsonOrDetail<ValuationRefreshResult>(
     await fetch(`${BASE}/sealed/ledger/valuate`, { method: "POST" }),
+  );
+}
+
+// Sync the sealed ledger to Google Sheets. Mirrors valuateSealedLedger (POST +
+// expectJsonOrDetail). The backend returns `synced: false, reason:
+// "not_configured"` when OAuth/sheet aren't set up — no network call, no raise —
+// so the UI shows honest setup instructions rather than fabricating success.
+export async function syncSealedLedger(): Promise<SheetsSyncResult> {
+  return expectJsonOrDetail<SheetsSyncResult>(
+    await fetch(`${BASE}/sealed/ledger/sync`, { method: "POST" }),
   );
 }

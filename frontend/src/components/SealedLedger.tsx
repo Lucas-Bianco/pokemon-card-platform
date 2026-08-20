@@ -4,6 +4,7 @@ import {
   deleteSealedPurchase,
   getSealedLedger,
   logSealedPurchase,
+  syncSealedLedger,
   valuateSealedLedger,
 } from "../api/client";
 import type { SealedLedgerEntry, SealedLedgerResponse } from "../api/types";
@@ -37,6 +38,7 @@ export default function SealedLedger() {
   const [logging, setLogging] = useState(false);
 
   const [refreshing, setRefreshing] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
   async function load() {
@@ -105,6 +107,26 @@ export default function SealedLedger() {
       setError(e instanceof Error ? e.message : "Couldn't refresh valuations.");
     } finally {
       setRefreshing(false);
+    }
+  }
+
+  async function sync() {
+    setSyncing(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const res = await syncSealedLedger();
+      if (!res.synced && res.reason === "not_configured") {
+        setNotice("Google Sheets not configured — place an OAuth client secret at data/credentials.json and set CARDPLATFORM_GOOGLE_SHEET_ID, then sync again.");
+      } else if (!res.synced) {
+        setNotice(`Sync did not complete: ${res.reason ?? "unknown"}.`);
+      } else {
+        setNotice(`Synced ${res.rows} row(s) to Google Sheets.`);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't sync to Google Sheets.");
+    } finally {
+      setSyncing(false);
     }
   }
 
@@ -184,6 +206,9 @@ export default function SealedLedger() {
       <div className="deals-toolbar">
         <button type="button" className="sealed-deals-btn" onClick={refresh} disabled={refreshing}>
           {refreshing ? "Refreshing…" : "Refresh valuations"}
+        </button>
+        <button type="button" className="sealed-deals-btn" onClick={sync} disabled={syncing}>
+          {syncing ? "Syncing…" : "Sync to Google Sheets"}
         </button>
       </div>
 
