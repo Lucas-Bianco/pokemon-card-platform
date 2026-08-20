@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { motion, useReducedMotion } from "framer-motion";
+
 import { getDeals, getDealsFeed, searchCards } from "../api/client";
 import type { CardSearchResult, DealAssessment, DealsResponse } from "../api/types";
 import { formatMoney } from "../lib/format";
 import { relativeTime } from "../lib/time";
+import { staggerContainer, staggerItem } from "./motion";
 
 interface Props {
   onOpenCard?: (card: { cardId: string; variant?: string }) => void;
@@ -205,6 +208,7 @@ function DealsBody({
   onRetry: () => void;
   onOpenCard?: (card: { cardId: string; variant?: string }) => void;
 }) {
+  const reduced = useReducedMotion();
   if (loading) {
     return <div className="skeleton skeleton-block" aria-label="Loading deals" />;
   }
@@ -237,11 +241,16 @@ function DealsBody({
   }
 
   return (
-    <ul className="deal-list">
+    <motion.ul
+      className="deal-list"
+      variants={staggerContainer}
+      initial={reduced ? "show" : "hidden"}
+      animate="show"
+    >
       {data.deals.map((d) => (
         <DealCard key={d.listing_id} deal={d} onOpenCard={onOpenCard} />
       ))}
-    </ul>
+    </motion.ul>
   );
 }
 
@@ -252,6 +261,7 @@ function DealCard({
   deal: DealAssessment;
   onOpenCard?: (card: { cardId: string; variant?: string }) => void;
 }) {
+  const reduced = useReducedMotion();
   const isAuction = deal.listing_type === "auction" && deal.auction_end_at;
   const countdown = auctionCountdown(deal.auction_end_at);
 
@@ -259,7 +269,13 @@ function DealCard({
   // sources carry an honest provenance. Render those where their prices show,
   // and never fabricate an "eBay" badge for the listing row itself.
   return (
-    <li className="deal-card">
+    <motion.li
+      className="deal-card"
+      variants={staggerItem}
+      whileHover={reduced ? undefined : { y: -4 }}
+      whileTap={reduced ? undefined : { scale: 0.985 }}
+      transition={{ duration: 0.16 }}
+    >
       <div className="deal-card-head">
         <a
           className="deal-title"
@@ -349,6 +365,6 @@ function DealCard({
       <p className="deal-caveat muted small">
         Investigate before buying — keyword listings carry seller-mislabel noise.
       </p>
-    </li>
+    </motion.li>
   );
 }

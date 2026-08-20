@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 
+import { motion, useReducedMotion } from "framer-motion";
+
 import { getAlerts, markAlertRead, readAllAlerts } from "../api/client";
 import type { AlertEvent, AlertType } from "../api/types";
 import { relativeTime } from "../lib/time";
+import { staggerContainer, staggerItem } from "./motion";
 
 interface Props {
   onOpenCard: (card: { cardId: string; variant?: string }) => void;
@@ -53,6 +56,7 @@ function contextUrl(context: string | null): string | null {
 }
 
 export default function AlertsFeed({ onOpenCard, onWatchCard }: Props) {
+  const reduced = useReducedMotion();
   const [events, setEvents] = useState<AlertEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -184,9 +188,20 @@ export default function AlertsFeed({ onOpenCard, onWatchCard }: Props) {
       {filtered.length === 0 ? (
         <p className="muted small">No {filter === "all" ? "" : CHIPS.find((c) => c.value === filter)?.label.toLowerCase()} alerts right now.</p>
       ) : (
-        <ul className="alert-list">
+        <motion.ul
+          className="alert-list"
+          variants={staggerContainer}
+          initial={reduced ? "show" : "hidden"}
+          animate="show"
+        >
           {filtered.map((ev) => (
-            <li key={ev.id}>
+            <motion.li
+              key={ev.id}
+              variants={staggerItem}
+              whileHover={reduced ? undefined : { y: -4 }}
+              whileTap={reduced ? undefined : { scale: 0.985 }}
+              transition={{ duration: 0.16 }}
+            >
               <button
                 className={`alert-row${ev.read_at === null ? " unread" : ""}`}
                 onClick={() => void handleRowClick(ev)}
@@ -203,9 +218,9 @@ export default function AlertsFeed({ onOpenCard, onWatchCard }: Props) {
                   </span>
                 </span>
               </button>
-            </li>
+            </motion.li>
           ))}
-        </ul>
+        </motion.ul>
       )}
     </section>
   );

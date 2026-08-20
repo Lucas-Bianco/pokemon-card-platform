@@ -1,9 +1,12 @@
 import { useState } from "react";
 
+import { motion, useReducedMotion } from "framer-motion";
+
 import { getSealedDeals } from "../api/client";
 import type { SealedDealAssessment, SealedDealsResponse } from "../api/types";
 import { formatMoney } from "../lib/format";
 import { relativeTime } from "../lib/time";
+import { staggerContainer, staggerItem } from "./motion";
 
 // The Sealed-deals screen: a search box (free-text query → getSealedDeals) +
 // a ranked flip-edge feed. Sealed products (booster boxes, ETBs, collection
@@ -75,6 +78,7 @@ export default function SealedDeals() {
 }
 
 function SealedDealsBody({ data }: { data: SealedDealsResponse }) {
+  const reduced = useReducedMotion();
   // HONEST empty states — the FEATURE, not an afterthought. A missing key and
   // a queried-but-empty source carry different honest copy; a null market
   // (no sold comps) surfaces "no market price" rather than a fabricated $0.
@@ -122,11 +126,16 @@ function SealedDealsBody({ data }: { data: SealedDealsResponse }) {
           No recent sold comps to establish a market price — flip edges unavailable.
         </p>
       )}
-      <ul className="deal-list">
+      <motion.ul
+        className="deal-list"
+        variants={staggerContainer}
+        initial={reduced ? "show" : "hidden"}
+        animate="show"
+      >
         {data.deals.map((d) => (
           <SealedDealCard key={d.listing_id} deal={d} />
         ))}
-      </ul>
+      </motion.ul>
       <p className="deal-caveat muted small">
         Edges are gross of selling fees. Investigate before buying — keyword listings carry
         seller-mislabel noise.
@@ -136,10 +145,17 @@ function SealedDealsBody({ data }: { data: SealedDealsResponse }) {
 }
 
 function SealedDealCard({ deal }: { deal: SealedDealAssessment }) {
+  const reduced = useReducedMotion();
   const isAuction = deal.listing_type === "auction" && deal.auction_end_at;
 
   return (
-    <li className="deal-card">
+    <motion.li
+      className="deal-card"
+      variants={staggerItem}
+      whileHover={reduced ? undefined : { y: -4 }}
+      whileTap={reduced ? undefined : { scale: 0.985 }}
+      transition={{ duration: 0.16 }}
+    >
       <div className="deal-card-head">
         <a
           className="deal-title"
@@ -178,6 +194,6 @@ function SealedDealCard({ deal }: { deal: SealedDealAssessment }) {
       <p className="deal-caveat muted small">
         Investigate before buying — keyword listings carry seller-mislabel noise.
       </p>
-    </li>
+    </motion.li>
   );
 }

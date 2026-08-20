@@ -1,5 +1,7 @@
 import { Fragment, useCallback, useEffect, useState } from "react";
 
+import { motion, useReducedMotion } from "framer-motion";
+
 import {
   getPriceHistory,
   getPortfolio,
@@ -9,6 +11,7 @@ import {
 import type { Portfolio, PortfolioItem, PricePoint } from "../api/types";
 import { formatMoney } from "../lib/format";
 import PriceChart from "./PriceChart";
+import { staggerContainer, staggerItem } from "./motion";
 
 interface Props {
   /** Vestigial after the app-chrome refactor: navigation back to the scan view
@@ -19,6 +22,7 @@ interface Props {
 
 // Underscore-prefixed so noUnusedParameters permits the now-unused prop.
 export default function PortfolioView(_props: Props) {
+  const reduced = useReducedMotion();
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
   const [error, setError] = useState<string | null>(null);
   // The holding row whose "History" chart is open, plus its fetched points.
@@ -99,16 +103,36 @@ export default function PortfolioView(_props: Props) {
       {error && <p className="error">{error}</p>}
 
       {summary && (
-        <div className="valuation">
-          <div>
+        <motion.div
+          className="valuation"
+          variants={staggerContainer}
+          initial={reduced ? "show" : "hidden"}
+          animate="show"
+        >
+          <motion.div
+            variants={staggerItem}
+            whileHover={reduced ? undefined : { y: -4 }}
+            whileTap={reduced ? undefined : { scale: 0.985 }}
+            transition={{ duration: 0.16 }}
+          >
             <span className="label">Market value</span>
             <strong>{formatMoney(summary.market_value)}</strong>
-          </div>
-          <div>
+          </motion.div>
+          <motion.div
+            variants={staggerItem}
+            whileHover={reduced ? undefined : { y: -4 }}
+            whileTap={reduced ? undefined : { scale: 0.985 }}
+            transition={{ duration: 0.16 }}
+          >
             <span className="label">Cost basis</span>
             <strong>{formatMoney(summary.cost_basis)}</strong>
-          </div>
-          <div>
+          </motion.div>
+          <motion.div
+            variants={staggerItem}
+            whileHover={reduced ? undefined : { y: -4 }}
+            whileTap={reduced ? undefined : { scale: 0.985 }}
+            transition={{ duration: 0.16 }}
+          >
             <span className="label">Unrealised</span>
             {/* With no cost basis recorded, "unrealised" would equal market value and read
                 as pure profit. That is not a gain, it is missing data — say so instead. */}
@@ -120,14 +144,19 @@ export default function PortfolioView(_props: Props) {
                 {formatMoney(Math.abs(summary.unrealized))}
               </strong>
             )}
-          </div>
-          <div>
+          </motion.div>
+          <motion.div
+            variants={staggerItem}
+            whileHover={reduced ? undefined : { y: -4 }}
+            whileTap={reduced ? undefined : { scale: 0.985 }}
+            transition={{ duration: 0.16 }}
+          >
             <span className="label">Priced / unpriced</span>
             <strong>
               {summary.priced_items} / {summary.unpriced_items}
             </strong>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       )}
 
       {summary && summary.cost_basis === 0 && (

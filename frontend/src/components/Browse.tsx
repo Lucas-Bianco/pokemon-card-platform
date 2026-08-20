@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 
+import { motion, useReducedMotion } from "framer-motion";
+
 import { searchCards } from "../api/client";
 import type { CardSearchResult } from "../api/types";
+import { staggerContainer, staggerItem } from "./motion";
 
 interface Props {
   onSelectCard: (selection: { cardId: string; variant?: string }) => void;
@@ -19,6 +22,7 @@ type State =
 // keystroke does not hammer the catalog. Honest empty: no matches → "No cards
 // found for '<query>'." Never fabricate a card.
 export default function Browse({ onSelectCard }: Props) {
+  const reduced = useReducedMotion();
   const [query, setQuery] = useState("");
   const [state, setState] = useState<State>({ kind: "idle" });
   // A monotonically increasing token so a late-arriving response for an older
@@ -89,9 +93,20 @@ export default function Browse({ onSelectCard }: Props) {
       )}
 
       {state.kind === "results" && (
-        <ul className="browse-results">
+        <motion.ul
+          className="browse-results"
+          variants={staggerContainer}
+          initial={reduced ? "show" : "hidden"}
+          animate="show"
+        >
           {state.results.map((r) => (
-            <li key={r.id}>
+            <motion.li
+              key={r.id}
+              variants={staggerItem}
+              whileHover={reduced ? undefined : { y: -4 }}
+              whileTap={reduced ? undefined : { scale: 0.985 }}
+              transition={{ duration: 0.16 }}
+            >
               <button
                 className="browse-result"
                 onClick={() => onSelectCard({ cardId: r.id, variant: undefined })}
@@ -108,9 +123,9 @@ export default function Browse({ onSelectCard }: Props) {
                   </span>
                 </span>
               </button>
-            </li>
+            </motion.li>
           ))}
-        </ul>
+        </motion.ul>
       )}
     </section>
   );

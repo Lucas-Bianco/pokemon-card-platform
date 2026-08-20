@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 
+import { motion, useReducedMotion } from "framer-motion";
+
 import {
   deleteSealedPurchase,
   getSealedLedger,
@@ -10,6 +12,7 @@ import {
 import type { SealedLedgerEntry, SealedLedgerResponse } from "../api/types";
 import { formatMoney } from "../lib/format";
 import { relativeTime } from "../lib/time";
+import { staggerContainer, staggerItem } from "./motion";
 
 // The Sealed-ledger screen: a form to log sealed boxes/packs you bought + a
 // list of purchases with live profit vs the eBay sold-comps median. Sealed
@@ -227,16 +230,29 @@ function LedgerBody({
   entries: SealedLedgerEntry[];
   onRemove: (id: number) => void;
 }) {
+  const reduced = useReducedMotion();
   if (entries.length === 0) {
     return <p className="muted">No purchases logged yet — log one above.</p>;
   }
   return (
-    <ul className="deal-list">
+    <motion.ul
+      className="deal-list"
+      variants={staggerContainer}
+      initial={reduced ? "show" : "hidden"}
+      animate="show"
+    >
       {entries.map((e) => {
         const profitClass =
           e.profit === null ? "" : e.profit >= 0 ? "ledger-profit pos" : "ledger-profit neg";
         return (
-          <li className="deal-card" key={e.id}>
+          <motion.li
+            className="deal-card"
+            key={e.id}
+            variants={staggerItem}
+            whileHover={reduced ? undefined : { y: -4 }}
+            whileTap={reduced ? undefined : { scale: 0.985 }}
+            transition={{ duration: 0.16 }}
+          >
             <div className="deal-card-head">
               <span className="deal-title">
                 <strong>
@@ -296,9 +312,9 @@ function LedgerBody({
                 Delete
               </button>
             </div>
-          </li>
+          </motion.li>
         );
       })}
-    </ul>
+    </motion.ul>
   );
 }
