@@ -1262,6 +1262,28 @@ def create_app() -> FastAPI:
         svc = LedgerService(session, provider=provider, settings=settings)
         return ValuationRefreshResultOut.model_validate(svc.refresh_all())
 
+    @app.post("/sealed/ledger/sync", response_model=SheetsSyncResultOut)
+    def sync_sealed_ledger(session: Session = Depends(get_session)) -> SheetsSyncResultOut:
+        """Push the full ledger to a Google Sheet (full-tab overwrite, idempotent).
+
+        Honest empty state: when OAuth/sheet aren't configured the client returns
+        `synced=False, reason="not_configured"` WITHOUT a network call or raise — the
+        front-end shows the not-configured banner instead of a failed sync. A configured
+        sync clears the tab range then writes header + rows, so the sheet mirrors the
+        ledger's current truth (edits/deletes included). Registered BEFORE the
+        {purchase_id} route so FastAPI matches the static path first.
+        """
+        from cardplatform.sealed.ledger import build_sheet_rows
+        from cardplatform.sealed.sheets import GoogleSheetsClient
+
+        provider = EbayListingsProvider(settings)
+        svc = LedgerService(session, provider=provider, settings=settings)
+        rows = build_sheet_rows(svc.list_ledger())
+        result = GoogleSheetsClient(settings).sync(rows)
+        return SheetsSyncResultOut(
+            synced=result.synced, rows=result.rows, reason=result.reason
+        )
+
     @app.post("/sealed/ledger/{purchase_id}/valuate", response_model=SealedLedgerEntryOut)
     def valuate_one_sealed_purchase(
         purchase_id: int, session: Session = Depends(get_session)

@@ -11,6 +11,7 @@ headless server.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 
 from google.oauth2.credentials import Credentials
@@ -19,6 +20,16 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from cardplatform.config import Settings, settings as default_settings
 
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
+
+
+@dataclass(frozen=True)
+class SheetsSyncResult:
+    """Outcome of a sync push. `synced=False, reason="not_configured"` is the honest
+    not-configured state — no network call, no raise. `rows` excludes the header row."""
+
+    synced: bool
+    rows: int
+    reason: str | None = None
 
 
 class GoogleSheetsClient:
@@ -54,3 +65,34 @@ class GoogleSheetsClient:
                 creds = flow.run_local_server(port=0)
             self.token_path.write_text(creds.to_json())
         return creds
+
+    def sync(self, rows: list[list[str]]) -> SheetsSyncResult:
+        """Full-tab overwrite: clear the tab range, then write header + rows. Idempotent —
+        reflects edits/deletes because the sheet is rebuilt from the ledger each push.
+
+        Returns SheetsSyncResult(synced=False, reason='not_configured') WITHOUT a network
+        call when OAuth/sheet aren't configured — never raises for that case (sacred
+        honest-empty constraint). `build` is imported lazily so this module imports cleanly
+        even if google-api-python-client has import side effects; tests patch
+        `googleapiclient.discovery.build` and the lazy name resolution picks that up.
+        """
+        if not self.is_configured():
+            return SheetsSyncResult(synced=False, rows=0, reason="not_configured")
+        from googleapiclient.discovery import build
+
+        creds = self._authorize()
+        service = build("sheets", "v4", credentials=creds)
+        tab = self.settings.google_sheet_tab
+        spreadsheet_id = self.settings.google_sheet_id
+        # Clear first so the sheet mirrors the current truth (edits/deletes included).
+        service.spreadsheets().values().clear(
+            spreadsheetId=spreadsheet_id, range=f"{tab}!A1:Z10000"
+        ).execute()
+        body = {"values": rows}
+        service.spreadsheets().values().update(
+            spreadsheetId=spreadsheet_id,
+            range=f"{tab}!A1",
+            valueInputOption="RAW",
+            body=body,
+        ).execute()
+        return SheetsSyncResult(synced=True, rows=max(0, len(rows) - 1))  # exclude header

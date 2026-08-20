@@ -116,3 +116,12 @@ def test_authorize_refreshes_expired_token(tmp_path, monkeypatch):
     assert refreshed["called"] is True
     assert creds.valid is True
     assert json.loads(s.google_token_path.read_text())["token"] == "refreshed"
+
+
+def test_sync_not_configured_returns_honest(tmp_path):
+    s = _settings(tmp_path)  # no secret file written
+    client = GoogleSheetsClient(s)
+    result = client.sync([["Date"], ["row1"]])
+    assert result.synced is False
+    assert result.reason == "not_configured"
+    assert result.rows == 0

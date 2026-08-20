@@ -377,6 +377,44 @@ def valuate_sealed_ledger(args: argparse.Namespace) -> int:
     return 0
 
 
+def sync_sealed_ledger(args: argparse.Namespace) -> int:
+    """Sync the sealed ledger to a Google Sheet (OAuth, Phase 05d).
+
+    Full-tab overwrite: clears the tab range, then writes header + rows so the sheet
+    mirrors the ledger's current truth (edits/deletes included). Honest not-configured
+    path: when OAuth/sheet aren't configured, prints setup instructions and exits 0 —
+    sync is opt-in, not an error. Mirrors the valuate-sealed-ledger handler's
+    Database() + create_all() + with db.session() shape.
+    """
+    from cardplatform.prices.ebay_listings import EbayListingsProvider
+    from cardplatform.sealed.ledger import LedgerService, build_sheet_rows
+    from cardplatform.sealed.sheets import GoogleSheetsClient
+
+    db = Database()
+    db.create_all()
+    client = GoogleSheetsClient(db.settings)
+    if not client.is_configured():
+        print("Google Sheets sync not configured. To enable:")
+        print("  1. Create a Google Cloud OAuth 2.0 Client ID (Desktop app) and download the")
+        print("     JSON as: data/credentials.json")
+        print("  2. Create a (possibly empty) Google Sheet and set its ID (from the URL) in")
+        print("     CARDPLATFORM_GOOGLE_SHEET_ID (optional tab: CARDPLATFORM_GOOGLE_SHEET_TAB,")
+        print("     default 'Sealed Ledger').")
+        print("  3. Run 'sync-sealed-ledger' once to sign in (browser) and save a token.")
+        return 0
+    with db.session() as session:
+        svc = LedgerService(
+            session, provider=EbayListingsProvider(db.settings), settings=db.settings
+        )
+        rows = build_sheet_rows(svc.list_ledger())
+    result = client.sync(rows)
+    if not result.synced:
+        print(f"Sync did not complete: {result.reason}.")
+        return 1
+    print(f"Synced {result.rows} purchase row(s) to Google Sheet '{db.settings.google_sheet_tab}'.")
+    return 0
+
+
 def build_index(args: argparse.Namespace) -> int:
     """Download every catalog image, embed it, and persist a FAISS index.
 
@@ -551,6 +589,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     valuate_ledger.add_argument("--purchase-id", type=int, default=None, help="Value one purchase; omit for all.")
     valuate_ledger.set_defaults(handler=valuate_sealed_ledger)
+
+    sync_ledger = subparsers.add_parser(
+        "sync-sealed-ledger",
+        help="Sync the sealed ledger to a Google Sheet (OAuth, Phase 05d).",
+    )
+    sync_ledger.set_defaults(handler=sync_sealed_ledger)
 
     index = subparsers.add_parser(
         "build-index",

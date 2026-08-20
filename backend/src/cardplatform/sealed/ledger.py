@@ -233,3 +233,43 @@ class LedgerService:
                 )
             )
         return entries
+
+
+def build_sheet_rows(entries: list[LedgerEntry]) -> list[list[str]]:
+    """Pure: ledger entries -> sheet rows (header first). No DB, no network.
+
+    Nulls -> "" so the sheet shows blanks, not $0 — mirrors the frontend's honest-empty
+    stance (an unvalued purchase has no market price, never a fabricated zero). Datetime
+    fields are formatted; nullable strings fall back to "".
+    """
+    header = [
+        "Date", "Product", "Type", "Qty", "Cost/Unit", "Total Cost",
+        "Market/Unit", "Total Value", "Profit", "Profit %",
+        "Valued At", "Source", "Bought From", "Notes",
+    ]
+
+    def _money(v: float | None) -> str:
+        return "" if v is None else f"{v:.2f}"
+
+    def _pct(v: float | None) -> str:
+        return "" if v is None else f"{v * 100:.0f}%"
+
+    rows = [header]
+    for e in entries:
+        rows.append([
+            e.bought_at.strftime("%Y-%m-%d") if e.bought_at else "",
+            e.query,
+            e.product_type or "",
+            str(e.quantity),
+            _money(e.cost_per_unit),
+            _money(e.total_cost),
+            _money(e.value_per_unit),
+            _money(e.total_current_value),
+            _money(e.profit),
+            _pct(e.profit_pct),
+            e.market_fetched_at.strftime("%Y-%m-%d %H:%M") if e.market_fetched_at else "",
+            e.market_source or "",
+            e.source or "",
+            e.notes or "",
+        ])
+    return rows

@@ -8,6 +8,7 @@ from cardplatform.sealed.ledger import (
     LedgerEntry,
     LedgerService,
     ValuationRefreshResult,
+    build_sheet_rows,
 )
 from cardplatform.sealed.provider import SealedSoldComp
 
@@ -163,3 +164,33 @@ def test_refresh_all_summarizes_valued_and_skipped(db):
     assert result.valued == 1
     assert result.skipped_no_comps == 1
     assert result.skipped_no_key is False
+
+
+# --------------------------------------------------------------- build_sheet_rows (T7)
+
+
+def test_build_sheet_rows_header_and_nulls_to_blank(db):
+    svc = _service(db)
+    svc.create_purchase(query="box", quantity=1, cost_per_unit=100.0)  # unvalued
+    rows = build_sheet_rows(svc.list_ledger())
+    assert rows[0][0] == "Date"
+    assert rows[0][7] == "Total Value"
+    row = rows[1]
+    assert row[1] == "box"
+    assert row[6] == ""   # market/unit blank (unvalued)
+    assert row[8] == ""   # profit blank
+    assert row[9] == ""   # profit % blank
+    assert row[5] == "100.00"  # total cost known
+
+
+def test_build_sheet_rows_valued_entry_filled(db):
+    svc = _service(db)
+    p = svc.create_purchase(query="box", quantity=2, cost_per_unit=100.0)
+    db.add(SealedValuation(purchase_id=p.id, value_per_unit=150.0, comp_count=4))
+    db.commit()
+    rows = build_sheet_rows(svc.list_ledger())
+    row = rows[1]
+    assert row[6] == "150.00"  # market/unit
+    assert row[7] == "300.00"  # total value
+    assert row[8] == "100.00"  # profit
+    assert row[9] == "50%"     # profit %
