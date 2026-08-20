@@ -13,10 +13,11 @@ rip-vs-flip) shipped 2026-08-03 — see
 [plan](docs/superpowers/plans/2026-08-03-deal-sniper.md). Phase 05c (sealed-product flip-edge)
 shipped 2026-08-19 — see
 [design spec](docs/superpowers/specs/2026-08-19-sealed-product-ev-design.md) +
-[plan](docs/superpowers/plans/2026-08-19-sealed-product-ev.md).
-Next: rip EV (expected pull value — blocked on pull-rate data) or the full Grade predictor
-(corner/edge/surface + P(grade), pending labelled-data accrual) or Phase 6 (set-completion
-optimizer).
+[plan](docs/superpowers/plans/2026-08-19-sealed-product-ev.md). Phase 05d (sealed purchase
+ledger + profit tracker + Google Sheets sync) shipped 2026-08-20.
+Next: rip EV (expected pull value — blocked on pull-rate data + a sealed-product master) or
+the full Grade predictor (corner/edge/surface + P(grade), pending labelled-data accrual) or
+Phase 6 (set-completion optimizer).
 
 **Shape:** ONE platform built in phases, not seven apps. All modules share a card-recognition core,
 a pricing layer, and a collection store. Responsive PWA (phone + desktop): React/TypeScript
@@ -60,7 +61,7 @@ Each phase ships independently usable functionality and gets its own spec → pl
 | 3c | Watchlist + restock/price/drop/auction alerts — CollectorVault-style 5-tab UI | **Complete** |
 | 3 | Grade Predictor — corner/edge/surface scoring + P(grade) + grading EV | In progress — data infra unblocked (3b); full predictor still planned |
 | 4 | Bulk cataloger — detect every card in one photo | **Complete** |
-| 5 | Deal sniper + sealed EV — listings vs. sold comps, rip-vs-flip | In progress — deal sniper / rip-vs-flip + deal alerts + sold-comps evidence shipped; sealed flip-edge shipped; rip EV (expected pull value) still planned — needs pull-rate data |
+| 5 | Deal sniper + sealed EV — listings vs. sold comps, rip-vs-flip | In progress — deal sniper / rip-vs-flip + deal alerts + sold-comps evidence shipped; sealed flip-edge shipped; sealed purchase ledger + profit tracker + Google Sheets sync shipped; rip EV (expected pull value) still planned — needs pull-rate data |
 | 6 | Set-completion optimizer — cheapest path to finish a set | Planned |
 | 7 | Counterfeit detector — holo pattern, rosette, texture analysis | Planned |
 | 8 | On-device inference — quantized model in-browser, no server | Planned |
@@ -618,8 +619,10 @@ different inputs, so the system knows when it is unsure.
 The sealed-product flip-edge (Phase 05's flip-side of the deal sniper, applied to query-keyed
 sealed products) shipped 2026-08-19 (Phase 05c) — see
 [design spec](docs/superpowers/specs/2026-08-19-sealed-product-ev-design.md) +
-[plan](docs/superpowers/plans/2026-08-19-sealed-product-ev.md). Three candidates now, all honestly
-framed:
+[plan](docs/superpowers/plans/2026-08-19-sealed-product-ev.md). The sealed purchase ledger +
+profit tracker + Google Sheets sync (OAuth) shipped 2026-08-20 (Phase 05d) — a reseller leg
+that logs buys, refreshes live profit from the 05c sold-comps median, and mirrors the ranked
+ledger to a Google Sheet. Three candidates now, all honestly framed:
 
 1. **Rip EV (expected pull value)** — the remaining Phase 05 leg. What is a sealed product worth to
    *rip open* vs. *flip sealed*? Needs **pull-rate data** we don't have yet (the per-set pull odds
@@ -636,5 +639,6 @@ framed:
 
 The deal sniper's natural follow-up — **deal alerts** (fire a 3c alert when a new listing clears
 the rip/flip thresholds) plus **eBay sold-comps evidence** backing the raw market price — shipped in
-Phase 05b (2026-08-04). The sealed flip-edge shipped 2026-08-19; the remaining Phase 05 leg is rip
-EV (expected pull value), blocked on pull-rate data.
+Phase 05b (2026-08-04). The sealed flip-edge shipped 2026-08-19 (Phase 05c); the sealed purchase
+ledger + profit tracker + Google Sheets sync shipped 2026-08-20 (Phase 05d); the remaining Phase 05
+leg is rip EV (expected pull value), blocked on pull-rate data.

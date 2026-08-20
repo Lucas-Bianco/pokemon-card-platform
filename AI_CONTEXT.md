@@ -7,7 +7,7 @@
 > **Keep it current.** Update this file after any change that alters architecture, measured
 > results, or the roadmap. A stale onboarding doc is worse than none, because it is trusted.
 >
-> Last updated: **2026-08-04**
+> Last updated: **2026-08-20**
 
 ---
 
@@ -31,7 +31,7 @@ Site: https://lucas-bianco.github.io/pokemon-card-platform/
 
 ---
 
-## 2. Current state (2026-08-04)
+## 2. Current state (2026-08-20)
 
 | Phase | What | Status |
 |---|---|---|
@@ -44,11 +44,11 @@ Site: https://lucas-bianco.github.io/pokemon-card-platform/
 | 3b | Grading data infrastructure: rectified-crop persistence, grade-label schema + self-annotation, graded-price provider, grading-upside spread | ✅ Complete |
 | 3c | Watchlist + restock/price/drop/auction alerts (CollectorVault-style 5-tab UI) | ✅ Complete (§11) |
 | 4 | Bulk cataloger: many cards per photo | ✅ Complete (§14) |
-| 5 | Deal sniper + sealed EV | In progress — deal sniper / rip-vs-flip shipped (§12); deal alerts + sold-comps evidence shipped (§13); sealed flip-edge shipped (§15); rip EV (expected pull value) still planned — needs pull-rate data |
+| 5 | Deal sniper + sealed EV | In progress — deal sniper / rip-vs-flip shipped (§12); deal alerts + sold-comps evidence shipped (§13); sealed flip-edge shipped (§15); sealed purchase ledger + profit tracker + Google Sheets sync (OAuth) shipped (§16); rip EV (expected pull value) still planned — needs pull-rate data |
 | 6 | Set-completion optimizer | Planned |
 | 7 | Counterfeit detector | Planned |
 
-**Tests:** 530 backend (pytest) + 115 frontend (vitest).
+**Tests:** 568 backend (pytest) + 126 frontend (vitest).
 
 ### UI — "Grading Lab" (2026-08-01)
 
@@ -907,3 +907,59 @@ a product master — the "product" is currently the user's free-text query, no `
 master yet); a sealed snapshot table (deals are on-demand now, never stale in storage);
 TCGplayer sealed API (eBay Finding API is the only source; a second swappable source is the
 upgrade path); a separate `sealed_*` API key if a non-eBay sealed source is added.
+
+---
+
+## 16. Phase 05d — Sealed purchase ledger + profit tracker + Google Sheets sync
+
+Shipped 2026-08-20 on `main`. **568 backend + 126 frontend tests.** A reseller-facing
+sealed-product purchase ledger on top of the 05c sealed flip-edge: log what you bought
+(query, product type, quantity, cost per unit, source, listing url, notes, bought-at),
+refresh market valuations on demand from the 05c
+`EbayListingsProvider.fetch_sold_listings_by_query` sold-comps median, and mirror the
+ranked profit ledger to a Google Sheet via OAuth. The same "never fake missing data"
+discipline throughout: profit is `—` until a valuation exists (never `$0`); valuations are
+append-only (insert never update); Sheets is a mirror that degrades to `not_configured`
+without a network call. No recognition code changed this phase — the 105-scan baseline
+replays with **0 regressions**.
+
+**Two new tables, auto-provisioned by `Database.create_all()` (no migration):**
+- **`sealed_purchases`** (user-editable) — `query`, `product_type`, `quantity`,
+  `cost_per_unit`, `source`, `listing_url`, `notes`, `bought_at`, `created_at`.
+- **`sealed_valuations`** (append-only market snapshots) — `purchase_id` FK,
+  `value_per_unit`, `source="ebay_sold_median"`, `comp_count`, `fetched_at`. Insert never
+  update — the history of market reads accrues like `PriceSnapshot`.
+
+**`LedgerService`** — CRUD over `sealed_purchases` + on-demand valuation refresh (reuses
+the 05c `EbayListingsProvider.fetch_sold_listings_by_query` + `statistics.median` to write
+a new `sealed_valuations` row) + read-only profit: the latest valuation is `max(id) per
+purchase`; `profit = value×qty − cost×qty`; `None` if unvalued; div-zero guard on
+`profit_pct`. Sacred: profit reads the latest *persisted* valuation — never an ad-hoc fetch.
+
+**Routes** — `GET/POST/DELETE /sealed/ledger`, `POST /sealed/ledger/valuate` (refresh all),
+`POST /sealed/ledger/{id}/valuate` (refresh one), `POST /sealed/ledger/sync` (Sheets
+mirror). **CLI** — `log-sealed-purchase`, `list-sealed-ledger`, `valuate-sealed-ledger`,
+`sync-sealed-ledger`. **Frontend** — 8th bottom-nav **Ledger** tab (`SealedLedger.tsx` —
+log form + ranked ledger with per-row profit, Refresh valuations, Sync to Google Sheets;
+honest `—` for unvalued rows, never `$0`).
+
+**Google Sheets setup (OAuth, gitignored secrets).** Create an OAuth Desktop client in
+Google Cloud Console → download the client secret JSON to `data/credentials.json`; set
+`CARDPLATFORM_GOOGLE_SHEET_ID` to the target sheet's ID. First `sync` opens a browser
+sign-in via `google-auth-oauthlib` `InstalledAppFlow` (scope `spreadsheets`) and stashes the
+token at `data/google_token.json`. Both `data/credentials.json` and `data/google_token.json`
+are gitignored. Sync is a **full-tab overwrite** (clear + write header + rows), idempotent.
+`is_configured()` = sheet_id set AND secret file exists; not configured →
+`synced=False, reason="not_configured"` (no network, no raise). The Sheet is a mirror, never
+a source of truth.
+
+**Sacred constraints held:** profit reads the latest *persisted* valuation (never ad hoc);
+valuations append-only (insert never update); honest empties (`—` / not-configured, never
+`$0`); Sheets is a mirror that degrades to not-configured; providers degrade never raise;
+no ad-hoc price resolution (the only "price" is the 05c sold-comps median); no `data/`
+deletion; recognition + 105-scan baseline untouched (0 regressions).
+
+**Documented follow-ups (not solved):** the 8-tab bottom nav is tight on narrow screens
+(minor, no blocker); rip EV (expected pull value) still data-blocked (no pull rates) —
+deferred, mirrors 05c; a `SealedProduct` master (the "product" is currently the user's
+free-text query).
