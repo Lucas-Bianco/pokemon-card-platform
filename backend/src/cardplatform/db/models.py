@@ -344,3 +344,35 @@ class PushSubscription(Base):
     p256dh: Mapped[str] = mapped_column(String)
     auth: Mapped[str] = mapped_column(String)
     created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=_utcnow)
+
+
+class SealedPurchase(Base):
+    """A reseller's logged sealed-product buy. User-editable (distinct from recognition
+    snapshots — resellers correct mistakes). The immutable core of a ledger entry."""
+
+    __tablename__ = "sealed_purchases"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    query: Mapped[str] = mapped_column(String, index=True)
+    product_type: Mapped[str | None] = mapped_column(String, default=None)
+    quantity: Mapped[int] = mapped_column(Integer, default=1)
+    cost_per_unit: Mapped[float] = mapped_column(Float)
+    source: Mapped[str | None] = mapped_column(String, default=None)
+    listing_url: Mapped[str | None] = mapped_column(String, default=None)
+    notes: Mapped[str | None] = mapped_column(String, default=None)
+    bought_at: Mapped[datetime] = mapped_column(UtcDateTime, default=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=_utcnow)
+
+
+class SealedValuation(Base):
+    """Append-only market snapshot for a purchase — the sealed surface's price-snapshot
+    store (mirrors PriceSnapshot immutability: insert, never update). Latest per purchase
+    = max(id). Sourced via the eBay sold-comps provider + median; never fabricated."""
+
+    __tablename__ = "sealed_valuations"
+    __table_args__ = (Index("ix_valuation_lookup", "purchase_id", "fetched_at"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    purchase_id: Mapped[int] = mapped_column(ForeignKey("sealed_purchases.id"), index=True)
+    value_per_unit: Mapped[float] = mapped_column(Float)
+    source: Mapped[str] = mapped_column(String, default="ebay_sold_median")
+    comp_count: Mapped[int] = mapped_column(Integer, default=0)
+    fetched_at: Mapped[datetime] = mapped_column(UtcDateTime, default=_utcnow)
