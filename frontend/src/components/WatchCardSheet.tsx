@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { motion, useReducedMotion } from "framer-motion";
 
 import { createWatch, searchCards } from "../api/client";
 import { ALERT_TYPES } from "../api/client";
@@ -67,6 +68,7 @@ const TYPE_INFO: Record<
 // vending drop with no card). 422s from the backend surface as a helpful error
 // string rather than a bare status code.
 export default function WatchCardSheet({ cardId, variant, onClose, onCreated }: Props) {
+  const reduced = useReducedMotion();
   const [alertType, setAlertType] = useState<AlertType>("restock");
   const [targetPrice, setTargetPrice] = useState("");
   const [dropAt, setDropAt] = useState("");
@@ -179,14 +181,27 @@ export default function WatchCardSheet({ cardId, variant, onClose, onCreated }: 
   }
 
   return (
-    <div className="sheet-overlay" onClick={onClose}>
-      <div
+    <motion.div
+      className="sheet-overlay"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.16 }}
+      onClick={onClose}
+    >
+      <motion.div
         className="sheet"
         ref={sheetRef}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
         aria-label="Watch a card"
+        initial={reduced ? { opacity: 0 } : { opacity: 0, y: 24, scale: 0.98 }}
+        animate={reduced ? { opacity: 1 } : { opacity: 1, y: 0, scale: 1 }}
+        transition={
+          reduced
+            ? { duration: 0.15 }
+            : { type: "spring", stiffness: 320, damping: 30, mass: 0.9 }
+        }
       >
         <div className="sheet-handle" aria-hidden="true" />
         <header className="sheet-head">
@@ -359,7 +374,7 @@ export default function WatchCardSheet({ cardId, variant, onClose, onCreated }: 
             </button>
           </form>
         )}
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 }

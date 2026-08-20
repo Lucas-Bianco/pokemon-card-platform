@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { AnimatePresence } from "framer-motion";
 
 import { useIsDesktop } from "../lib/useIsDesktop";
 import { getUnreadCount } from "../api/client";
@@ -15,6 +16,7 @@ import ScanResult from "./ScanResult";
 import SealedDeals from "./SealedDeals";
 import SealedLedger from "./SealedLedger";
 import WatchCardSheet from "./WatchCardSheet";
+import { PageTransition } from "./motion";
 
 // The scan flow stays owned by App (which holds the recognition state and the
 // scan-log callbacks); AppShell receives it as a bundle so it can render the
@@ -134,37 +136,57 @@ export default function AppShell({ scan }: Props) {
       </header>
 
       <div className="app-content">
-        {selectedCard ? (
-          <CardDetail
-            cardId={selectedCard.cardId}
-            variant={selectedCard.variant}
-            onBack={() => setSelectedCard(null)}
-            onWatchCard={(c) => openWatchSheet(c)}
-          />
-        ) : view === "scan" ? (
-          <ScanPane
-            scan={scan}
-            onViewCard={(cardId) => setSelectedCard({ cardId })}
-            onWatchCard={(card) => openWatchSheet(card)}
-          />
-        ) : view === "vault" ? (
-          <PortfolioView />
-        ) : view === "alerts" ? (
-          <AlertsFeed
-            onOpenCard={(c) => setSelectedCard(c)}
-            onWatchCard={(c) => openWatchSheet(c)}
-          />
-        ) : view === "deals" ? (
-          <Deals onOpenCard={(c) => setSelectedCard(c)} />
-        ) : view === "ledger" ? (
-          <SealedLedger />
-        ) : view === "sealed" ? (
-          <SealedDeals />
-        ) : view === "browse" ? (
-          <Browse onSelectCard={(c) => setSelectedCard(c)} />
-        ) : (
-          <More />
-        )}
+        <AnimatePresence mode="wait">
+          {selectedCard ? (
+            <PageTransition id="card">
+              <CardDetail
+                cardId={selectedCard.cardId}
+                variant={selectedCard.variant}
+                onBack={() => setSelectedCard(null)}
+                onWatchCard={(c) => openWatchSheet(c)}
+              />
+            </PageTransition>
+          ) : view === "scan" ? (
+            <PageTransition id="scan">
+              <ScanPane
+                scan={scan}
+                onViewCard={(cardId) => setSelectedCard({ cardId })}
+                onWatchCard={(card) => openWatchSheet(card)}
+              />
+            </PageTransition>
+          ) : view === "vault" ? (
+            <PageTransition id="vault">
+              <PortfolioView />
+            </PageTransition>
+          ) : view === "alerts" ? (
+            <PageTransition id="alerts">
+              <AlertsFeed
+                onOpenCard={(c) => setSelectedCard(c)}
+                onWatchCard={(c) => openWatchSheet(c)}
+              />
+            </PageTransition>
+          ) : view === "deals" ? (
+            <PageTransition id="deals">
+              <Deals onOpenCard={(c) => setSelectedCard(c)} />
+            </PageTransition>
+          ) : view === "ledger" ? (
+            <PageTransition id="ledger">
+              <SealedLedger />
+            </PageTransition>
+          ) : view === "sealed" ? (
+            <PageTransition id="sealed">
+              <SealedDeals />
+            </PageTransition>
+          ) : view === "browse" ? (
+            <PageTransition id="browse">
+              <Browse onSelectCard={(c) => setSelectedCard(c)} />
+            </PageTransition>
+          ) : (
+            <PageTransition id="more">
+              <More />
+            </PageTransition>
+          )}
+        </AnimatePresence>
       </div>
 
       {watchSheet.open && (
