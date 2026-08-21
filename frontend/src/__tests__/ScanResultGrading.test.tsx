@@ -248,4 +248,26 @@ describe("ScanResult grading annotation", () => {
     // The spread headline carries the "not a prediction" caveat.
     expect(container.textContent ?? "").toMatch(/spread, not a prediction/i);
   });
+
+  it("renders the GradingStudio when a card is present", async () => {
+    stubFetch();
+
+    const { container } = render(
+      <ScanResult
+        result={response()}
+        variant="holofoil"
+        scanId={42}
+        onConfirm={noop}
+        onPick={noop}
+        onReject={noop}
+        onRescan={noop}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector(".grading-studio")).not.toBeNull();
+    });
+    // centering is null in response() -> studio shows "unmeasured".
+    expect(container.textContent ?? "").toMatch(/unmeasured/i);
+  });
 });

@@ -5,6 +5,7 @@ import type { Grader, GradingLabel, RecognizeResponse } from "../api/types";
 import { statusLabel } from "../lib/format";
 import CandidatePicker from "./CandidatePicker";
 import CenteringPanel from "./CenteringPanel";
+import GradingStudio from "./GradingStudio";
 import GradingUpside from "./GradingUpside";
 import PriceLine from "./PriceLine";
 
@@ -144,6 +145,12 @@ export default function ScanResult({
       {/* Absent whenever the border could not be measured. There is nothing to say in
           that case, so the panel does not appear at all rather than as an empty box. */}
       {result.centering && <CenteringPanel centering={result.centering} />}
+
+      {/* A pre-submission self-assessment: the measured centering ceiling plus the
+          user's own corner/edge/surface sub-score estimates -> an estimated grade
+          band. A calculator of the user's inputs, not a prediction from the image.
+          Card-gated like GradingUpside/CenteringPanel — no card, no estimate. */}
+      {card && <GradingStudio centering={result.centering} grader="PSA" />}
 
       {result.collector_number_read && (
         <p className="ocr-note">Read card number: {result.collector_number_read}</p>
