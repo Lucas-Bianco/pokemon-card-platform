@@ -57,6 +57,8 @@ Site: https://lucas-bianco.github.io/pokemon-card-platform/
 | 13 | Online shopping assistant — paste a listing URL or scan → deal/worth/authenticity read | ⬜ Planned — extends 05b/05c; gap TBD |
 | 14 | Publishable-app overhaul — packaged desktop app, hosted service, or polished OSS release | ⬜ Planned — branch decision pending |
 | 15 | Private repo + Pages relocation | ⬜ Planned — breaks Pages on free plan; needs paid plan or separate host |
+| 16 | Proof of sales — every market price backed by viewable sold-comps (date, price, source link) | ⬜ Planned — honest differentiator; reuses 05b/05c sold-comps |
+| 17 | Multi-TCG platform — Magic (Scryfall) + Topps sports cards | ⬜ Planned — future multi-domain arc; separate catalogs + recognition models |
 
 **Tests:** 609 backend (pytest) + 182 frontend (vitest).
 

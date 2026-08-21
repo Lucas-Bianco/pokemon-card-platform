@@ -85,6 +85,8 @@ Each phase ships independently usable functionality and gets its own spec → pl
 | 13 | Online shopping assistant — paste a listing URL or scan → instant deal/worth/authenticity read | Planned — extends 05b deal alerts + 05c sealed flip-edge; gap vs. existing features to be defined |
 | 14 | Publishable-app overhaul — make it a real app you can publish | Planned — three branches: (a) packaged desktop app (Tauri/Electron, user-brings-keys), (b) hosted multi-user service (cost/ToS/security), (c) polished open-source release; decision pending |
 | 15 | Private repo + Pages relocation — make the repo private and relocate the marketing site so Pages survives | Planned — one command but breaks the live Pages site on a free GitHub plan; needs a paid plan or a separate public repo / Cloudflare Pages host |
+| 16 | Proof of sales — every market price backed by viewable sold-comps (date, price, source link) | Planned — the honest differentiator; 99% of price apps assert a number and never prove anyone paid it; reuses existing sold-comps (05b/05c) |
+| 17 | Multi-TCG platform — extend beyond Pokémon to Magic: The Gathering (Scryfall) + Topps sports cards | Planned — future multi-domain arc; separate catalogs, price providers, and recognition models per domain |
 
 ## Key decisions
 
