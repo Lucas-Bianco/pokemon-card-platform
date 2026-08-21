@@ -63,6 +63,27 @@ function stubFetch(label: GradingLabel | null = null) {
         }),
       };
     }
+    if (u.includes("/authenticity")) {
+      // The AuthenticityPanel also fetches from ScanResult; return a clean
+      // match payload so the panel renders without an error state in these
+      // grading-focused tests.
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          caveat: "guide, not a verdict",
+          consistency: {
+            printed_number: "4",
+            catalog_number: "4",
+            card_id: "base1-4",
+            card_name: "Charizard",
+            match: "match",
+            note: "matches",
+          },
+          checklist: [],
+        }),
+      };
+    }
     return { ok: false, status: 404, json: async () => ({}) };
   });
   vi.stubGlobal("fetch", spy);

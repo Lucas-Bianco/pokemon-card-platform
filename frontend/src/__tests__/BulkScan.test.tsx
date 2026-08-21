@@ -78,6 +78,27 @@ function stubFetch() {
       };
     }
     // Existing single-card scan logging (not used in bulk, but kept for safety).
+    // Authenticity panel — a clean no_card payload so it renders without error
+    // in these batch-focused tests (the /scans branch below would otherwise match
+    // /scans/{id}/authenticity and return a Scan-shaped body with no consistency).
+    if (u.includes("/authenticity")) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          caveat: "guide, not a verdict",
+          consistency: {
+            printed_number: null,
+            catalog_number: null,
+            card_id: null,
+            card_name: null,
+            match: "no_card",
+            note: "No card recognized.",
+          },
+          checklist: [],
+        }),
+      };
+    }
     if (u.includes("/scans")) {
       return {
         ok: true,

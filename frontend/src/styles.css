@@ -2331,3 +2331,60 @@ body::before {
 @media (min-width: 880px) {
   .sets-list { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* Phase 07 — Authenticity check (honest counterfeit tool). Mirrors the Grading
+   Studio's glass panel. The consistency status is colour-coded: match = ok,
+   mismatch = warn (attention, not alarm — it's an honest ambiguity), unread /
+   no_card = muted. Never a red "FAKE" — the whole panel is a guide, not a verdict. */
+.authenticity-panel {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-3);
+  box-shadow: var(--shadow-glass);
+  padding: var(--sp-4);
+  margin-top: var(--sp-3);
+  animation: studio-in 0.32s ease both;
+}
+.authenticity-headline { margin: 0; font-size: 0.95rem; font-weight: 600; }
+.authenticity-caveat { margin: 4px 0 0; }
+
+.authenticity-consistency {
+  margin-top: var(--sp-3);
+  padding: var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-2);
+  background: var(--surface);
+}
+.consistency-status { font-weight: 600; font-size: 0.9rem; }
+.consistency-note { margin: 4px 0 0; font-size: 0.8rem; color: var(--fg-dim); }
+.authenticity-consistency.match .consistency-status { color: var(--ok); }
+.authenticity-consistency.mismatch .consistency-status { color: var(--warn); }
+.authenticity-consistency.unread .consistency-status,
+.authenticity-consistency.no_card .consistency-status { color: var(--fg-dim); }
+
+.authenticity-checklist {
+  list-style: none;
+  margin: var(--sp-3) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+.checklist-item {
+  padding: var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-2);
+  background: var(--surface);
+}
+.checklist-item.na { opacity: 0.6; }
+.checklist-head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--sp-2); }
+.checklist-title { font-weight: 600; font-size: 0.85rem; }
+.checklist-na { white-space: nowrap; }
+.checklist-row { display: flex; gap: var(--sp-2); align-items: flex-start; margin-top: var(--sp-2); }
+.checklist-row input[type="checkbox"] { margin-top: 2px; accent-color: var(--accent); flex: none; }
+.checklist-body { display: flex; flex-direction: column; gap: 2px; }
+.checklist-what { font-size: 0.8rem; }
+.checklist-caveat { font-size: 0.72rem; }
+@media (prefers-reduced-motion: reduce) {
+  .authenticity-panel { animation: none; }
+}

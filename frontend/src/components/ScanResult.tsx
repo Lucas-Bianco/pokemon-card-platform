@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { getGradeLabel, postGradeLabel } from "../api/client";
 import type { Grader, GradingLabel, RecognizeResponse } from "../api/types";
 import { statusLabel } from "../lib/format";
+import AuthenticityPanel from "./AuthenticityPanel";
 import CandidatePicker from "./CandidatePicker";
 import CenteringPanel from "./CenteringPanel";
 import GradingStudio from "./GradingStudio";
@@ -151,6 +152,12 @@ export default function ScanResult({
           band. A calculator of the user's inputs, not a prediction from the image.
           Card-gated like GradingUpside/CenteringPanel — no card, no estimate. */}
       {card && <GradingStudio centering={result.centering} grader="PSA" />}
+
+      {/* The honest counterfeit tool: the one measurable auto-signal (printed
+          number vs catalog) + a user-driven physical checklist. A guide, never a
+          verdict — see AuthenticityPanel. Card-gated like GradingStudio: without
+          a recognized card there is no catalog number to cross-check. */}
+      {card && scanId !== null && <AuthenticityPanel scanId={scanId} />}
 
       {result.collector_number_read && (
         <p className="ocr-note">Read card number: {result.collector_number_read}</p>
