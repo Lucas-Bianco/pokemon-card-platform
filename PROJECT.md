@@ -25,7 +25,10 @@ sub-scores → estimated grade, confidence, binding, caveats; the transparent fo
 predictor, since a learned one is impossible with 0 labelled scans) shipped 2026-08-21 — see
 [plan](docs/superpowers/plans/2026-08-21-grading-studio.md). Set-completion optimizer
 (Phase 06 — per-set owned/missing checklist + honest cost to complete via `latest_price`) shipped
-2026-08-22 — see [plan](docs/superpowers/plans/2026-08-21-set-completion.md).
+2026-08-22 — see [plan](docs/superpowers/plans/2026-08-21-set-completion.md). Authenticity check
+/ honest counterfeit tool (Phase 07 — catalog-consistency auto-check + user-driven physical
+checklist; the CV-forensic detector was tested and disproven on the 600×825 phone crops) shipped
+2026-08-21.
 Next: rip EV (expected pull value — blocked on pull-rate data + a sealed-product master) or
 the full Grade predictor (corner/edge/surface + P(grade), pending labelled-data accrual).
 
@@ -73,7 +76,7 @@ Each phase ships independently usable functionality and gets its own spec → pl
 | 4 | Bulk cataloger — detect every card in one photo | **Complete** |
 | 5 | Deal sniper + sealed EV — listings vs. sold comps, rip-vs-flip | In progress — deal sniper / rip-vs-flip + deal alerts + sold-comps evidence shipped; sealed flip-edge shipped; sealed purchase ledger + profit tracker + Google Sheets sync shipped; rip EV (expected pull value) still planned — needs pull-rate data |
 | 6 | Set-completion optimizer — cheapest path to finish a set | **Complete** — per-set owned/missing checklist + honest cost-to-complete via `latest_price`; 10th Sets tab + SetDetail overlay shipped 2026-08-22 |
-| 7 | Counterfeit detector — holo pattern, rosette, texture analysis | Planned |
+| 7 | Counterfeit detector — holo pattern, rosette, texture analysis | **Complete (honest form only)** — CV-forensic detector disproven on the 600×825 phone crops (halftone/holo/sharpness/color unmeasurable, 0 confirmed-fake samples). Ships instead: catalog-consistency auto-check (printed number vs catalog) + rarity-gated physical checklist, never a fake/real verdict. Shipped 2026-08-21 |
 | 8 | On-device inference — quantized model in-browser, no server | Planned |
 
 ## Key decisions
@@ -787,3 +790,36 @@ no `data/` writes. **584 backend + 175 frontend tests green; build clean; 105-sc
 `getByRole("button", { name: "Scan" })` still resolves to one element. All new classes are distinct; no
 frozen string touched. **Sacred constraints held** — `latest_price` only; staleness surfaced;
 `func.lower().like()`; honest 0% / `—` / "no market price"; read-only. 105-scan baseline 0 regressions.
+
+## Authenticity check / honest counterfeit tool — shipped 2026-08-21
+
+The roadmap's "Counterfeit detector (holo pattern, rosette, texture analysis)" was empirically
+disproven before building it: halftone-rosette FFT, holo coverage, edge sharpness, and color-delta-vs-
+catalog were all measured on the 306 persisted 600×825 rectified phone crops and found unmeasurable
+(halftone ratio ~0.76 ± 0.03 — no peak, just noise; the rest lighting/focus-dominated), and the project
+has zero confirmed-counterfeit samples to calibrate a learned check against. So the honest version ships
+instead, mirroring the Grading Studio: the one measurable auto-signal + a transparent user-driven
+checklist, never a fake/real verdict. **609 backend + 182 frontend tests green; build clean; 105-scan
+baseline untouched** (zero recognition/detection code changed).
+
+- **Consistency — `backend/src/cardplatform/authenticity/consistency.py`** — pure module. `_normalize`
+  strips leading zeros, the trailing `/165` set-size denominator, whitespace, non-digits
+  (`"080/165"`→`"80"`, `"No.080"`→`"80"`). `check_consistency` → frozen `ConsistencyResult`,
+  `match ∈ {match, mismatch, unread, no_card}`. A mismatch is deliberately not a counterfeit verdict —
+  the note says "recognition was wrong OR counterfeit, the app cannot tell which" (0 confirmed fakes).
+  Real signal in the data: a scan matched `sv9-35` but OCR read `043`.
+- **Checklist — `backend/src/cardplatform/authenticity/checklist.py`** — five physical checks
+  (rosette/loupe, holo light test, edge layering, card-stock opacity, font sharpness), each with an honest
+  `caveat`. Holo light test rarity-gated (`applies` only when rarity contains "holo"; baseline scans carry
+  no `variant`). Non-applicable items returned as `applies:false` so the UI shows "N/A", not hidden.
+- **API — `GET /scans/{scan_id}/authenticity`** → `AuthenticityOut { caveat, consistency, checklist }`.
+  Resolves card from scan (corrected over predicted; orphaned id → `no_card`). A not_found scan returns
+  200 with the checklist + `no_card` consistency (the physical checks still apply), not a 404.
+- **Frontend — `AuthenticityPanel.tsx`** — card+scanId-gated in ScanResult after GradingStudio. Caveat
+  banner + consistency block (match=ok / mismatch=warn / unread & no_card=muted — never red) + rarity-
+  gated checklist. Checkboxes are local scratchpad state, never persisted.
+
+**Sacred constraints held** — read-only (no new tables/migrations/snapshots/`data/` writes); honest empty
+states (no_card/unread explained, never a fake/real score); providers never raise. 105-scan baseline 0
+regressions. **Deferred:** a `CounterfeitLabel` store mirroring `GradingLabel` is the only honest path to a
+real detector (same labelled-data gate as the grade predictor).

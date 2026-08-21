@@ -49,9 +49,9 @@ Site: https://lucas-bianco.github.io/pokemon-card-platform/
 | UI+ | Living UI — Dashboard (Home) landing (animated count-up KPIs + allocation donut + movers bars), Cmd/Ctrl+K command palette + keyboard shortcuts, toast system, animated gradient mesh | ✅ Complete 2026-08-20 (§18) — frontend-only; 146 tests green; 105-scan baseline untouched |
 | 3d | Grading Studio — honest user-assisted grade-band calculator (measured centering ceiling + user corner/edge/surface sub-scores → estimated grade, confidence, binding, caveats) | ✅ Complete 2026-08-21 (§19) — frontend-only; 165 tests green; 105-scan baseline untouched |
 | 6 | Set-completion optimizer | ✅ Complete 2026-08-22 (§20) — backend + frontend; 584 backend + 175 frontend tests green; 105-scan baseline untouched |
-| 7 | Counterfeit detector | Planned |
+| 7 | Counterfeit detector | ✅ Complete 2026-08-21 (§21) — honest tool only: catalog-consistency auto-check + physical checklist (CV-forensic detector disproven on this data); backend + frontend; 609 backend + 182 frontend tests green; 105-scan baseline untouched |
 
-**Tests:** 584 backend (pytest) + 175 frontend (vitest).
+**Tests:** 609 backend (pytest) + 182 frontend (vitest).
 
 ### UI — "Grading Lab" (2026-08-01)
 
@@ -1174,3 +1174,69 @@ untouched.
 **Deferred follow-ups** — per-variant completion (today any-variant-owned marks a card complete);
 cheapest-listing cost-to-complete via `ListingsService` (today uses `latest_price` market); a `0` digit
 shortcut for the 10th tab (digits 1–9 cover the first nine only).
+
+## 21. Phase 07 — Authenticity check / honest counterfeit tool (2026-08-21)
+
+The roadmap row 7 said "Counterfeit detector". The CV-forensic version of that —
+halftone-rosette detection (FFT), holographic coverage, edge sharpness, color delta
+vs catalog — was **tested on the real 306 persisted 600×825 rectified phone crops
+and disproven**: the halftone FFT ratio is ~0.76 ± 0.03 (a real offset-print peak
+would be >>1.0; here it's below 1.0 with negligible variance = no peak, just noise),
+and holo/sharpness/color are lighting- and focus-dominated, not discriminative.
+The 105 baseline scans aren't even linked to their crops (`rectified_path` is NULL
+for all of them — they predate Phase 3b). And the project has **zero confirmed-
+counterfeit samples** to calibrate any learned check against. So a "CV signal
+extractor that scores fake/real" would fabricate signals that aren't there —
+forbidden by the sacred constraints.
+
+This is the **third false premise caught by empirical diagnosis** on this dataset
+(centering coverage and the recognition-vs-decline split were the first two). The
+honest version ships instead, mirroring the Grading Studio (§19): measure the one
+signal the data supports, surface the rest as a transparent user-driven guide,
+never a verdict.
+
+**The one honest auto-signal — catalog-consistency.** OCR reads the printed
+collector number off the card; the recognition pipeline matches it to a catalog
+card with a canonical number. The cross-check between the two is real and
+discriminating in the existing data (e.g. a scan matched `sv9-35` but OCR read
+`043` — a genuine mismatch). `authenticity/consistency.py` is a pure module:
+`_normalize` strips leading zeros, the trailing `/165` set-size denominator,
+whitespace, and non-digits (`"080/165"` → `"80"`, `"No.080"` → `"80"`); `check_consistency`
+returns a frozen `ConsistencyResult` with `match ∈ {match, mismatch, unread, no_card}`
+and an honest `note`. A **mismatch is deliberately not a counterfeit verdict** — the
+note says "the recognition was wrong OR the card is a counterfeit, the app cannot
+tell which", because the project has 0 confirmed fakes to disambiguate.
+
+**The user-driven physical checklist — `authenticity/checklist.py`.** Five checks a
+collector performs by hand (rosette-under-loupe, light test for holo, edge layering,
+card-stock opacity, font/printing sharpness), each carrying an honest `caveat`. The
+holo light test is rarity-gated (`applies` true only when rarity contains "holo";
+baseline scans carry no `variant`, so rarity is the working signal). Non-applicable
+items are still returned so the UI renders them as "N/A for this card type" rather
+than silently omitting a check that exists.
+
+**API** — `GET /scans/{scan_id}/authenticity` → `AuthenticityOut { caveat, consistency,
+checklist }`. Resolves the card honestly from the scan (corrected_card_id over
+predicted_card_id; an orphaned id whose Card row is gone reads as `no_card`, not a
+fabricated number). A not_found scan returns 200 with the checklist + a `no_card`
+consistency (the physical checks still apply to a card the pipeline failed to
+recognize), not a 404. The `caveat` banner is server-sourced so it's versioned.
+
+**Frontend** — `AuthenticityPanel.tsx`, card+scanId-gated in `ScanResult.tsx` after
+the Grading Studio. Caveat banner + consistency block (match=ok / mismatch=warn /
+unread & no_card=muted — never a red verdict) + rarity-gated checklist. Checkboxes
+are local scratchpad state, never persisted (like the Grading Studio's sub-score
+sliders) — a future task that collects confirmed-counterfeit labels, mirroring
+`GradingLabel`, is the only honest path to a real detector.
+
+**Sacred constraints held** — read-only (no new tables/migrations/snapshots/`data/`
+writes; no recognition/detection change); honest empty states (no_card/unread
+explained, never a fake/real score); providers never raise; `func.lower()`-style
+normalization, not `ilike`. 609 backend + 182 frontend tests green; 105-scan
+baseline untouched (zero recognition/detection code changed).
+
+**Deferred follow-ups** — a `CounterfeitLabel` store mirroring `GradingLabel` (the
+only honest path to a real detector, same as the grade predictor needs labelled
+data); variant-aware checklist gating once scans carry non-null `variant`; per-card
+reference-image color comparison (today uncomputable — baseline `rectified_path` is
+NULL — and white-balance-dominated even when computable).
