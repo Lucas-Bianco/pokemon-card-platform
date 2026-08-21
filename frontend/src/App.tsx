@@ -10,6 +10,7 @@ import {
 } from "./api/client";
 import type { RecognizeResponse } from "./api/types";
 import AppShell from "./components/AppShell";
+import { useToast } from "./components/Toast";
 
 const VARIANT = "normal";
 
@@ -27,6 +28,7 @@ const BULK_MAX_CARDS = 9;
 // prior 2-view toggle + standalone bottom-nav gating is gone — 5 surfaces need
 // a persistent bottom nav in-browser and PWA alike.
 export default function App() {
+  const { toast } = useToast();
   const [result, setResult] = useState<RecognizeResponse | null>(null);
   const [scanId, setScanId] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
@@ -96,10 +98,11 @@ export default function App() {
       if (result?.card) {
         await addToCollection(result.card.id, VARIANT, acquiredPrice).catch(() => null);
         setNote(`Added ${result.card.name} to your collection.`);
+        toast("Added to collection", "success");
       }
       if (scanId !== null) await confirmScan(scanId).catch(() => null);
     },
-    [result, scanId],
+    [result, scanId, toast],
   );
 
   const handlePick = useCallback(
@@ -286,7 +289,8 @@ export default function App() {
     }
     const added = seen.size;
     setBulkNote(added > 0 ? `Added ${added} card${added === 1 ? "" : "s"} to your collection.` : "No confident cards to add.");
-  }, [bulkResults, bulkVariants]);
+    if (added > 0) toast(`Added ${added} card${added === 1 ? "" : "s"} to your collection.`, "success");
+  }, [bulkResults, bulkVariants, toast]);
 
   const canAdjust =
     lastImage !== null && (result?.status === "not_found" || result?.status === "ambiguous");

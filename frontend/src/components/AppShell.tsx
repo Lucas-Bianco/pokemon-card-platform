@@ -19,6 +19,7 @@ import SealedLedger from "./SealedLedger";
 import WatchCardSheet from "./WatchCardSheet";
 import { PageTransition } from "./motion";
 import { CommandPalette } from "./CommandPalette";
+import { useToast } from "./Toast";
 
 // The scan flow stays owned by App (which holds the recognition state and the
 // scan-log callbacks); AppShell receives it as a bundle so it can render the
@@ -92,6 +93,7 @@ const TAB_TITLES: Record<TabView, string> = {
 // the active title. CardDetail renders as a transient detail view over the
 // current tab; back returns to it.
 export default function AppShell({ scan }: Props) {
+  const { toast } = useToast();
   const [view, setView] = useState<TabView>("home");
   const [selectedCard, setSelectedCard] = useState<{ cardId: string; variant?: string } | null>(null);
   const [unread, setUnread] = useState(0);
@@ -244,7 +246,10 @@ export default function AppShell({ scan }: Props) {
           cardId={watchSheet.cardId}
           variant={watchSheet.variant}
           onClose={closeWatchSheet}
-          onCreated={() => refreshUnread()}
+          onCreated={() => {
+            refreshUnread();
+            toast("Watch created", "success");
+          }}
         />
       )}
 

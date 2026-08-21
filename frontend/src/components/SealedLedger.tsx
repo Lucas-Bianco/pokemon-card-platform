@@ -13,6 +13,7 @@ import type { SealedLedgerEntry, SealedLedgerResponse } from "../api/types";
 import { formatMoney } from "../lib/format";
 import { relativeTime } from "../lib/time";
 import { staggerContainer, staggerItem } from "./motion";
+import { useToast } from "./Toast";
 
 // The Sealed-ledger screen: a form to log sealed boxes/packs you bought + a
 // list of purchases with live profit vs the eBay sold-comps median. Sealed
@@ -28,6 +29,7 @@ import { staggerContainer, staggerItem } from "./motion";
 // CSS is a small `.ledger-form` grid + `.ledger-input` / `.ledger-profit` /
 // `.ledger-delete` rules (see styles.css).
 export default function SealedLedger() {
+  const { toast } = useToast();
   const [data, setData] = useState<SealedLedgerResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -86,6 +88,7 @@ export default function SealedLedger() {
       setPtype("");
       setSource("");
       setNotice("Purchase logged.");
+      toast("Purchase logged", "success");
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't log the purchase.");
@@ -102,8 +105,10 @@ export default function SealedLedger() {
       const res = await valuateSealedLedger();
       if (res.skipped_no_key) {
         setNotice("Set CARDPLATFORM_LISTINGS_API_KEY to value purchases (fetch sold comps).");
+        toast("eBay key missing — valuations skipped", "warn");
       } else {
         setNotice(`Valued ${res.valued} purchase(s); ${res.skipped_no_comps} had no sold comps.`);
+        if (res.valued > 0) toast("Valuations refreshed", "success");
       }
       await load();
     } catch (e) {
@@ -121,10 +126,12 @@ export default function SealedLedger() {
       const res = await syncSealedLedger();
       if (!res.synced && res.reason === "not_configured") {
         setNotice("Google Sheets not configured — place an OAuth client secret at data/credentials.json and set CARDPLATFORM_GOOGLE_SHEET_ID, then sync again.");
+        toast("Sheets not configured", "warn");
       } else if (!res.synced) {
         setNotice(`Sync did not complete: ${res.reason ?? "unknown"}.`);
       } else {
         setNotice(`Synced ${res.rows} row(s) to Google Sheets.`);
+        toast("Sheet synced", "success");
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't sync to Google Sheets.");
