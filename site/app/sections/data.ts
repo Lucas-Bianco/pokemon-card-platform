@@ -59,7 +59,7 @@ export const ROADMAP: Phase[] = [
   { n: "13", title: "Online shopping assistant", subtitle: "Paste a listing URL or scan → instant deal / worth / authenticity read · extends the existing deal-sniper + flip-edge", status: "planned" },
   { n: "14", title: "Publishable-app overhaul", subtitle: "Make it a real app you can publish — packaged desktop app, hosted service, or polished open-source release (decision pending)", status: "planned" },
   { n: "15", title: "Private repo + Pages relocation", subtitle: "Make the repo private (one command) and relocate the marketing site so Pages survives — needs a paid GitHub plan or a separate public/Cloudflare Pages host", status: "planned" },
-  { n: "16", title: "Proof of sales", subtitle: "Every market price backed by viewable sold-comps (date, price, source link) — the honest differentiator; 99% of price apps assert a number and never prove anyone paid it", status: "planned" },
+  { n: "16", title: "Proof of sales", subtitle: "Every market price backed by viewable eBay sold-comps (date, price, condition, source link) — actual transactions, not a listed estimate; the honest differentiator (99% of price apps assert a number and never prove anyone paid it). Reusable ProofOfSales block under ScanResult's price + per-row toggle on SealedDeals/SealedLedger; honest unavailable/empty states, never $0", status: "done" },
   { n: "17", title: "Multi-TCG platform (Magic + Topps)", subtitle: "Extend beyond Pokémon to Magic: The Gathering (Scryfall API) and Topps sports cards — separate catalogs, price providers, and recognition models per domain", status: "planned" },
   { n: "08", title: "On-device inference", subtitle: "Quantized model in-browser — scanning with no server", status: "planned" },
 ];

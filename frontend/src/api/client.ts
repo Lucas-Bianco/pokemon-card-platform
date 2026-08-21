@@ -19,6 +19,7 @@ import type {
   SealedDealsResponse,
   SealedLedgerResponse,
   SealedPurchaseOut,
+  SealedSoldCompsResponse,
   SetCompletion,
   SetProgress,
   SheetsSyncResult,
@@ -545,6 +546,23 @@ export async function getSealedDeals(
   const params = new URLSearchParams({ q: query, limit: String(limit) });
   return expectJsonOrDetail<SealedDealsResponse>(
     await fetch(`${BASE}/sealed/deals?${params}`),
+  );
+}
+
+// ----- Sealed proof of sales ---------------------------------------------
+// Phase 16 — the individual recently-sold eBay listings behind the median
+// sealed_market (proven sales, not a listed estimate). Query-keyed like
+// getSealedDeals; `limit` defaults to 6 (a tight evidence cluster, matching the
+// backend default). Mirrors getSealedDeals (expectJsonOrDetail so a 422 from a
+// short/whitespace query surfaces the backend detail). Honest empty flags are
+// consumed by the caller, not collapsed here.
+export async function getSealedSoldComps(
+  query: string,
+  limit = 6,
+): Promise<SealedSoldCompsResponse> {
+  const params = new URLSearchParams({ q: query, limit: String(limit) });
+  return expectJsonOrDetail<SealedSoldCompsResponse>(
+    await fetch(`${BASE}/sealed/sold-comps?${params}`),
   );
 }
 

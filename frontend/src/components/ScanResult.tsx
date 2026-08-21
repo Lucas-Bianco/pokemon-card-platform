@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
-import { getGradeLabel, postGradeLabel } from "../api/client";
+import { getGradeLabel, getSoldComps, postGradeLabel } from "../api/client";
 import type { Grader, GradingLabel, RecognizeResponse } from "../api/types";
 import { statusLabel } from "../lib/format";
 import AuthenticityPanel from "./AuthenticityPanel";
@@ -9,6 +9,7 @@ import CenteringPanel from "./CenteringPanel";
 import GradingStudio from "./GradingStudio";
 import GradingUpside from "./GradingUpside";
 import PriceLine from "./PriceLine";
+import ProofOfSales from "./ProofOfSales";
 
 interface Props {
   result: RecognizeResponse;
@@ -97,6 +98,15 @@ export default function ScanResult({
   const gradeValue = parseGrade(grade);
   const canSubmit = scanId !== null && gradeValue !== null && !submitting;
 
+  // Stable fetcher for the proven-sales block under the price. Card sold-comps
+  // share the exact {sold_comps, sold_comps_unavailable, sold_comps_empty} shape
+  // ProofOfSales expects, so the block is reuse-as-is. Memoized on card+variant so
+  // the effect inside ProofOfSales doesn't refetch on every parent re-render.
+  const fetchProofOfSales = useCallback(
+    () => getSoldComps(card?.id ?? "", variant, 6),
+    [card?.id, variant],
+  );
+
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     if (scanId === null || gradeValue === null) return;
@@ -135,6 +145,10 @@ export default function ScanResult({
               {card.rarity ? ` · ${card.rarity}` : ""}
             </p>
             <PriceLine cardId={card.id} variant={variant} initial={result.price} />
+            {/* Proven sales right under the price — the headline surface: scan a
+                card and see the market estimate *and* the actual eBay sales that
+                back it. Card-gated (this block is inside `card &&`). */}
+            <ProofOfSales fetcher={fetchProofOfSales} />
           </div>
         </div>
       )}

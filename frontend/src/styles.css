@@ -1858,6 +1858,7 @@ body {
 .grading-upside,
 .centering,
 .sold-comps,
+.proof-of-sales,
 .card-detail {
   background-color: var(--glass-bg);
   background-image: var(--grad-surface);
@@ -1867,6 +1868,44 @@ body {
   backdrop-filter: blur(var(--glass-blur));
   -webkit-backdrop-filter: blur(var(--glass-blur));
 }
+
+/* Proof-of-sales (roadmap row 16) — additive .proof-* classes. Mirrors the
+   .sold-comps idiom: glass surface (above) + a compact evidence list. Each row
+   is an external eBay sale link (date / price / condition / title / source). */
+.proof-of-sales {
+  margin-top: 0.75rem;
+  padding: 0.75rem 0.9rem;
+}
+.proof-of-sales h4 { margin: 0 0 0.15rem; }
+.proof-of-sales .caption {
+  margin: 0 0 0.5rem;
+  color: var(--fg-faint);
+  font-size: 0.8rem;
+}
+.proof-of-sales ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.4rem; }
+.proof-row { margin: 0; }
+.proof-link {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.6rem;
+  color: var(--fg);
+  text-decoration: none;
+}
+.proof-link:hover { color: var(--accent); }
+.proof-price { font-weight: 650; }
+.proof-cond,
+.proof-when,
+.proof-source {
+  color: var(--fg-faint);
+  font-size: 0.78rem;
+}
+.proof-title {
+  flex-basis: 100%;
+  color: var(--fg-dim);
+  font-size: 0.82rem;
+}
+.proof-toggle { margin-top: 0.4rem; }
 
 .alert-row:hover,
 .browse-result:hover,

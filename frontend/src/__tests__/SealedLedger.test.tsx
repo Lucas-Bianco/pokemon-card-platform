@@ -60,6 +60,24 @@ function stubFetch(opts: {
     if (u.endsWith("/sealed/ledger")) {
       return { ok: true, status: 200, json: async () => ledger };
     }
+    if (u.includes("/sealed/sold-comps")) {
+      // Proof-of-sales toggle (roadmap row 16). Returns real comps so the expand
+      // settles on the proven-sales list rather than hanging on loading.
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          query: "scarlet violet booster box",
+          limit: 6,
+          sold_comps: [
+            { listing_id: "s1", title: "SV Booster Box", price: 149.0, currency: "USD",
+              url: "https://ebay.example/s1", condition: "New", sold_at: "2026-07-30T18:30:00Z", source: "ebay" },
+          ],
+          sold_comps_unavailable: false,
+          sold_comps_empty: false,
+        }),
+      };
+    }
     return { ok: false, status: 404, json: async () => ({}) };
   });
   vi.stubGlobal("fetch", spy);
@@ -144,5 +162,26 @@ describe("SealedLedger", () => {
     const syncBtn = [...container.querySelectorAll("button")].find((b) => /sync to google/i.test(b.textContent || "")) as HTMLButtonElement;
     fireEvent.click(syncBtn);
     await waitFor(() => expect(container.textContent).toMatch(/not configured/i));
+  });
+
+  it("expands 'Show proven sales' to reveal the eBay sales behind the market median", async () => {
+    stubFetch();
+    const { container } = render(<SealedLedger />);
+    await waitFor(() => expect(container.querySelector(".deal-card")).toBeTruthy());
+    // Collapsed by default — no proof block yet.
+    expect(container.querySelector(".proof-of-sales")).toBeNull();
+    const proofBtn = [...container.querySelectorAll("button")].find(
+      (b) => /show proven sales/i.test(b.textContent || ""),
+    ) as HTMLButtonElement;
+    expect(proofBtn).toBeTruthy();
+    fireEvent.click(proofBtn);
+    await waitFor(() => {
+      expect(container.textContent ?? "").toContain("$149.00");
+    });
+    expect(container.textContent ?? "").toMatch(/proven sales/i);
+    // listed-vs-proven caveat present
+    expect(container.textContent ?? "").toMatch(/listed estimate.*actual eBay sales/i);
+    // the toggle now reads "Hide"
+    expect(proofBtn.textContent).toMatch(/hide proven sales/i);
   });
 });

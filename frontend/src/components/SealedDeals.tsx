@@ -1,12 +1,13 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 
 import { motion, useReducedMotion } from "framer-motion";
 
-import { getSealedDeals } from "../api/client";
+import { getSealedDeals, getSealedSoldComps } from "../api/client";
 import type { SealedDealAssessment, SealedDealsResponse } from "../api/types";
 import { formatMoney } from "../lib/format";
 import { relativeTime } from "../lib/time";
 import { staggerContainer, staggerItem } from "./motion";
+import ProofOfSales from "./ProofOfSales";
 
 // The Sealed-deals screen: a search box (free-text query → getSealedDeals) +
 // a ranked flip-edge feed. Sealed products (booster boxes, ETBs, collection
@@ -148,6 +149,13 @@ function SealedDealCard({ deal }: { deal: SealedDealAssessment }) {
   const reduced = useReducedMotion();
   const isAuction = deal.listing_type === "auction" && deal.auction_end_at;
 
+  // Per-deal "Show proven sales" toggle (roadmap row 16). The sealed market price
+  // above is a median of sold comps; this expand surfaces the *individual* sales
+  // behind it (date/price/condition/title/link) — actual eBay transactions, not a
+  // listed estimate. Collapsed by default (on-demand evidence, never auto-fetched).
+  const [showProof, setShowProof] = useState(false);
+  const fetchProof = useCallback(() => getSealedSoldComps(deal.query, 6), [deal.query]);
+
   return (
     <motion.li
       className="deal-card"
@@ -190,6 +198,19 @@ function SealedDealCard({ deal }: { deal: SealedDealAssessment }) {
         {deal.is_flip && <span className="deal-chip flip">💰 FLIP</span>}
         {!deal.is_flip && <span className="muted small">not a deal at this price</span>}
       </div>
+
+      {/* Proven sales toggle — the individual eBay transactions behind the median
+          sealed_market. Collapsed by default; expanding fetches /sealed/sold-comps
+          on demand and renders the reusable ProofOfSales block. */}
+      <button
+        type="button"
+        className="sealed-deals-btn proof-toggle"
+        onClick={() => setShowProof((v) => !v)}
+        aria-expanded={showProof}
+      >
+        {showProof ? "Hide proven sales" : "Show proven sales"}
+      </button>
+      {showProof && <ProofOfSales fetcher={fetchProof} />}
 
       <p className="deal-caveat muted small">
         Investigate before buying — keyword listings carry seller-mislabel noise.

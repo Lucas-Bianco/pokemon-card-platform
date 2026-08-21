@@ -53,6 +53,24 @@ function stubFetch(body: SealedDealsResponse, status = 200) {
     if (u.includes("/sealed/deals")) {
       return { ok: status < 400, status, json: async () => body };
     }
+    if (u.includes("/sealed/sold-comps")) {
+      // Proof-of-sales toggle (roadmap row 16). Returns real comps so the expand
+      // settles on the proven-sales list rather than hanging on loading.
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          query: "scarlet violet booster box",
+          limit: 6,
+          sold_comps: [
+            { listing_id: "s1", title: "SV Booster Box", price: 121.0, currency: "USD",
+              url: "https://ebay.example/s1", condition: "New", sold_at: "2026-07-30T18:30:00Z", source: "ebay" },
+          ],
+          sold_comps_unavailable: false,
+          sold_comps_empty: false,
+        }),
+      };
+    }
     return { ok: false, status: 404, json: async () => ({}) };
   });
   vi.stubGlobal("fetch", spy);
@@ -170,5 +188,33 @@ describe("SealedDeals", () => {
       expect(container.querySelector(".deal-card")).not.toBeNull();
     });
     expect(container.textContent ?? "").not.toMatch(/\$0\.00/);
+  });
+
+  it("expands 'Show proven sales' on a deal to reveal the eBay sales behind the median", async () => {
+    const deal = baseDeal();
+    stubFetch(baseResponse({ deals: [deal] }));
+
+    const { container } = render(<SealedDeals />);
+    fireEvent.change(container.querySelector('input[type="search"]') as HTMLInputElement, {
+      target: { value: "scarlet violet booster box" },
+    });
+    fireEvent.click(container.querySelector('button[type="submit"]') as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(container.querySelector(".deal-card")).not.toBeNull();
+    });
+    // Collapsed by default — no proof block yet.
+    expect(container.querySelector(".proof-of-sales")).toBeNull();
+    const proofBtn = [...container.querySelectorAll("button")].find(
+      (b) => /show proven sales/i.test(b.textContent || ""),
+    ) as HTMLButtonElement;
+    expect(proofBtn).toBeTruthy();
+    fireEvent.click(proofBtn);
+    await waitFor(() => {
+      expect(container.textContent ?? "").toContain("$121.00");
+    });
+    expect(container.textContent ?? "").toMatch(/proven sales/i);
+    expect(container.textContent ?? "").toMatch(/listed estimate.*actual eBay sales/i);
+    expect(proofBtn.textContent).toMatch(/hide proven sales/i);
   });
 });

@@ -78,6 +78,8 @@ from cardplatform.sealed.api_models import (
     SealedPricePointOut,
     SealedPurchaseIn,
     SealedPurchaseOut,
+    SealedSoldCompOut,
+    SealedSoldCompsResponse,
     SealedThresholdsOut,
     SheetsSyncResultOut,
     ValuationRefreshResultOut,
@@ -1332,6 +1334,43 @@ def create_app() -> FastAPI:
                 sealed_flip_min_abs=settings.sealed_flip_min_abs,
                 sealed_flip_min_pct=settings.sealed_flip_min_pct,
             ),
+        )
+
+    # --------------------------------------------------------------- sealed proof of sales (16)
+    @app.get("/sealed/sold-comps", response_model=SealedSoldCompsResponse)
+    def sealed_sold_comps(
+        q: str = Query(
+            ..., min_length=2,
+            description="Sealed product search, e.g. 'scarlet violet booster box'",
+        ),
+        limit: int = Query(6, ge=1, le=10),
+    ) -> SealedSoldCompsResponse:
+        """Proven sales for a sealed-product free-text query (roadmap row 16).
+
+        The individual recently-sold eBay listings behind the median `sealed_market`
+        shown on /sealed/deals — actual transactions (date/price/condition/title/link),
+        not a listed estimate. This is the project's honest differentiator: "99% of
+        price apps assert a number and never prove anyone paid it." We prove it, or we
+        honestly say we can't. Reuses `fetch_sold_listings_by_query` (same EndedWithSales
+        gate as card sold-comps — only confirmed sales, never fabricated). On-demand
+        evidence: no snapshot writes, no DB session. Honest empty flags mirror the
+        established pattern: no key -> sold_comps_unavailable; key set, 0 sales ->
+        sold_comps_empty (never $0).
+        """
+        q = q.strip()
+        if not q or len(q) < 2:
+            raise HTTPException(
+                status_code=422, detail="query must be at least 2 non-space chars",
+            )
+        provider = EbayListingsProvider(settings)
+        comps = provider.fetch_sold_listings_by_query(q, limit=limit)
+        key_set = bool(settings.listings_api_key)
+        return SealedSoldCompsResponse(
+            query=q,
+            limit=limit,
+            sold_comps=[SealedSoldCompOut.model_validate(c) for c in comps],
+            sold_comps_unavailable=not key_set,
+            sold_comps_empty=key_set and not comps,
         )
 
     # --------------------------------------------------------------- sealed ledger (05d)

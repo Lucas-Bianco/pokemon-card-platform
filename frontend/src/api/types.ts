@@ -497,6 +497,34 @@ export interface SealedDealsResponse {
   thresholds: SealedThresholds;
 }
 
+// Phase 16 — proof of sales (sealed). The individual recently-sold eBay listings
+// behind the median `sealed_market` shown on /sealed/deals — actual transactions
+// (date/price/condition/title/link), so the user sees real people paid real money,
+// not a retailer's listed estimate. Query-keyed (like sealed deals), on-demand only
+// (never persisted). Mirrors `SealedSoldCompOut` / `SealedSoldCompsResponse`
+// field-for-field. Honest empty flags mirror the card sold-comps pattern:
+// `sold_comps_unavailable` (no listings_api key) vs `sold_comps_empty` (key set, 0 sales).
+
+export interface SealedSoldComp {
+  query: string;
+  listing_id: string;
+  price: number;
+  title: string | null;
+  currency: string | null;
+  url: string | null;
+  condition: string | null;
+  sold_at: string | null;
+  source: string;
+}
+
+export interface SealedSoldCompsResponse {
+  query: string;
+  limit: number;
+  sold_comps: SealedSoldComp[];
+  sold_comps_unavailable: boolean;
+  sold_comps_empty: boolean;
+}
+
 // Phase 05d — sealed-purchase ledger. The user logs sealed boxes/packs they
 // bought (query-keyed, like sealed deals); the backend periodically values them
 // against the eBay sold-comps median and tracks profit. Every nullable market

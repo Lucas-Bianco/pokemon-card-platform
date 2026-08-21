@@ -9,6 +9,7 @@ import {
   getPortfolio,
   getSealedDeals,
   getSealedLedger,
+  getSealedSoldComps,
   logSealedPurchase,
   patchCollectionItem,
   recognize,
@@ -374,6 +375,60 @@ describe("getSealedDeals", () => {
     expect(res.deals).toHaveLength(1);
     expect(res.deals[0].flip_edge).toBe(25.0);
     expect(res.sealed_market?.price).toBe(120.0);
+  });
+});
+
+describe("getSealedSoldComps", () => {
+  const soldCompsBody = {
+    query: "scarlet violet booster box",
+    limit: 6,
+    sold_comps: [
+      {
+        query: "scarlet violet booster box",
+        listing_id: "a",
+        price: 118.0,
+        title: "Scarlet & Violet Booster Box",
+        currency: "USD",
+        url: "https://ebay/itm/a",
+        condition: "New",
+        sold_at: "2026-07-30T18:30:00Z",
+        source: "ebay",
+      },
+    ],
+    sold_comps_unavailable: false,
+    sold_comps_empty: false,
+  };
+
+  it("calls /api/sealed/sold-comps?q=&limit=", async () => {
+    const spy = mockFetch(200, soldCompsBody);
+    await getSealedSoldComps("scarlet violet booster box", 6);
+    const url = spy.mock.calls[0][0] as string;
+    expect(url).toContain("/api/sealed/sold-comps");
+    expect(url).toContain("q=scarlet+violet+booster+box");
+    expect(url).toContain("limit=6");
+  });
+
+  it("defaults limit to 6", async () => {
+    const spy = mockFetch(200, { ...soldCompsBody, limit: 6 });
+    await getSealedSoldComps("box");
+    const url = spy.mock.calls[0][0] as string;
+    expect(url).toContain("limit=6");
+  });
+
+  it("throws with the backend detail on 422", async () => {
+    mockFetch(422, { detail: "query must be at least 2 non-space chars" });
+    await expect(getSealedSoldComps("  ")).rejects.toThrow(
+      /query must be at least 2 non-space chars/,
+    );
+  });
+
+  it("returns the sold comps on 200", async () => {
+    mockFetch(200, soldCompsBody);
+    const res = await getSealedSoldComps("scarlet violet booster box");
+    expect(res.sold_comps).toHaveLength(1);
+    expect(res.sold_comps[0].price).toBe(118.0);
+    expect(res.sold_comps[0].url).toBe("https://ebay/itm/a");
+    expect(res.sold_comps_unavailable).toBe(false);
   });
 });
 

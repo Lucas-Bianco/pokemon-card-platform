@@ -158,3 +158,46 @@ class SheetsSyncResultOut(BaseModel):
     synced: bool
     rows: int
     reason: str | None = None
+
+
+# --------------------------------------------------------- Phase 16 proof of sales
+
+
+class SealedSoldCompOut(BaseModel):
+    """One recently-sold eBay listing for a sealed-product query — proven sale evidence.
+
+    Mirrors `SealedSoldComp` (query-keyed) and `sold_comps_api_models.SoldCompOut`
+    (card-keyed) field-for-field. `from_attributes=True` so the provider's frozen
+    dataclass serialises directly. On-demand only — never persisted. `source="ebay"`;
+    `sold_at` is the sale-close timestamp (the EndedWithSales gate already confirmed it
+    is a real transaction, not a listed estimate)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    query: str
+    listing_id: str
+    price: float
+    title: str | None = None
+    currency: str | None = None
+    url: str | None = None
+    condition: str | None = None
+    sold_at: datetime | None = None
+    source: str = "ebay"
+
+
+class SealedSoldCompsResponse(BaseModel):
+    """Proof-of-sales feed for one sealed-product query (roadmap row 16).
+
+    The individual sold-comps behind the median `sealed_market` shown on /sealed/deals —
+    actual eBay transactions (date/price/condition/title/link), so the user sees real
+    people paid real money, not a retailer's listed estimate. Honest empty flags mirror
+    the established `*_unavailable` (no listings_api_key) vs `*_empty` (key set, 0 comps)
+    pattern: `sold_comps_unavailable` is True when no key is configured (the front-end
+    shows "set a listings key" instead of fabricated $0); `sold_comps_empty` is True when
+    a key IS set but eBay returned 0 confirmed sales."""
+
+    query: str
+    limit: int
+    sold_comps: list[SealedSoldCompOut]
+    sold_comps_unavailable: bool
+    sold_comps_empty: bool

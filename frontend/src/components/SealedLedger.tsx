@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { motion, useReducedMotion } from "framer-motion";
 
 import {
   deleteSealedPurchase,
   getSealedLedger,
+  getSealedSoldComps,
   logSealedPurchase,
   syncSealedLedger,
   valuateSealedLedger,
@@ -14,6 +15,7 @@ import { formatMoney } from "../lib/format";
 import { relativeTime } from "../lib/time";
 import { staggerContainer, staggerItem } from "./motion";
 import { useToast } from "./Toast";
+import ProofOfSales from "./ProofOfSales";
 
 // The Sealed-ledger screen: a form to log sealed boxes/packs you bought + a
 // list of purchases with live profit vs the eBay sold-comps median. Sealed
@@ -248,80 +250,109 @@ function LedgerBody({
       initial={reduced ? "show" : "hidden"}
       animate="show"
     >
-      {entries.map((e) => {
-        const profitClass =
-          e.profit === null ? "" : e.profit >= 0 ? "ledger-profit pos" : "ledger-profit neg";
-        return (
-          <motion.li
-            className="deal-card"
-            key={e.id}
-            variants={staggerItem}
-            whileHover={reduced ? undefined : { y: -4 }}
-            whileTap={reduced ? undefined : { scale: 0.985 }}
-            transition={{ duration: 0.16 }}
-          >
-            <div className="deal-card-head">
-              <span className="deal-title">
-                <strong>
-                  {e.quantity}× {e.query}
-                </strong>
-              </span>
-              <span className="deal-price">{formatMoney(e.total_current_value)}</span>
-            </div>
-            <div className="deal-card-meta muted small">
-              {e.product_type ?? "sealed"}
-            </div>
-            <div className="deal-row">
-              <span className="deal-row-label">Cost</span>
-              <span className="deal-row-value">
-                {formatMoney(e.total_cost)} ({formatMoney(e.cost_per_unit)}/u)
-              </span>
-            </div>
-            <div className="deal-row">
-              <span className="deal-row-label">Market</span>
-              <span className="deal-row-value">
-                {e.valued ? `${formatMoney(e.value_per_unit)}/u` : "not yet valued — click Refresh"}
-              </span>
-            </div>
-            <div className="deal-row">
-              <span className="deal-row-label">Profit</span>
-              <span className={`deal-row-value ${profitClass}`}>
-                {e.profit === null
-                  ? "—"
-                  : `${formatMoney(e.profit)} (${e.profit_pct === null ? "—" : (e.profit_pct * 100).toFixed(0) + "%"})`}
-              </span>
-            </div>
-            {e.valued && e.market_fetched_at && (
-              <div className="deal-row">
-                <span className="deal-row-label">Valued</span>
-                <span className="deal-row-value">
-                  {relativeTime(e.market_fetched_at)} · {e.market_source}
-                </span>
-              </div>
-            )}
-            {e.source && (
-              <div className="deal-row">
-                <span className="deal-row-label">Bought from</span>
-                <span className="deal-row-value">{e.source}</span>
-              </div>
-            )}
-            {e.notes && (
-              <div className="deal-row">
-                <span className="deal-row-label">Notes</span>
-                <span className="deal-row-value">{e.notes}</span>
-              </div>
-            )}
-            <div className="deal-chips">
-              <span className="deal-caveat muted small">
-                Gross edge — selling fees not subtracted; profit is indicative (as of valuation).
-              </span>
-              <button type="button" className="ledger-delete" onClick={() => onRemove(e.id)}>
-                Delete
-              </button>
-            </div>
-          </motion.li>
-        );
-      })}
+      {entries.map((e) => (
+        <LedgerRow key={e.id} entry={e} onRemove={onRemove} reduced={reduced} />
+      ))}
     </motion.ul>
+  );
+}
+
+function LedgerRow({
+  entry: e,
+  onRemove,
+  reduced,
+}: {
+  entry: SealedLedgerEntry;
+  onRemove: (id: number) => void;
+  reduced: boolean | null;
+}) {
+  // Per-row "Show proven sales" toggle (roadmap row 16). The Market figure above
+  // is a median of sold comps; this expand surfaces the individual eBay sales
+  // behind it (date/price/condition/title/link) — actual transactions, not a
+  // listed estimate. Collapsed by default (on-demand evidence).
+  const [showProof, setShowProof] = useState(false);
+  const fetchProof = useCallback(() => getSealedSoldComps(e.query, 6), [e.query]);
+  const profitClass =
+    e.profit === null ? "" : e.profit >= 0 ? "ledger-profit pos" : "ledger-profit neg";
+  return (
+    <motion.li
+      className="deal-card"
+      variants={staggerItem}
+      whileHover={reduced ? undefined : { y: -4 }}
+      whileTap={reduced ? undefined : { scale: 0.985 }}
+      transition={{ duration: 0.16 }}
+    >
+      <div className="deal-card-head">
+        <span className="deal-title">
+          <strong>
+            {e.quantity}× {e.query}
+          </strong>
+        </span>
+        <span className="deal-price">{formatMoney(e.total_current_value)}</span>
+      </div>
+      <div className="deal-card-meta muted small">
+        {e.product_type ?? "sealed"}
+      </div>
+      <div className="deal-row">
+        <span className="deal-row-label">Cost</span>
+        <span className="deal-row-value">
+          {formatMoney(e.total_cost)} ({formatMoney(e.cost_per_unit)}/u)
+        </span>
+      </div>
+      <div className="deal-row">
+        <span className="deal-row-label">Market</span>
+        <span className="deal-row-value">
+          {e.valued ? `${formatMoney(e.value_per_unit)}/u` : "not yet valued — click Refresh"}
+        </span>
+      </div>
+      <div className="deal-row">
+        <span className="deal-row-label">Profit</span>
+        <span className={`deal-row-value ${profitClass}`}>
+          {e.profit === null
+            ? "—"
+            : `${formatMoney(e.profit)} (${e.profit_pct === null ? "—" : (e.profit_pct * 100).toFixed(0) + "%"})`}
+        </span>
+      </div>
+      {e.valued && e.market_fetched_at && (
+        <div className="deal-row">
+          <span className="deal-row-label">Valued</span>
+          <span className="deal-row-value">
+            {relativeTime(e.market_fetched_at)} · {e.market_source}
+          </span>
+        </div>
+      )}
+      {e.source && (
+        <div className="deal-row">
+          <span className="deal-row-label">Bought from</span>
+          <span className="deal-row-value">{e.source}</span>
+        </div>
+      )}
+      {e.notes && (
+        <div className="deal-row">
+          <span className="deal-row-label">Notes</span>
+          <span className="deal-row-value">{e.notes}</span>
+        </div>
+      )}
+      {/* Proven sales — the individual eBay transactions behind the median
+          market. Collapsed by default; expanding fetches /sealed/sold-comps
+          on demand and renders the reusable ProofOfSales block. */}
+      <button
+        type="button"
+        className="sealed-deals-btn proof-toggle"
+        onClick={() => setShowProof((v) => !v)}
+        aria-expanded={showProof}
+      >
+        {showProof ? "Hide proven sales" : "Show proven sales"}
+      </button>
+      {showProof && <ProofOfSales fetcher={fetchProof} />}
+      <div className="deal-chips">
+        <span className="deal-caveat muted small">
+          Gross edge — selling fees not subtracted; profit is indicative (as of valuation).
+        </span>
+        <button type="button" className="ledger-delete" onClick={() => onRemove(e.id)}>
+          Delete
+        </button>
+      </div>
+    </motion.li>
   );
 }

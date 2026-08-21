@@ -84,6 +84,22 @@ function stubFetch(label: GradingLabel | null = null) {
         }),
       };
     }
+    if (u.includes("/sold-comps")) {
+      // ProofOfSales (roadmap row 16) fetches card sold-comps from ScanResult.
+      // Return an honest empty (key set, no recent sales) so the block settles
+      // cleanly in these grading-focused tests instead of hanging on loading.
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          card_id: "base1-4",
+          variant: "holofoil",
+          sold_comps: [],
+          sold_comps_unavailable: false,
+          sold_comps_empty: true,
+        }),
+      };
+    }
     return { ok: false, status: 404, json: async () => ({}) };
   });
   vi.stubGlobal("fetch", spy);
@@ -290,5 +306,96 @@ describe("ScanResult grading annotation", () => {
     });
     // centering is null in response() -> studio shows "unmeasured".
     expect(container.textContent ?? "").toMatch(/unmeasured/i);
+  });
+});
+
+describe("ScanResult proof of sales (roadmap row 16)", () => {
+  // A stub that returns real sold comps for /sold-comps (and the same honest
+  // defaults the grading tests use for the other ScanResult surfaces).
+  function stubFetchWithComps() {
+    const spy = vi.fn().mockImplementation(async (url: string) => {
+      const u = String(url);
+      if (u.includes("/sold-comps")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            card_id: "base1-4",
+            variant: "holofoil",
+            sold_comps: [
+              { listing_id: "s1", title: "Charizard #4", price: 812.0, currency: "USD",
+                url: "https://ebay.example/s1", condition: "Used", sold_at: "2026-07-30T18:30:00Z", source: "ebay" },
+            ],
+            sold_comps_unavailable: false,
+            sold_comps_empty: false,
+          }),
+        };
+      }
+      if (u.includes("/grade-label")) return { ok: false, status: 404, json: async () => ({}) };
+      if (u.includes("/grading-upside")) {
+        return { ok: true, status: 200, json: async () => ({
+          card_id: "base1-4", variant: "holofoil",
+          raw_price: { market: 800.0, source: "tcgplayer", source_updated_at: "2026/07/29" },
+          psa9: null, psa10: null, grading_fee: 25.0, upside_to_10: null,
+          graded_prices_unavailable: true,
+        }) };
+      }
+      if (u.includes("/authenticity")) {
+        return { ok: true, status: 200, json: async () => ({
+          caveat: "guide, not a verdict",
+          consistency: { printed_number: "4", catalog_number: "4", card_id: "base1-4",
+            card_name: "Charizard", match: "match", note: "matches" },
+          checklist: [],
+        }) };
+      }
+      return { ok: false, status: 404, json: async () => ({}) };
+    });
+    vi.stubGlobal("fetch", spy);
+    return spy;
+  }
+
+  it("renders proven sales under the price when a card is recognized", async () => {
+    stubFetchWithComps();
+    const { container } = render(
+      <ScanResult
+        result={response()}
+        variant="holofoil"
+        scanId={42}
+        onConfirm={noop}
+        onPick={noop}
+        onReject={noop}
+        onRescan={noop}
+      />,
+    );
+    await waitFor(() => {
+      expect(container.textContent ?? "").toContain("$812.00");
+    });
+    expect(container.textContent ?? "").toMatch(/proven sales/i);
+    // listed-vs-proven caveat is present (the honesty point of the feature)
+    expect(container.textContent ?? "").toMatch(/listed estimate.*actual eBay sales/i);
+    // the external sale link opens safely in a new tab
+    const link = container.querySelector(".proof-link") as HTMLAnchorElement;
+    expect(link).not.toBeNull();
+    expect(link.target).toBe("_blank");
+    expect(link.rel).toContain("noopener");
+  });
+
+  it("does not render proven sales when no card was recognized (not_found)", async () => {
+    stubFetchWithComps();
+    const { container } = render(
+      <ScanResult
+        result={response({ status: "not_found", card: undefined, candidates: [] })}
+        variant="holofoil"
+        scanId={null}
+        onConfirm={noop}
+        onPick={noop}
+        onReject={noop}
+        onRescan={noop}
+      />,
+    );
+    // ProofOfSales is card-gated; with no card the block never mounts, so the
+    // fetcher is never called and no proof heading appears.
+    expect(container.textContent ?? "").not.toMatch(/proven sales/i);
+    expect(container.querySelector(".proof-of-sales")).toBeNull();
   });
 });
