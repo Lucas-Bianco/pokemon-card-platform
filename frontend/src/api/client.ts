@@ -1,6 +1,7 @@
 import type {
   AlertEvent,
   AlertType,
+  Authenticity,
   BatchRecognizeResponse,
   CardSearchResult,
   CollectionItem,
@@ -275,6 +276,16 @@ export async function postGradeLabel(
     body: JSON.stringify(body),
   });
   return expectJson<GradingLabel>(response);
+}
+
+// The honest counterfeit tool for one scan: the catalog-consistency auto-check
+// (printed number vs catalog) plus the user-driven physical checklist. Never a
+// fake/real verdict — see Authenticity in types.ts. Unlike getGradeLabel, a
+// 404 here means the scan itself is unknown (a genuine error), so it throws
+// rather than swallowing to null. The component surfaces the error honestly.
+export async function getAuthenticity(scanId: number): Promise<Authenticity> {
+  const response = await fetch(`${BASE}/scans/${scanId}/authenticity`);
+  return expectJson<Authenticity>(response);
 }
 
 // Catalog search by name. The backend's GET /cards takes a `name` query param

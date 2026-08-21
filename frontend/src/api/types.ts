@@ -629,3 +629,39 @@ export interface SetCompletion {
   cards: ChecklistEntry[];
   summary: CompletionSummary;
 }
+
+// Phase 07 — honest counterfeit tool. The ONE auto-signal the dataset supports
+// (printed collector number vs the recognized card's catalog number) plus a
+// user-driven physical checklist. Image-forensic detection (halftone/holo/
+// sharpness/color-delta) was tested and disproven on the 600x825 rectified phone
+// crops, and the project has zero confirmed-counterfeit samples to calibrate a
+// learned check against — so this is a guide, never a fake/real verdict. A
+// consistency `mismatch` is explicitly "wrong recognition OR counterfeit,
+// indistinguishable". Mirrors AuthenticityOut / ConsistencyOut / ChecklistItemOut
+// in backend api.py field-for-field.
+export type ConsistencyMatch = "match" | "mismatch" | "unread" | "no_card";
+
+export interface Consistency {
+  printed_number: string | null;
+  catalog_number: string | null;
+  card_id: string | null;
+  card_name: string | null;
+  match: ConsistencyMatch;
+  note: string;
+}
+
+export interface ChecklistItem {
+  id: string;
+  title: string;
+  what_to_check: string;
+  caveat: string;
+  // False when the check is irrelevant to the card type (e.g. the holo light
+  // test for a non-holo card). The UI renders those as N/A, not hidden.
+  applies: boolean;
+}
+
+export interface Authenticity {
+  caveat: string;
+  consistency: Consistency;
+  checklist: ChecklistItem[];
+}
