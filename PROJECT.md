@@ -16,7 +16,10 @@ shipped 2026-08-19 — see
 [plan](docs/superpowers/plans/2026-08-19-sealed-product-ev.md). Phase 05d (sealed purchase
 ledger + profit tracker + Google Sheets sync) shipped 2026-08-20. Responsive UI overhaul (refined
 dark-glass identity + desktop sidebar + Framer Motion — phone to any desktop) shipped 2026-08-20 —
-see [plan](docs/superpowers/plans/2026-08-20-responsive-ui-overhaul.md).
+see [plan](docs/superpowers/plans/2026-08-20-responsive-ui-overhaul.md). Living UI (Dashboard Home
+landing with animated count-up KPIs + allocation donut + movers; Cmd/Ctrl+K command palette +
+keyboard shortcuts; toast system; animated gradient mesh) shipped 2026-08-20 — see
+[plan](docs/superpowers/plans/2026-08-20-living-ui.md).
 Next: rip EV (expected pull value — blocked on pull-rate data + a sealed-product master) or
 the full Grade predictor (corner/edge/surface + P(grade), pending labelled-data accrual) or
 Phase 6 (set-completion optimizer).
@@ -674,3 +677,39 @@ build clean.**
 **Do-not-break contract held** — every class name, `input[name]`, `aria-label`, button accessible
 name, `data-label`, and honest-empty-state string the 126 tests query was preserved; motion wraps
 existing elements (a `motion.button` still renders `<button>`), CSS is additive.
+
+## Living UI — shipped 2026-08-20
+
+A "Living UI" phase on top of the responsive overhaul, making the app feel alive and interactive
+([plan](docs/superpowers/plans/2026-08-20-living-ui.md)). Frontend-only (backend, `data/`, 105-scan
+baseline untouched). **146 frontend tests green (126 prior + 20 new); build clean.** Executed via
+subagent-driven-development (fresh implementer per task, continuous execution).
+
+- **Dashboard (Home) landing tab** — `Dashboard.tsx` is now the default landing surface (default
+  view `alerts`→`home`). Reads `GET /collection/portfolio` once on mount; renders animated count-up
+  KPIs (market value, cost basis, unrealized P/L, priced/unpriced), an allocation donut + movers
+  bars (inline SVG, `viz.tsx`), and quick-action CTAs. Honest-empty when no holdings/fetch fails —
+  never `$0`. New `useCountUp.ts` (rAF, reduced-motion-gated, jsdom-safe), `Reveal.tsx` (scroll-reveal),
+  `useReducedMotionSafe.ts`. A 9th **Home** nav tab (first in both navs) with `HomeGlyph`.
+  **Default-view safety:** BulkScan's fetch stub returns `200 {}` for `/collection`, so
+  `getPortfolio()` resolves to `{}` (no throw); Dashboard null-guards `summary` + try/catches the
+  fetch → `{}` renders the empty state, never crashes. CTA buttons use distinct verb-phrase names
+  (`"Start scanning"`, `"Browse the catalog"`, …) — never an exact nav-tab name — so
+  `getByRole("button", { name: "Scan" })` still resolves to one button.
+- **Command palette + keyboard shortcuts** — `CommandPalette.tsx`: Cmd/Ctrl+K overlay (renders
+  nothing when closed → no DOM collision); nav commands + debounced `searchCards` → opens card
+  detail. AppShell keydown listener: Cmd/Ctrl+K toggles, `1`–`9` jump tabs, Escape closes — ignored
+  when typing in an input/textarea/select/contenteditable. A `"Search"` (`⌘K`) header trigger.
+- **Toast notifications** — `Toast.tsx`: `ToastProvider` + `useToast` + `ToastContext` whose
+  **default is a noop**, so `useToast()` never throws without a provider. `<ToastProvider>` wired in
+  `main.tsx` (production) only → **every existing test (no provider) fires zero toasts → zero
+  collision.** Toasts render via `createPortal(..., document.body)` (pure-text, no action buttons)
+  so `container.*`-scoped tests don't see them. Wired to App confirm/bulk-add-all, AppShell watch
+  onCreated, SealedLedger log/refresh/sync.
+- **Global polish** — additive CSS: animated gradient mesh `body::before`, Dashboard/palette/toast
+  styles, `:focus-visible` rings, a once-on-mount view-transition shimmer. All new selectors.
+
+**Do-not-break contract held** — 9 nav accessible names, every frozen class/input/aria/button/
+empty-state string, and the one-element `getByRole("button",{name:"Scan"})` invariant preserved.
+Default-view change safe by construction (null-guard + try/catch + distinct CTA names). Toast system
+safe by construction (default-noop context → zero toasts in tests). 105-scan baseline 0 regressions.

@@ -46,10 +46,11 @@ Site: https://lucas-bianco.github.io/pokemon-card-platform/
 | 4 | Bulk cataloger: many cards per photo | ✅ Complete (§14) |
 | 5 | Deal sniper + sealed EV | In progress — deal sniper / rip-vs-flip shipped (§12); deal alerts + sold-comps evidence shipped (§13); sealed flip-edge shipped (§15); sealed purchase ledger + profit tracker + Google Sheets sync (OAuth) shipped (§16); rip EV (expected pull value) still planned — needs pull-rate data |
 | UI | Responsive UI overhaul — refined dark-glass + desktop sidebar + Framer Motion (phone→any desktop) | ✅ Complete 2026-08-20 (§17) — frontend-only; 126 tests green; 105-scan baseline untouched |
+| UI+ | Living UI — Dashboard (Home) landing (animated count-up KPIs + allocation donut + movers bars), Cmd/Ctrl+K command palette + keyboard shortcuts, toast system, animated gradient mesh | ✅ Complete 2026-08-20 (§18) — frontend-only; 146 tests green; 105-scan baseline untouched |
 | 6 | Set-completion optimizer | Planned |
 | 7 | Counterfeit detector | Planned |
 
-**Tests:** 568 backend (pytest) + 126 frontend (vitest).
+**Tests:** 568 backend (pytest) + 146 frontend (vitest).
 
 ### UI — "Grading Lab" (2026-08-01)
 
@@ -1010,3 +1011,65 @@ one nav is ever mounted.
 
 **Sacred constraints held** — frontend-only by construction: no backend, no `data/`, no price
 resolution, no snapshots, no schema. 105-scan baseline 0 regressions.
+
+## 18. Living UI — Dashboard + command palette + toasts + polish (2026-08-20)
+
+A "Living UI" phase on top of §17, making the app feel alive and interactive
+([plan](docs/superpowers/plans/2026-08-20-living-ui.md)). Frontend-only; backend, `data/`, and the
+105-scan baseline untouched. **146 frontend tests green (126 prior + 20 new); build clean.**
+Executed via subagent-driven-development (one fresh implementer per task, continuous execution).
+
+- **Dashboard (Home) landing tab** — `frontend/src/components/Dashboard.tsx` is now the default
+  landing surface (default view changed `alerts`→`home`). It reads `GET /collection/portfolio` once
+  on mount and renders animated count-up KPIs (market value, cost basis, unrealized P/L, priced/
+  unpriced), an allocation donut (inline SVG, `frontend/src/components/viz.tsx`), a movers bar viz
+  (top gainers/losers), and quick-action CTAs. **Honest-empty** when no holdings or the fetch fails
+  — never `$0`, never fabricated. `frontend/src/lib/useCountUp.ts` (rAF, reduced-motion-gated,
+  jsdom-safe: no-rAF/reduced/non-positive → target instantly) + `frontend/src/components/Reveal.tsx`
+  (scroll-reveal, `useReducedMotion`-gated) + `frontend/src/lib/useReducedMotionSafe.ts` (normalizes
+  framer's `boolean|null` to `boolean`). Added a 9th **Home** nav tab (first in both the mobile
+  bottom-nav and the desktop sidebar) with a new `HomeGlyph`.
+  **Default-view safety (the critical invariant):** `BulkScan.test.tsx` is the only test rendering
+  real `<App/>`; its fetch stub returns `200 {}` for any `/collection` URL, so `getPortfolio()` resolves
+  to `{}` (no throw). Dashboard null-guards `summary` (`p?.summary ?? null`, `summary?.field ?? 0`)
+  and try/catches the fetch (`.catch(() => setSummary(null))`, `cancelled` flag) → the `{}` response
+  renders the empty state, never crashes, never throws to an unmounted component. Dashboard's CTA
+  buttons use DISTINCT verb-phrase accessible names (`"Start scanning"`, `"Browse the catalog"`,
+  `"Snipe deals"`, `"Open ledger"`, `"Watch a card"`) — never an exact nav-tab name — so BulkScan's
+  `getByRole("button", { name: "Scan" })` (line 165, fired immediately after render while Home is
+  mounted) still resolves to exactly one button. Dashboard renders no `<input type="file">`.
+- **Command palette + keyboard shortcuts** — `frontend/src/components/CommandPalette.tsx` is a
+  Cmd/Ctrl+K overlay (AnimatePresence; renders **nothing when closed**, so it adds no buttons to the
+  DOM that could collide with test queries). Nav commands (jump to any of the 9 tabs) + debounced
+  card search reusing `searchCards` → opens card detail. AppShell adds a keydown listener: Cmd/Ctrl+K
+  toggles, `1`–`9` jump tabs, Escape closes — **ignored when focus is in an input/textarea/select/
+  contenteditable** (typing in a search box never jumps tabs). A `"Search"` header trigger button
+  (`⌘K`) is added; its name is distinct from nav names (nav uses "Browse", not "Search").
+- **Toast notifications** — `frontend/src/components/Toast.tsx`: `ToastProvider` + `useToast` +
+  `ToastContext`. **The context default is a noop** `{ toast: () => {} }`, so `useToast()` never
+  throws without a provider. `<ToastProvider>` is wired in `main.tsx` (production) only. **Every
+  existing test renders `<App/>` or a component directly (no provider) → `useToast()` returns the
+  noop → ZERO toasts render → zero collision with any text/button query.** Toasts render via
+  `createPortal(..., document.body)` (pure-text: icon + message + close X, NO action buttons) so
+  `container.*`-scoped tests don't see them. Wired to: App `handleConfirm` + `handleBulkAddAll`
+  ("Added to collection" / "Added N cards"), AppShell watch `onCreated` ("Watch created"),
+  SealedLedger log/refresh/sync ("Purchase logged" / "Valuations refreshed" / "eBay key missing —
+  valuations skipped" / "Sheet synced" / "Sheets not configured"). Toast copy never contains
+  `"Charizard"` / `"no card found"` / `"$0.00"` / any exact nav name.
+- **Global polish** — additive CSS in `frontend/src/styles.css`: an animated gradient mesh
+  `body::before` (slow drift, reduced-motion → static), Dashboard KPI/donut/movers styles (KPI grid
+  `auto-fit`, dashboard-grid 1-col → 2-col ≥880px), command-palette styles (`min(640px,92vw)`),
+  toast styles (`min(360px,92vw)`), `:focus-visible` rings, a once-on-mount view-transition shimmer
+  on `.app-content::after`. All new selectors; no existing rule renamed/removed.
+
+**Do-not-break contract held** — the 9 nav accessible names, every frozen class/`input[name]`/
+`aria-label`/button-name/`data-label`/empty-state string, and the `getByRole("button",{name:"Scan"})`
+one-element invariant all preserved. The default-view change is safe by construction (null-guard +
+try/catch + distinct CTA names). The toast system is safe by construction (default-noop context →
+zero toasts in tests). New tokens referenced: `--font-mono` (palette trigger), `--warn` (#d29922).
+Two jsdom test adaptations: a `beforeAll` `IntersectionObserver` no-op stub (framer `whileInView` in
+`Reveal` needs it) in `Dashboard.test.tsx`; fake-timer `useRealTimers` before `waitFor` in
+`Toast.test.tsx`.
+
+**Sacred constraints held** — frontend-only: no backend, no `data/`, no price resolution, no
+snapshots, no schema. 105-scan baseline 0 regressions; 568 backend tests untouched.
