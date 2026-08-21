@@ -78,6 +78,13 @@ Each phase ships independently usable functionality and gets its own spec → pl
 | 6 | Set-completion optimizer — cheapest path to finish a set | **Complete** — per-set owned/missing checklist + honest cost-to-complete via `latest_price`; 10th Sets tab + SetDetail overlay shipped 2026-08-22 |
 | 7 | Counterfeit detector — holo pattern, rosette, texture analysis | **Complete (honest form only)** — CV-forensic detector disproven on the 600×825 phone crops (halftone/holo/sharpness/color unmeasurable, 0 confirmed-fake samples). Ships instead: catalog-consistency auto-check (printed number vs catalog) + rarity-gated physical checklist, never a fake/real verdict. Shipped 2026-08-21 |
 | 8 | On-device inference — quantized model in-browser, no server | Planned |
+| 9 | Sealed-product catalog + MSRP — curated master catalog (ETB / booster box / pack / premium) with product_type, MSRP, normalized name, set link | **In design** — the keystone that unblocks 10, 11, and rip EV; no open dataset, hand-curated ~50–150 current SKUs |
+| 10 | Scan-to-log sealed products — camera OCR of box/pack text → match catalog → pre-fill the purchase ledger | Planned — depends on 9 |
+| 11 | MSRP vs market view — MSRP (from 9) vs live market (existing eBay sold-median), searchable + scannable | Planned — depends on 9 |
+| 12 | Price lookup by name — type a card name → prices across variants/sets, no scan needed | Planned — standalone, unblocked; reuses card catalog + `PriceService.latest_price` |
+| 13 | Online shopping assistant — paste a listing URL or scan → instant deal/worth/authenticity read | Planned — extends 05b deal alerts + 05c sealed flip-edge; gap vs. existing features to be defined |
+| 14 | Publishable-app overhaul — make it a real app you can publish | Planned — three branches: (a) packaged desktop app (Tauri/Electron, user-brings-keys), (b) hosted multi-user service (cost/ToS/security), (c) polished open-source release; decision pending |
+| 15 | Private repo + Pages relocation — make the repo private and relocate the marketing site so Pages survives | Planned — one command but breaks the live Pages site on a free GitHub plan; needs a paid plan or a separate public repo / Cloudflare Pages host |
 
 ## Key decisions
 

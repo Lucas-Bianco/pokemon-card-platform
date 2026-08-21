@@ -36,16 +36,29 @@ export const ROADMAP: Phase[] = [
     status: "done",
   },
   {
+    n: "03d",
+    title: "Grading Studio",
+    subtitle: "Honest user-assisted grade-band calculator · the transparent form of the grade predictor (a learned one is impossible with 0 labelled scans)",
+    status: "done",
+  },
+  {
     n: "03",
     title: "Grade predictor",
     subtitle:
-      "Corner / edge / surface scoring + P(grade) — data infrastructure unblocked, full predictor still planned",
+      "Corner / edge / surface scoring + P(grade) — Grading Studio honest calculator shipped; full learned predictor still planned, needs labelled data the project has 0 of",
     status: "progress",
   },
-  { n: "04", title: "Bulk cataloger", subtitle: "Detect and log every card in one photo", status: "planned" },
+  { n: "04", title: "Bulk cataloger", subtitle: "Detect and log every card in one photo · shipped", status: "done" },
   { n: "05", title: "Deal sniper & sealed EV", subtitle: "Rip-vs-flip deal sniper + deal alerts + sold-comps shipped; sealed flip-edge shipped; sealed purchase ledger + profit tracker + Google Sheets sync shipped; rip EV (expected pull value) still planned — needs pull-rate data", status: "progress" },
-  { n: "06", title: "Set-completion optimizer", subtitle: "Cheapest path to finishing a set", status: "planned" },
-  { n: "07", title: "Counterfeit detector", subtitle: "Holo pattern, print rosette, texture analysis", status: "planned" },
+  { n: "06", title: "Set-completion optimizer", subtitle: "Per-set owned/missing checklist + honest cost-to-complete · shipped", status: "done" },
+  { n: "07", title: "Authenticity check (honest counterfeit tool)", subtitle: "Catalog-consistency auto-check (printed # vs catalog #) + rarity-gated physical checklist · never a fake/real verdict · CV-forensic detector disproven on this data (0 confirmed fakes) · shipped", status: "done" },
+  { n: "09", title: "Sealed-product catalog + MSRP", subtitle: "Curated master catalog of sealed products (ETB / booster box / pack / premium) with MSRP — the keystone that unblocks scan-to-log, MSRP-vs-market, and rip EV · in design", status: "progress" },
+  { n: "10", title: "Scan-to-log sealed products", subtitle: "Camera OCR of box/pack text → match the catalog → pre-fill the purchase ledger · depends on 09", status: "planned" },
+  { n: "11", title: "MSRP vs market view", subtitle: "Show MSRP vs live market for any sealed product, searchable and scannable · depends on 09", status: "planned" },
+  { n: "12", title: "Price lookup by name", subtitle: "Type a card name → see prices across variants/sets, no scan needed · reuses the card catalog + price layer", status: "planned" },
+  { n: "13", title: "Online shopping assistant", subtitle: "Paste a listing URL or scan → instant deal / worth / authenticity read · extends the existing deal-sniper + flip-edge", status: "planned" },
+  { n: "14", title: "Publishable-app overhaul", subtitle: "Make it a real app you can publish — packaged desktop app, hosted service, or polished open-source release (decision pending)", status: "planned" },
+  { n: "15", title: "Private repo + Pages relocation", subtitle: "Make the repo private (one command) and relocate the marketing site so Pages survives — needs a paid GitHub plan or a separate public/Cloudflare Pages host", status: "planned" },
   { n: "08", title: "On-device inference", subtitle: "Quantized model in-browser — scanning with no server", status: "planned" },
 ];
 

@@ -50,6 +50,13 @@ Site: https://lucas-bianco.github.io/pokemon-card-platform/
 | 3d | Grading Studio — honest user-assisted grade-band calculator (measured centering ceiling + user corner/edge/surface sub-scores → estimated grade, confidence, binding, caveats) | ✅ Complete 2026-08-21 (§19) — frontend-only; 165 tests green; 105-scan baseline untouched |
 | 6 | Set-completion optimizer | ✅ Complete 2026-08-22 (§20) — backend + frontend; 584 backend + 175 frontend tests green; 105-scan baseline untouched |
 | 7 | Counterfeit detector | ✅ Complete 2026-08-21 (§21) — honest tool only: catalog-consistency auto-check + physical checklist (CV-forensic detector disproven on this data); backend + frontend; 609 backend + 182 frontend tests green; 105-scan baseline untouched |
+| 9 | Sealed-product catalog + MSRP — curated master catalog (ETB/box/pack/premium) with MSRP | 🟡 In design — keystone unblocks 10/11/rip-EV; no open dataset, hand-curated ~50–150 SKUs |
+| 10 | Scan-to-log sealed products — camera OCR → match catalog → pre-fill ledger | ⬜ Planned — depends on 9 |
+| 11 | MSRP vs market view — MSRP vs live market, searchable + scannable | ⬜ Planned — depends on 9 |
+| 12 | Price lookup by name — type a name → prices, no scan | ⬜ Planned — standalone, unblocked; reuses catalog + `latest_price` |
+| 13 | Online shopping assistant — paste a listing URL or scan → deal/worth/authenticity read | ⬜ Planned — extends 05b/05c; gap TBD |
+| 14 | Publishable-app overhaul — packaged desktop app, hosted service, or polished OSS release | ⬜ Planned — branch decision pending |
+| 15 | Private repo + Pages relocation | ⬜ Planned — breaks Pages on free plan; needs paid plan or separate host |
 
 **Tests:** 609 backend (pytest) + 182 frontend (vitest).
 
