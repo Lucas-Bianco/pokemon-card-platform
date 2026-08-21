@@ -19,7 +19,11 @@ dark-glass identity + desktop sidebar + Framer Motion — phone to any desktop) 
 see [plan](docs/superpowers/plans/2026-08-20-responsive-ui-overhaul.md). Living UI (Dashboard Home
 landing with animated count-up KPIs + allocation donut + movers; Cmd/Ctrl+K command palette +
 keyboard shortcuts; toast system; animated gradient mesh) shipped 2026-08-20 — see
-[plan](docs/superpowers/plans/2026-08-20-living-ui.md).
+[plan](docs/superpowers/plans/2026-08-20-living-ui.md). Grading Studio (an honest
+user-assisted grade-band calculator — measured centering ceiling + user corner/edge/surface
+sub-scores → estimated grade, confidence, binding, caveats; the transparent form of the grade
+predictor, since a learned one is impossible with 0 labelled scans) shipped 2026-08-21 — see
+[plan](docs/superpowers/plans/2026-08-21-grading-studio.md).
 Next: rip EV (expected pull value — blocked on pull-rate data + a sealed-product master) or
 the full Grade predictor (corner/edge/surface + P(grade), pending labelled-data accrual) or
 Phase 6 (set-completion optimizer).
@@ -713,3 +717,42 @@ subagent-driven-development (fresh implementer per task, continuous execution).
 empty-state string, and the one-element `getByRole("button",{name:"Scan"})` invariant preserved.
 Default-view change safe by construction (null-guard + try/catch + distinct CTA names). Toast system
 safe by construction (default-noop context → zero toasts in tests). 105-scan baseline 0 regressions.
+
+## Grading Studio — shipped 2026-08-21
+
+The honest form of the grade predictor. A learned predictor (corner/edge/surface scoring +
+P(grade)) is impossible today — `grading_labels` = 0 and `graded_price_snapshots` = 0, so there is
+nothing to learn from, and faking one would violate the honesty ethos. Instead of pretending to
+predict, the Grading Studio is a **transparent calculator of the user's own inputs**: the one
+measurable sub-grade (centering, from the scan) supplies a hard ceiling, and the user supplies the
+other three (corners/edges/surface) as self-estimated sub-scores. The studio combines them into an
+estimated grade band with a calibrated confidence and explicit caveats — never a verdict on the card.
+Frontend-only; backend, `data/`, and the 105-scan baseline untouched. **165 frontend tests green
+(146 prior + 19 new); build clean.**
+([plan](docs/superpowers/plans/2026-08-21-grading-studio.md))
+
+- **Pure calculator — `frontend/src/lib/gradeEstimate.ts`** — `estimateGrade(subs, centering,
+  grader)`: estimate = `min(corners, edges, surface, centeringCap?)` snapped per grader (PSA → whole;
+  CGC/BGS → half-points), clamped [1, 10]. `binding` = sub-scores at the min. `confidence` = high
+  (centering measured+certain AND spread ≤0.5) / medium / low. `caveats` always state these are the
+  user's estimates, not a prediction from the image, and that the overall is roughly the lowest
+  sub-grade with grader discretion — not a guarantee. 9 unit tests.
+- **Component — `frontend/src/components/GradingStudio.tsx`** — pure, no fetch, no motion. Three
+  range inputs (1–10 step 0.5, defaults 9) with animated fill bars; estimated-grade readout with a
+  confidence pill (`--ok`/`--warn`/`--down`); a "Centering ceiling" readout (PSA {cap} / too close to
+  call / unmeasured); the binding line; a grader select (PSA/CGC/BGS) + "Reset estimates"; caveats
+  list. 8 component tests.
+- **Mount points** — `ScanResult.tsx` (card-gated, measured centering flows in from the scan) and
+  `CardDetail.tsx` (sub-score-only, `centering={null}` for a card you own but haven't scanned). Both
+  reuse the same pure component.
+- **Styles — `frontend/src/styles.css`** — additive `.grading-studio*` block (glass card, studio-in
+  keyframe, grade grid, confidence pills, sub-bar gradient, grader select, caveats). 3-column sub-score
+  grid ≥880px. Reduced-motion disables animation/transitions. No existing rule renamed/removed.
+
+**Do-not-break contract held** — the studio is pure (no fetch, no motion) with distinct
+`.grading-studio*` classes + "Reset estimates" button, so it never collides with BulkScan's
+`screen.*` queries or any frozen string. One pre-existing over-broad assertion in `centering.test.tsx`
+(forbade the bare word "centering" anywhere in `ScanResult`) was relaxed to assert the
+CenteringPanel's own verdict strings are absent — the `.centering` null check already enforces the
+panel's absence (the test's true intent), and the studio legitimately discusses centering as one of
+four sub-grades. 105-scan baseline 0 regressions.

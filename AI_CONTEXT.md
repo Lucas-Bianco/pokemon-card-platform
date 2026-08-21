@@ -40,17 +40,18 @@ Site: https://lucas-bianco.github.io/pokemon-card-platform/
 | 1b | Scan PWA: camera, candidate picker, scan logging | ✅ Complete |
 | 1c | Robust detection: multi-strategy chain | ✅ Complete |
 | 2 | Portfolio tracker: cost basis, P/L, charts | ✅ Complete — ships correct, becomes useful as data accrues (§6) |
-| 3 | Grade predictor: CV grading + grading EV | In progress — data infrastructure shipped (§10); full predictor still planned |
+| 3 | Grade predictor: CV grading + grading EV | In progress — data infrastructure shipped (§10); Grading Studio honest calculator shipped (§19); full learned predictor still planned — needs labelled data the project has 0 of |
 | 3b | Grading data infrastructure: rectified-crop persistence, grade-label schema + self-annotation, graded-price provider, grading-upside spread | ✅ Complete |
 | 3c | Watchlist + restock/price/drop/auction alerts (CollectorVault-style 5-tab UI) | ✅ Complete (§11) |
 | 4 | Bulk cataloger: many cards per photo | ✅ Complete (§14) |
 | 5 | Deal sniper + sealed EV | In progress — deal sniper / rip-vs-flip shipped (§12); deal alerts + sold-comps evidence shipped (§13); sealed flip-edge shipped (§15); sealed purchase ledger + profit tracker + Google Sheets sync (OAuth) shipped (§16); rip EV (expected pull value) still planned — needs pull-rate data |
 | UI | Responsive UI overhaul — refined dark-glass + desktop sidebar + Framer Motion (phone→any desktop) | ✅ Complete 2026-08-20 (§17) — frontend-only; 126 tests green; 105-scan baseline untouched |
 | UI+ | Living UI — Dashboard (Home) landing (animated count-up KPIs + allocation donut + movers bars), Cmd/Ctrl+K command palette + keyboard shortcuts, toast system, animated gradient mesh | ✅ Complete 2026-08-20 (§18) — frontend-only; 146 tests green; 105-scan baseline untouched |
+| 3d | Grading Studio — honest user-assisted grade-band calculator (measured centering ceiling + user corner/edge/surface sub-scores → estimated grade, confidence, binding, caveats) | ✅ Complete 2026-08-21 (§19) — frontend-only; 165 tests green; 105-scan baseline untouched |
 | 6 | Set-completion optimizer | Planned |
 | 7 | Counterfeit detector | Planned |
 
-**Tests:** 568 backend (pytest) + 146 frontend (vitest).
+**Tests:** 568 backend (pytest) + 165 frontend (vitest).
 
 ### UI — "Grading Lab" (2026-08-01)
 
@@ -1073,3 +1074,53 @@ Two jsdom test adaptations: a `beforeAll` `IntersectionObserver` no-op stub (fra
 
 **Sacred constraints held** — frontend-only: no backend, no `data/`, no price resolution, no
 snapshots, no schema. 105-scan baseline 0 regressions; 568 backend tests untouched.
+
+## 19. Grading Studio — honest user-assisted grade-band calculator (2026-08-21)
+
+The honest form of the grade predictor. A learned predictor (corner/edge/surface scoring +
+P(grade)) is impossible today: `grading_labels` = 0 and `graded_price_snapshots` = 0, so there is
+nothing to learn from, and inventing one would violate the project's honesty ethos. Instead of
+faking a prediction, the Grading Studio is a **transparent calculator of the user's own inputs**:
+the one measurable sub-grade (centering, from the scan) supplies a hard ceiling, and the user
+supplies the other three (corners/edges/surface) as self-estimated sub-scores. The studio combines
+them into an estimated grade band with a calibrated confidence and explicit caveats — never a
+verdict on the card. Frontend-only; backend, `data/`, and the 105-scan baseline untouched. **165
+frontend tests green (146 prior + 19 new); build clean.**
+([plan](docs/superpowers/plans/2026-08-21-grading-studio.md))
+
+- **Pure calculator — `frontend/src/lib/gradeEstimate.ts`** — `estimateGrade(subs, centering,
+  grader)`. The estimate is `min(corners, edges, surface, centeringCap?)` snapped per grader (PSA →
+  whole numbers; CGC/BGS → half-points) and clamped to [1, 10]. `binding` = the sub-scores at the
+  minimum (what limited the grade). `confidence`: **high** = centering measured+certain AND spread
+  ≤0.5; **medium** = centering measured AND spread ≤1.5, OR unmeasured AND spread ≤0.5; **low**
+  otherwise. `caveats` always carry "Your sub-score estimates, not a prediction from the image." and
+  "Overall is roughly the lowest sub-grade, with grader discretion — not a guarantee.", plus
+  centering-unmeasured / boundary / PSA-whole caveats as applicable. 9 unit tests.
+- **Component — `frontend/src/components/GradingStudio.tsx`** — pure, no fetch, no motion. Three
+  range inputs (Corners/Edges/Surface, 1–10 step 0.5, defaults 9) with animated `.sub-fill` bars;
+  the estimated grade readout (`.grade-number` "≈{estimate}" + `.grade-confidence` pill colored
+  high/medium/low via `--ok`/`--warn`/`--down`); a "Centering ceiling" readout ("PSA {cap}" when
+  measured+certain, "too close to call" at a boundary, "unmeasured" otherwise); the binding line
+  ("Limited by: {binding}."); a grader `<select>` (PSA/CGC/BGS) + "Reset estimates" button; and the
+  caveats list. 8 component tests.
+- **Mount points** — `ScanResult.tsx` renders `<GradingStudio centering={result.centering}
+  grader="PSA" />` (card-gated, so the measured centering ceiling flows in from the scan);
+  `CardDetail.tsx` renders it with `centering={null}` (sub-score-only self-assessment for a card you
+  own but haven't scanned). Both reuse the same pure component — no duplication.
+- **Styles — `frontend/src/styles.css`** — additive `.grading-studio*` block (glass card,
+  `studio-in` keyframe, grade grid, confidence pills, sub-bar gradient with width transition, grader
+  select, caveats list). `min-width:880px` makes `.grading-studio-subs` a 3-column grid. Reduced-motion
+  disables the animation and bar transitions. No existing rule renamed/removed.
+
+**Do-not-break contract held** — the studio is pure (no fetch, no motion) and uses distinct
+`.grading-studio*` classes + the "Reset estimates" button, so it never collides with BulkScan's
+`screen.*` body-scoped queries or any frozen string. One pre-existing over-broad assertion in
+`centering.test.tsx` ("no panel when unmeasured" previously forbade the bare word "centering"
+anywhere in `ScanResult`) was relaxed to assert the CenteringPanel's own verdict strings are absent
+instead — the `.centering` null check already enforces the panel's absence (the test's true intent),
+and the studio legitimately discusses centering as one of four sub-grades. New sub-score labels
+("Corners"/"Edges"/"Surface") are distinct from the CenteringPanel's "corners"/"edges"/"surface"
+caveat copy.
+
+**Sacred constraints held** — frontend-only by construction: no backend, no `data/`, no price
+resolution, no snapshots, no schema. 105-scan baseline 0 regressions; 568 backend tests untouched.
