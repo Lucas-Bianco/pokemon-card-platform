@@ -18,6 +18,7 @@ import SealedDeals from "./SealedDeals";
 import SealedLedger from "./SealedLedger";
 import WatchCardSheet from "./WatchCardSheet";
 import { PageTransition } from "./motion";
+import { CommandPalette } from "./CommandPalette";
 
 // The scan flow stays owned by App (which holds the recognition state and the
 // scan-log callbacks); AppShell receives it as a bundle so it can render the
@@ -103,6 +104,7 @@ export default function AppShell({ scan }: Props) {
     cardId?: string;
     variant?: string;
   }>({ open: false });
+  const [paletteOpen, setPaletteOpen] = useState(false);
 
   function openWatchSheet(card?: { cardId?: string; variant?: string }) {
     setWatchSheet({ open: true, cardId: card?.cardId, variant: card?.variant });
@@ -124,6 +126,41 @@ export default function AppShell({ scan }: Props) {
     refreshUnread();
   }, []);
 
+  // Cmd/Ctrl+K toggles the command palette; Escape closes it. Digit-key
+  // shortcuts (1-9) jump to tabs, but only when NOT typing in an input,
+  // textarea, select, or contenteditable — so typing in a search box never
+  // jumps tabs. Cmd/Ctrl+K and Escape always work.
+  useEffect(() => {
+    function isTyping() {
+      const el = document.activeElement;
+      if (!el) return false;
+      const tag = el.tagName;
+      return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (el as HTMLElement).isContentEditable;
+    }
+    function onKey(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) {
+        e.preventDefault();
+        setPaletteOpen((o) => !o);
+        return;
+      }
+      if (e.key === "Escape") {
+        setPaletteOpen(false);
+        return;
+      }
+      if (isTyping()) return;
+      const map: Record<string, TabView> = {
+        "1": "home", "2": "scan", "3": "vault", "4": "alerts",
+        "5": "deals", "6": "sealed", "7": "ledger", "8": "browse", "9": "more",
+      };
+      if (map[e.key]) {
+        e.preventDefault();
+        selectTab(map[e.key]);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   function selectTab(tab: TabView) {
     setSelectedCard(null);
     setView(tab);
@@ -135,6 +172,9 @@ export default function AppShell({ scan }: Props) {
     <main className="app app-shell">
       <header className="persistent-header app-header">
         <h1>{title}</h1>
+        <button className="palette-trigger" onClick={() => setPaletteOpen(true)} aria-label="Search">
+          <span aria-hidden="true">⌘K</span>
+        </button>
       </header>
 
       <div className="app-content">
@@ -207,6 +247,16 @@ export default function AppShell({ scan }: Props) {
           onCreated={() => refreshUnread()}
         />
       )}
+
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        onNavigate={(tab) => selectTab(tab)}
+        onSelectCard={(cardId) => {
+          setSelectedCard({ cardId });
+          setPaletteOpen(false);
+        }}
+      />
 
       {isDesktop ? (
         <DesktopNav view={view} selectedCard={!!selectedCard} unread={unread} onSelect={selectTab} />
