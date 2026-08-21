@@ -14,6 +14,8 @@ import Deals from "./Deals";
 import More from "./More";
 import PortfolioView from "./PortfolioView";
 import ScanResult from "./ScanResult";
+import SetDetail from "./SetDetail";
+import Sets from "./Sets";
 import SealedDeals from "./SealedDeals";
 import SealedLedger from "./SealedLedger";
 import WatchCardSheet from "./WatchCardSheet";
@@ -68,7 +70,7 @@ export interface ScanFlow {
   bulk: BulkFlow | null;
 }
 
-type TabView = "home" | "scan" | "vault" | "alerts" | "deals" | "ledger" | "sealed" | "browse" | "more";
+type TabView = "home" | "scan" | "vault" | "alerts" | "deals" | "ledger" | "sealed" | "browse" | "sets" | "more";
 
 interface Props {
   scan: ScanFlow;
@@ -83,6 +85,7 @@ const TAB_TITLES: Record<TabView, string> = {
   ledger: "Ledger",
   sealed: "Sealed",
   browse: "Browse",
+  sets: "Sets",
   more: "More",
 };
 
@@ -96,6 +99,7 @@ export default function AppShell({ scan }: Props) {
   const { toast } = useToast();
   const [view, setView] = useState<TabView>("home");
   const [selectedCard, setSelectedCard] = useState<{ cardId: string; variant?: string } | null>(null);
+  const [selectedSet, setSelectedSet] = useState<string | null>(null);
   const [unread, setUnread] = useState(0);
   const isDesktop = useIsDesktop();
   // The WatchCardSheet is app-level so any surface (AlertsFeed empty-state
@@ -165,10 +169,11 @@ export default function AppShell({ scan }: Props) {
 
   function selectTab(tab: TabView) {
     setSelectedCard(null);
+    setSelectedSet(null);
     setView(tab);
   }
 
-  const title = selectedCard ? "Card" : TAB_TITLES[view];
+  const title = selectedCard ? "Card" : selectedSet ? "Sets" : TAB_TITLES[view];
 
   return (
     <main className="app app-shell">
@@ -188,6 +193,14 @@ export default function AppShell({ scan }: Props) {
                 variant={selectedCard.variant}
                 onBack={() => setSelectedCard(null)}
                 onWatchCard={(c) => openWatchSheet(c)}
+              />
+            </PageTransition>
+          ) : selectedSet ? (
+            <PageTransition id="set">
+              <SetDetail
+                setId={selectedSet}
+                onBack={() => setSelectedSet(null)}
+                onSelectCard={(cardId) => setSelectedCard({ cardId })}
               />
             </PageTransition>
           ) : view === "home" ? (
@@ -232,6 +245,10 @@ export default function AppShell({ scan }: Props) {
           ) : view === "browse" ? (
             <PageTransition id="browse">
               <Browse onSelectCard={(c) => setSelectedCard(c)} />
+            </PageTransition>
+          ) : view === "sets" ? (
+            <PageTransition id="sets">
+              <Sets onSelectSet={(id) => setSelectedSet(id)} />
             </PageTransition>
           ) : (
             <PageTransition id="more">
@@ -296,6 +313,7 @@ export default function AppShell({ scan }: Props) {
             glyph={<LedgerGlyph />}
           />
           <TabButton label="Browse" active={view === "browse" && !selectedCard} onClick={() => selectTab("browse")} glyph={<SearchGlyph />} />
+          <TabButton label="Sets" active={view === "sets" && !selectedCard} onClick={() => selectTab("sets")} glyph={<SetsGlyph />} />
           <TabButton label="More" active={view === "more" && !selectedCard} onClick={() => selectTab("more")} glyph={<MoreGlyph />} />
         </nav>
       )}
@@ -329,6 +347,7 @@ function DesktopNav({
         <TabButton label="Sealed" active={view === "sealed" && !selectedCard} onClick={() => onSelect("sealed")} glyph={<BoxGlyph />} />
         <TabButton label="Ledger" active={view === "ledger" && !selectedCard} onClick={() => onSelect("ledger")} glyph={<LedgerGlyph />} />
         <TabButton label="Browse" active={view === "browse" && !selectedCard} onClick={() => onSelect("browse")} glyph={<SearchGlyph />} />
+        <TabButton label="Sets" active={view === "sets" && !selectedCard} onClick={() => onSelect("sets")} glyph={<SetsGlyph />} />
         <TabButton label="More" active={view === "more" && !selectedCard} onClick={() => onSelect("more")} glyph={<MoreGlyph />} />
       </nav>
     </aside>
@@ -624,6 +643,17 @@ function SearchGlyph() {
     <svg className="nav-glyph" viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <circle cx="11" cy="11" r="6" stroke="currentColor" strokeWidth="1.8" />
       <path d="M16 16l4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+// A stacked set list with a partial progress bar — the Sets tab's glyph
+// (per-set completion optimizer).
+function SetsGlyph() {
+  return (
+    <svg className="nav-glyph" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <rect x="3" y="4" width="18" height="4" rx="1" stroke="currentColor" strokeWidth="1.6" />
+      <rect x="3" y="11" width="18" height="4" rx="1" stroke="currentColor" strokeWidth="1.6" />
+      <rect x="3" y="18" width="11" height="3" rx="1" stroke="currentColor" strokeWidth="1.6" />
     </svg>
   );
 }
