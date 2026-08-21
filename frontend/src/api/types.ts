@@ -577,3 +577,55 @@ export interface SheetsSyncResult {
   rows: number;
   reason: string | null;
 }
+
+// Phase 06 — set completion. Per-set owned/missing checklist + an honest
+// estimated cost to complete. `market`/`est_cost_to_complete` are null when a
+// missing card has no price snapshot — never a fabricated $0. `source` +
+// `source_updated_at` travel with each priced missing card (the "" sentinel
+// becomes null on the wire). `est_cost_to_complete` is 0 only when the set is
+// complete (missing === 0); null when every missing card is unpriced; otherwise
+// the sum of the priced missing cards (a partial estimate — `unpriced_missing`
+// is always surfaced so the sum is never mistaken for complete).
+export interface SetProgress {
+  id: string;
+  name: string;
+  series: string | null;
+  release_date: string | null;
+  total: number | null;
+  printed_total: number | null;
+  owned: number;
+  checklist_size: number;
+  pct_complete: number;
+}
+
+export interface ChecklistEntry {
+  card_id: string;
+  name: string;
+  number: string;
+  rarity: string | null;
+  image_small: string | null;
+  owned: boolean;
+  market: number | null;
+  source: string | null;
+  source_updated_at: string | null;
+}
+
+export interface CompletionSummary {
+  owned: number;
+  checklist_size: number;
+  missing: number;
+  pct_complete: number;
+  est_cost_to_complete: number | null;
+  unpriced_missing: number;
+}
+
+export interface SetCompletion {
+  id: string;
+  name: string;
+  series: string | null;
+  release_date: string | null;
+  total: number | null;
+  printed_total: number | null;
+  cards: ChecklistEntry[];
+  summary: CompletionSummary;
+}

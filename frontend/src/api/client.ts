@@ -18,6 +18,8 @@ import type {
   SealedDealsResponse,
   SealedLedgerResponse,
   SealedPurchaseOut,
+  SetCompletion,
+  SetProgress,
   SheetsSyncResult,
   SoldCompsResponse,
   Valuation,
@@ -290,6 +292,21 @@ export async function searchCards(q: string, limit = 25): Promise<CardSearchResu
 // CardSearchResult, which is the same shape subset CardDetail renders).
 export async function getCard(cardId: string): Promise<CardSearchResult> {
   return expectJson<CardSearchResult>(await fetch(`${BASE}/cards/${cardId}`));
+}
+
+// Phase 06 — set completion. All server-side: the client never resolves prices
+// itself. getSets returns per-set owned/total progress (no price fan-out);
+// getSetCompletion returns the full checklist + summary for one set.
+export async function getSets(q?: string, limit = 50): Promise<SetProgress[]> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (q && q.trim()) params.set("q", q.trim());
+  return expectJson<SetProgress[]>(await fetch(`${BASE}/sets?${params}`));
+}
+
+export async function getSetCompletion(setId: string): Promise<SetCompletion> {
+  return expectJson<SetCompletion>(
+    await fetch(`${BASE}/sets/${encodeURIComponent(setId)}`),
+  );
 }
 
 // Refresh + return the latest marketplace listings for a card/variant. The
