@@ -47,6 +47,8 @@ from cardplatform.catalog.api_models import (
     SetProgressOut,
 )
 from cardplatform.catalog.completion import CompletionService
+from cardplatform.authenticity.checklist import checklist_for
+from cardplatform.authenticity.consistency import check_consistency
 from cardplatform.grading.centering import CenteringResult, psa_cap_for
 from cardplatform.grading.store import GradingLabelStore
 from cardplatform.grading.upside import GradingUpsideService
@@ -336,6 +338,46 @@ class GradingLabelOut(BaseModel):
     cert_number: str | None
     notes: str | None
     created_at: datetime
+
+
+class ConsistencyOut(BaseModel):
+    """The one honest authenticity auto-signal: printed number vs catalog number.
+
+    ``match`` is one of match / mismatch / unread / no_card (see
+    authenticity.consistency). ``note`` is the honest explanation surfaced to
+    the user — never a fake/real verdict. A mismatch is explicitly framed as
+    "wrong recognition OR counterfeit, indistinguishable", because the project
+    has zero confirmed-counterfeit samples to calibrate against.
+    """
+
+    printed_number: str | None
+    catalog_number: str | None
+    card_id: str | None
+    card_name: str | None
+    match: str
+    note: str
+
+
+class ChecklistItemOut(BaseModel):
+    """One user-driven physical check. ``applies`` is False when the check is
+    irrelevant to the card type (e.g. the holo light test for a non-holo card);
+    the UI renders those as N/A, not hidden."""
+
+    id: str
+    title: str
+    what_to_check: str
+    caveat: str
+    applies: bool
+
+
+class AuthenticityOut(BaseModel):
+    """The honest counterfeit tool: one measurable auto-signal + a transparent
+    physical checklist. ``caveat`` is the banner stating this is a guide, not a
+    verdict, and that no confirmed-counterfeit samples exist to calibrate it."""
+
+    caveat: str
+    consistency: ConsistencyOut
+    checklist: list[ChecklistItemOut]
 
 
 class CollectionItemIn(BaseModel):
@@ -747,6 +789,69 @@ def create_app() -> FastAPI:
         if row is None:
             raise HTTPException(status_code=404, detail="no grade label for this scan")
         return _grading_label_out(row)
+
+    @app.get("/scans/{scan_id}/authenticity", response_model=AuthenticityOut)
+    def scan_authenticity(
+        scan_id: int,
+        session: Session = Depends(get_session),
+    ) -> AuthenticityOut:
+        """The honest counterfeit tool for one scan: catalog-consistency auto-check
+        + a user-driven physical checklist. Never a fake/real verdict.
+
+        The consistency check resolves the card honestly from the scan
+        (corrected_card_id wins over predicted_card_id; an orphaned id whose Card
+        row is gone reads as no_card, not a fabricated number). The checklist is
+        rarity-gated (the holo light test applies only to holo cards); the baseline
+        scans carry no ``variant``, so rarity is the working signal.
+
+        Even a not_found scan returns 200 with the checklist — the physical checks
+        still apply to a card the pipeline failed to recognize — and an honest
+        ``no_card`` consistency result, not a 404.
+        """
+        scan = session.get(ScanLog, scan_id)
+        if scan is None:
+            raise HTTPException(status_code=404, detail="unknown scan")
+
+        resolved_id = scan.corrected_card_id or scan.predicted_card_id
+        card = session.get(Card, resolved_id) if resolved_id is not None else None
+
+        result = check_consistency(
+            ocr_number=scan.collector_number_read,
+            card_number=card.number if card is not None else None,
+            card_id=card.id if card is not None else None,
+            card_name=card.name if card is not None else None,
+        )
+        items = checklist_for(
+            rarity=card.rarity if card is not None else None,
+            variant=scan.variant,
+        )
+
+        return AuthenticityOut(
+            caveat=(
+                "A guide for what to check, not a verdict. The project has zero "
+                "confirmed-counterfeit samples, so these checks are not calibrated "
+                "against any known fakes. The one automatic check (printed number vs "
+                "catalog) only flags a mismatch, which a wrong recognition can also cause."
+            ),
+            consistency=ConsistencyOut(
+                printed_number=result.printed_number,
+                catalog_number=result.catalog_number,
+                card_id=result.card_id,
+                card_name=result.card_name,
+                match=result.match,
+                note=result.note,
+            ),
+            checklist=[
+                ChecklistItemOut(
+                    id=i.id,
+                    title=i.title,
+                    what_to_check=i.what_to_check,
+                    caveat=i.caveat,
+                    applies=i.applies,
+                )
+                for i in items
+            ],
+        )
 
     @app.get("/grading/labels", response_model=list[GradingLabelOut])
     def list_grade_labels(
