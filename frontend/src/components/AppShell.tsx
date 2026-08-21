@@ -9,6 +9,7 @@ import CameraCapture from "./CameraCapture";
 import CardDetail from "./CardDetail";
 import CornerAdjust from "./CornerAdjust";
 import Browse from "./Browse";
+import Dashboard from "./Dashboard";
 import Deals from "./Deals";
 import More from "./More";
 import PortfolioView from "./PortfolioView";
@@ -65,13 +66,14 @@ export interface ScanFlow {
   bulk: BulkFlow | null;
 }
 
-type TabView = "scan" | "vault" | "alerts" | "deals" | "ledger" | "sealed" | "browse" | "more";
+type TabView = "home" | "scan" | "vault" | "alerts" | "deals" | "ledger" | "sealed" | "browse" | "more";
 
 interface Props {
   scan: ScanFlow;
 }
 
 const TAB_TITLES: Record<TabView, string> = {
+  home: "Home",
   scan: "Scan",
   vault: "Vault",
   alerts: "Alerts",
@@ -89,7 +91,7 @@ const TAB_TITLES: Record<TabView, string> = {
 // the active title. CardDetail renders as a transient detail view over the
 // current tab; back returns to it.
 export default function AppShell({ scan }: Props) {
-  const [view, setView] = useState<TabView>("alerts");
+  const [view, setView] = useState<TabView>("home");
   const [selectedCard, setSelectedCard] = useState<{ cardId: string; variant?: string } | null>(null);
   const [unread, setUnread] = useState(0);
   const isDesktop = useIsDesktop();
@@ -144,6 +146,14 @@ export default function AppShell({ scan }: Props) {
                 variant={selectedCard.variant}
                 onBack={() => setSelectedCard(null)}
                 onWatchCard={(c) => openWatchSheet(c)}
+              />
+            </PageTransition>
+          ) : view === "home" ? (
+            <PageTransition id="home">
+              <Dashboard
+                unread={unread}
+                onNavigate={(tab) => selectTab(tab)}
+                onWatchCard={() => openWatchSheet()}
               />
             </PageTransition>
           ) : view === "scan" ? (
@@ -202,6 +212,7 @@ export default function AppShell({ scan }: Props) {
         <DesktopNav view={view} selectedCard={!!selectedCard} unread={unread} onSelect={selectTab} />
       ) : (
         <nav className="bottom-nav" aria-label="Primary">
+          <TabButton label="Home" active={view === "home" && !selectedCard} onClick={() => selectTab("home")} glyph={<HomeGlyph />} />
           <TabButton label="Scan" active={view === "scan" && !selectedCard} onClick={() => selectTab("scan")} glyph={<ScanGlyph />} />
           <TabButton label="Vault" active={view === "vault" && !selectedCard} onClick={() => selectTab("vault")} glyph={<VaultGlyph />} />
           <TabButton
@@ -255,6 +266,7 @@ function DesktopNav({
         <span className="app-sidebar-title">Card Scan</span>
       </div>
       <nav className="app-sidebar-nav">
+        <TabButton label="Home" active={view === "home" && !selectedCard} onClick={() => onSelect("home")} glyph={<HomeGlyph />} />
         <TabButton label="Scan" active={view === "scan" && !selectedCard} onClick={() => onSelect("scan")} glyph={<ScanGlyph />} />
         <TabButton label="Vault" active={view === "vault" && !selectedCard} onClick={() => onSelect("vault")} glyph={<VaultGlyph />} />
         <TabButton label="Alerts" active={view === "alerts" && !selectedCard} onClick={() => onSelect("alerts")} glyph={<BellGlyph />} badge={unread} />
@@ -513,6 +525,15 @@ function BulkPane({ bulk }: { bulk: BulkFlow }) {
 
 // Inline tab glyphs — same viewBox idiom as the prior two-tab nav, kept
 // stroke-based so the active color flows from `currentColor`.
+function HomeGlyph() {
+  return (
+    <svg className="nav-glyph" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M4 11l8-6 8 6" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+      <path d="M6 10v9h12v-9" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+      <path d="M10 19v-5h4v5" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+    </svg>
+  );
+}
 function ScanGlyph() {
   return (
     <svg className="nav-glyph" viewBox="0 0 24 24" fill="none" aria-hidden="true">
