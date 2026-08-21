@@ -344,4 +344,15 @@ describe("CardDetail", () => {
     });
     expect(container.textContent ?? "").toMatch(/recent sold/i);
   });
+
+  it("renders the GradingStudio (sub-score-only, centering unmeasured) for a collection card", async () => {
+    stubFetch({});
+    const { container } = render(<CardDetail cardId="base1-4" variant="normal" onBack={noop} />);
+
+    await waitFor(() => {
+      expect(container.querySelector(".grading-studio")).not.toBeNull();
+    });
+    // No scan -> centering is unmeasured for a collection card.
+    expect(container.textContent ?? "").toMatch(/unmeasured/i);
+  });
 });

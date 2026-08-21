@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { getCard, getDeals, getPriceHistory, refreshListings } from "../api/client";
 import type { CardSearchResult, DealAssessment, Listing, PricePoint } from "../api/types";
 import { formatMoney } from "../lib/format";
+import GradingStudio from "./GradingStudio";
 import GradingUpside from "./GradingUpside";
 import PriceChart from "./PriceChart";
 import PriceLine from "./PriceLine";
@@ -154,6 +155,11 @@ export default function CardDetail({ cardId, variant = "normal", onBack, onWatch
 
       {/* Reused — not duplicated. The spread panel fetches its own data. */}
       <GradingUpside cardId={cardId} variant={variant} />
+
+      {/* Sub-score-only self-assessment for a card you own. No scan -> centering
+          unmeasured; the user rates corners/edges/surface for an estimated band.
+          A calculator of their inputs, not a prediction from the image. */}
+      <GradingStudio centering={null} grader="PSA" />
 
       {historyError ? (
         <p className="error small">{historyError}</p>
