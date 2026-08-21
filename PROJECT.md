@@ -23,10 +23,11 @@ keyboard shortcuts; toast system; animated gradient mesh) shipped 2026-08-20 —
 user-assisted grade-band calculator — measured centering ceiling + user corner/edge/surface
 sub-scores → estimated grade, confidence, binding, caveats; the transparent form of the grade
 predictor, since a learned one is impossible with 0 labelled scans) shipped 2026-08-21 — see
-[plan](docs/superpowers/plans/2026-08-21-grading-studio.md).
+[plan](docs/superpowers/plans/2026-08-21-grading-studio.md). Set-completion optimizer
+(Phase 06 — per-set owned/missing checklist + honest cost to complete via `latest_price`) shipped
+2026-08-22 — see [plan](docs/superpowers/plans/2026-08-21-set-completion.md).
 Next: rip EV (expected pull value — blocked on pull-rate data + a sealed-product master) or
-the full Grade predictor (corner/edge/surface + P(grade), pending labelled-data accrual) or
-Phase 6 (set-completion optimizer).
+the full Grade predictor (corner/edge/surface + P(grade), pending labelled-data accrual).
 
 **Shape:** ONE platform built in phases, not seven apps. All modules share a card-recognition core,
 a pricing layer, and a collection store. Responsive PWA (phone + desktop): React/TypeScript
@@ -71,7 +72,7 @@ Each phase ships independently usable functionality and gets its own spec → pl
 | 3 | Grade Predictor — corner/edge/surface scoring + P(grade) + grading EV | In progress — data infra unblocked (3b); full predictor still planned |
 | 4 | Bulk cataloger — detect every card in one photo | **Complete** |
 | 5 | Deal sniper + sealed EV — listings vs. sold comps, rip-vs-flip | In progress — deal sniper / rip-vs-flip + deal alerts + sold-comps evidence shipped; sealed flip-edge shipped; sealed purchase ledger + profit tracker + Google Sheets sync shipped; rip EV (expected pull value) still planned — needs pull-rate data |
-| 6 | Set-completion optimizer — cheapest path to finish a set | Planned |
+| 6 | Set-completion optimizer — cheapest path to finish a set | **Complete** — per-set owned/missing checklist + honest cost-to-complete via `latest_price`; 10th Sets tab + SetDetail overlay shipped 2026-08-22 |
 | 7 | Counterfeit detector — holo pattern, rosette, texture analysis | Planned |
 | 8 | On-device inference — quantized model in-browser, no server | Planned |
 
@@ -756,3 +757,33 @@ Frontend-only; backend, `data/`, and the 105-scan baseline untouched. **165 fron
 CenteringPanel's own verdict strings are absent — the `.centering` null check already enforces the
 panel's absence (the test's true intent), and the studio legitimately discusses centering as one of
 four sub-grades. 105-scan baseline 0 regressions.
+
+## Set-completion optimizer — shipped 2026-08-22
+
+A read-only set-completion optimizer: per-set owned/missing checklist with an honest estimated cost to
+complete, resolved through the sacred `PriceService.latest_price` path. No new tables, no migrations,
+no `data/` writes. **584 backend + 175 frontend tests green; build clean; 105-scan baseline untouched.**
+([plan](docs/superpowers/plans/2026-08-21-set-completion.md))
+
+- **Service — `backend/src/cardplatform/catalog/completion.py`** — `CompletionService` + four frozen
+  dataclasses + a natural-sort key (plain numerics, then `4a`-style suffixes, then `TG01`-style prefixes).
+  `list_sets` groups owned + checklist counts, filters with `func.lower().like()` (not `ilike`), orders
+  by release_date desc, pct with no divide-by-zero. `set_detail` natural-sorts cards, prices only the
+  missing ones via `latest_price(card.id, "normal")`, maps the `""` source-timestamp sentinel to `None`.
+  Cost semantics are honest: `0.0` only when complete, `None` when all-missing-unpriced, sum otherwise;
+  `unpriced_missing` always surfaced.
+- **Routes — `backend/src/cardplatform/api.py`** — `GET /sets` (q optional, blank→422; limit 1–200) and
+  `GET /sets/{set_id}` (unknown→404). Pydantic v2 wire models in `catalog/api_models.py`.
+- **Frontend — 10th Sets tab (`Sets.tsx`) + `SetDetail.tsx` overlay** — searchable set list with
+  progress bars; overlay with three KPIs (owned/total, pct, est. cost), an `unpriced: N card(s)` caveat,
+  and a checklist grid (Owned badge / priced line with source + staleness / "no market price"). "Complete"
+  renders instead of `formatMoney(0)` so no `$0.00` leaks; null cost renders `—`. AppShell wires the tab
+  into both navs + the command palette with a `SetsGlyph`.
+- **Styles — `frontend/src/styles.css`** — additive `.sets-*`, `.set-detail-*`, `.checklist-*` blocks +
+  a visual-only `.bottom-nav { overflow-x: auto }` safety net for 10 tabs on narrow phones. No existing
+  rule renamed/removed.
+
+**Do-not-break contract held** — the 10th tab is named "Sets" (never "Scan"), so BulkScan's
+`getByRole("button", { name: "Scan" })` still resolves to one element. All new classes are distinct; no
+frozen string touched. **Sacred constraints held** — `latest_price` only; staleness surfaced;
+`func.lower().like()`; honest 0% / `—` / "no market price"; read-only. 105-scan baseline 0 regressions.

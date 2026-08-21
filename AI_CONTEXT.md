@@ -48,10 +48,10 @@ Site: https://lucas-bianco.github.io/pokemon-card-platform/
 | UI | Responsive UI overhaul — refined dark-glass + desktop sidebar + Framer Motion (phone→any desktop) | ✅ Complete 2026-08-20 (§17) — frontend-only; 126 tests green; 105-scan baseline untouched |
 | UI+ | Living UI — Dashboard (Home) landing (animated count-up KPIs + allocation donut + movers bars), Cmd/Ctrl+K command palette + keyboard shortcuts, toast system, animated gradient mesh | ✅ Complete 2026-08-20 (§18) — frontend-only; 146 tests green; 105-scan baseline untouched |
 | 3d | Grading Studio — honest user-assisted grade-band calculator (measured centering ceiling + user corner/edge/surface sub-scores → estimated grade, confidence, binding, caveats) | ✅ Complete 2026-08-21 (§19) — frontend-only; 165 tests green; 105-scan baseline untouched |
-| 6 | Set-completion optimizer | Planned |
+| 6 | Set-completion optimizer | ✅ Complete 2026-08-22 (§20) — backend + frontend; 584 backend + 175 frontend tests green; 105-scan baseline untouched |
 | 7 | Counterfeit detector | Planned |
 
-**Tests:** 568 backend (pytest) + 165 frontend (vitest).
+**Tests:** 584 backend (pytest) + 175 frontend (vitest).
 
 ### UI — "Grading Lab" (2026-08-01)
 
@@ -1124,3 +1124,53 @@ caveat copy.
 
 **Sacred constraints held** — frontend-only by construction: no backend, no `data/`, no price
 resolution, no snapshots, no schema. 105-scan baseline 0 regressions; 568 backend tests untouched.
+
+## 20. Phase 06 — Set-completion optimizer (2026-08-22)
+
+**Goal:** Ship a read-only set-completion optimizer — per-set checklist (owned/missing cards) with an
+honest estimated cost to complete, resolved through the sacred `PriceService.latest_price` path. No
+new tables, no migrations, no `data/` writes.
+
+**Backend — `backend/src/cardplatform/catalog/completion.py`** — `CompletionService` with four frozen
+dataclasses (`SetProgress`, `SetCompletion`, `ChecklistEntry`, `CompletionSummary`) and a natural-sort
+key `_number_sort_key` (plain numerics first, then numeric+suffix like `4a`, then non-numeric prefixes
+like `TG01` via a `10**9` sentinel). `list_sets(query)` groups owned counts (distinct
+`CollectionItem.card_id` join `Card`) + checklist counts (DB card count per set), filters with
+`func.lower(CardSet.name).like(...)` (not `ilike` — accents), orders by `release_date.desc`, and computes
+`pct_complete` with no divide-by-zero (0 when `checklist_size == 0`). `set_detail(set_id)` raises
+`LookupError` for an unknown set, natural-sorts cards, resolves a price only for missing cards via
+`PriceService.latest_price(card.id, "normal")`, and maps the `""` source-timestamp sentinel to `None`
+on the wire. Summary cost semantics are honest: `est_cost = 0.0` only when `missing == 0`; `None` when
+every missing card is unpriced; otherwise the sum of priced missing cards. `unpriced_missing` is always
+surfaced so the UI never hides the gap behind a fabricated total.
+
+**Backend — `backend/src/cardplatform/catalog/api_models.py`** — Pydantic v2 wire models
+(`SetProgressOut`, `ChecklistEntryOut`, `CompletionSummaryOut`, `SetCompletionOut`), all
+`from_attributes=True`. **`backend/src/cardplatform/api.py`** — two read-only routes: `GET /sets`
+(`q` optional `min_length=1`, blank→422; `limit` 1–200 default 50) and `GET /sets/{set_id}` (unknown→404).
+
+**Frontend** — a 10th **Sets** tab (`Sets.tsx`): searchable list of every catalog set with per-set
+owned/total + a progress bar; fetches on mount (empty query → newest sets) and debounces typed queries
+(250ms). `SetDetail.tsx` is an AppShell overlay (`selectedSet` state, mirroring `selectedCard`): three
+KPIs (owned/total, pct, est. cost to complete), an `unpriced: N card(s)` caveat, and a checklist grid of
+`.checklist-tile` buttons (thumbnail or placeholder, name, `#number · rarity`, and either an "Owned"
+badge, a priced line with `source · as of source_updated_at`, or "no market price"). API client:
+`getSets(q?, limit)` + `getSetCompletion(setId)`. AppShell wires the tab into both navs + the command
+palette, with a `SetsGlyph`. "Complete" renders instead of `formatMoney(0)` so no `$0.00` leaks; a null
+est. cost renders `—`.
+
+**Do-not-break contract held** — the 10th tab is named **"Sets"** (never "Scan"), so BulkScan's
+`getByRole("button", { name: "Scan" })` still resolves to one element. All new CSS classes are distinct
+(`.sets-*`, `.set-detail-*`, `.checklist-*`); no existing rule renamed/removed. The `.bottom-nav`
+`overflow-x: auto` change is visual-only (the existing `flex: 1` already shrinks buttons; the scroll is a
+safety net for very narrow phones). No frozen string touched.
+
+**Sacred constraints held** — `PriceService.latest_price` only (never ad-hoc price resolution);
+staleness surfaced (`source` + `source_updated_at`, `""` sentinel → `None`); `func.lower().like()` not
+`ilike`; honest empty states (0% not fabricated, `—` / "no market price" not `$0`); read-only (no new
+tables/migrations/snapshots/`data/` writes). 584 backend + 175 frontend tests green; 105-scan baseline
+untouched.
+
+**Deferred follow-ups** — per-variant completion (today any-variant-owned marks a card complete);
+cheapest-listing cost-to-complete via `ListingsService` (today uses `latest_price` market); a `0` digit
+shortcut for the 10th tab (digits 1–9 cover the first nine only).
