@@ -40,6 +40,13 @@ from cardplatform.collection.store import (
     PortfolioSummary,
 )
 from cardplatform.config import settings
+from cardplatform.catalog.api_models import (
+    ChecklistEntryOut,
+    CompletionSummaryOut,
+    SetCompletionOut,
+    SetProgressOut,
+)
+from cardplatform.catalog.completion import CompletionService
 from cardplatform.grading.centering import CenteringResult, psa_cap_for
 from cardplatform.grading.store import GradingLabelStore
 from cardplatform.grading.upside import GradingUpsideService
@@ -487,6 +494,29 @@ def create_app() -> FastAPI:
             .limit(limit)
         ).all()
         return [CardOut.from_card(card) for card in cards]
+
+    @app.get("/sets", response_model=list[SetProgressOut])
+    def list_sets(
+        q: str | None = Query(default=None, min_length=1),
+        limit: int = Query(default=50, ge=1, le=200),
+        session: Session = Depends(get_session),
+    ) -> list[SetProgressOut]:
+        # Whitespace-only q is blank, not a search — 422 (mirrors the sealed-deals
+        # contract). FastAPI's min_length counts whitespace, so we guard explicitly.
+        if q is not None and not q.strip():
+            raise HTTPException(status_code=422, detail="q must not be blank")
+        service = CompletionService(session, PriceService(session))
+        sets = service.list_sets(query=q)
+        return [SetProgressOut.model_validate(s) for s in sets[:limit]]
+
+    @app.get("/sets/{set_id}", response_model=SetCompletionOut)
+    def get_set(set_id: str, session: Session = Depends(get_session)) -> SetCompletionOut:
+        service = CompletionService(session, PriceService(session))
+        try:
+            detail = service.set_detail(set_id)
+        except LookupError:
+            raise HTTPException(status_code=404, detail=f"unknown set: {set_id!r}")
+        return SetCompletionOut.model_validate(detail)
 
     @app.get("/cards/{card_id}", response_model=CardOut)
     def get_card(card_id: str, session: Session = Depends(get_session)) -> CardOut:
