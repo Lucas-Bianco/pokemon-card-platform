@@ -131,7 +131,15 @@ describe("ScanResult centering panel", () => {
     );
 
     expect(container.querySelector(".centering")).toBeNull();
-    expect(container.textContent ?? "").not.toMatch(/centering/i);
+    // The CenteringPanel's own verdict strings must be absent (it renders
+    // nothing when unmeasured). We assert against those specific strings rather
+    // than the bare word "centering", because the GradingStudio below it
+    // legitimately discusses centering as one of four sub-grades and honestly
+    // says "unmeasured" — a different, honest surface, not the panel.
+    const text = container.textContent ?? "";
+    expect(text).not.toMatch(/allows up to PSA/i);
+    expect(text).not.toMatch(/too close to call/i);
+    expect(text).not.toMatch(/outside PSA's published range/i);
   });
 
   it("renders the panel when a measurement is present", () => {

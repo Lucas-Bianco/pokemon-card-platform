@@ -2195,3 +2195,79 @@ body::before {
 @media (prefers-reduced-motion: reduce) {
   .app-content::after { animation: none; opacity: 0; }
 }
+
+/* ----- Grading Studio (estimate a grade band) ----------------------------- */
+/* Additive: the interactive pre-submission estimator. Matches the .centering /
+   .grading-upside glass-card language. No existing rule is touched. */
+.grading-studio {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-3);
+  box-shadow: var(--shadow-glass);
+  padding: var(--sp-4);
+  animation: studio-in 0.32s ease both;
+}
+@keyframes studio-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+.grading-studio-headline { margin: 0; font-size: 0.95rem; font-weight: 600; }
+.grading-studio-sub { margin: 4px 0 0; font-size: 0.78rem; color: var(--fg-dim); }
+
+.grading-studio-grade {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--sp-3);
+  align-items: center;
+  margin-top: var(--sp-4);
+  padding: var(--sp-3) 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+.grade-estimate { display: flex; flex-direction: column; gap: 2px; }
+.grade-estimate .grade-label { font-size: 0.75rem; color: var(--fg-dim); }
+.grade-number {
+  font-size: 2.1rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+.grade-confidence { font-size: 0.72rem; font-weight: 600; }
+.grade-confidence.high { color: var(--ok); }
+.grade-confidence.medium { color: var(--warn); }
+.grade-confidence.low { color: var(--down); }
+.grade-centering { text-align: right; }
+.grade-centering .label { font-size: 0.72rem; color: var(--fg-dim); display: block; }
+.grade-centering .unknown { color: var(--fg-dim); }
+
+.grading-studio-subs { margin-top: var(--sp-3); display: flex; flex-direction: column; gap: var(--sp-3); }
+.sub-score { display: flex; flex-direction: column; gap: 6px; }
+.sub-head { display: flex; justify-content: space-between; align-items: baseline; }
+.sub-name { font-size: 0.82rem; font-weight: 600; }
+.sub-value { font-size: 0.82rem; color: var(--fg-dim); font-variant-numeric: tabular-nums; }
+.sub-score input[type="range"] { width: 100%; accent-color: var(--accent); }
+.sub-bar { height: 6px; border-radius: 999px; background: var(--line); overflow: hidden; }
+.sub-fill { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--accent-2), var(--accent)); transition: width 0.2s ease; }
+.sub-hint { font-size: 0.72rem; }
+
+.grading-studio-binding { margin: var(--sp-2) 0 0; }
+.grading-studio-grader { margin-top: var(--sp-3); display: flex; align-items: end; gap: var(--sp-3); }
+.grading-studio-grader label { display: flex; flex-direction: column; gap: 2px; }
+.grading-studio-grader label > span { font-size: 0.72rem; color: var(--fg-dim); }
+.grading-studio-grader select {
+  background: var(--surface); color: var(--fg); border: 1px solid var(--line);
+  border-radius: var(--r-1); padding: 4px 6px; font: inherit;
+}
+
+.grading-studio-caveats { margin: var(--sp-3) 0 0; padding-left: 16px; }
+.grading-studio-caveats li { font-size: 0.72rem; color: var(--fg-dim); }
+.grading-studio-caveats li + li { margin-top: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .grading-studio { animation: none; }
+  .sub-fill { transition: none; }
+}
+@media (min-width: 880px) {
+  .grading-studio-subs { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--sp-4); }
+}
