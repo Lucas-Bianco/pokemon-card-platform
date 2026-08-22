@@ -97,12 +97,22 @@ export default function PortfolioView(_props: Props) {
   );
 
   const summary = portfolio?.summary;
+  // A brand-new user still gets a summary back — with every figure at zero.
+  // Rendering the valuation block off `summary` alone therefore asserts
+  // "Market value $0.00 / Cost basis $0.00" for a collection that does not
+  // exist: a fabricated valuation, which is exactly what this project forbids.
+  // Dashboard.tsx gates the same KPIs behind a holdings check and shows an
+  // honest empty state instead — mirror that. Note this suppresses the block
+  // only when there is NOTHING to value; a GENUINE zero still renders, so
+  // holdings that are all unpriced show $0.00 next to the "count as zero —
+  // never guessed" caveat below, which is honest reporting, not a fabrication.
+  const hasHoldings = (portfolio?.items?.length ?? 0) > 0;
 
   return (
     <section className="portfolio">
       {error && <p className="error">{error}</p>}
 
-      {summary && (
+      {hasHoldings && summary && (
         <motion.div
           className="valuation"
           variants={staggerContainer}
@@ -159,14 +169,14 @@ export default function PortfolioView(_props: Props) {
         </motion.div>
       )}
 
-      {summary && summary.cost_basis === 0 && (
+      {hasHoldings && summary && summary.cost_basis === 0 && (
         <p className="muted small">
           No purchase prices recorded yet, so profit/loss is unknown. Enter what you paid when you
           add a card (or edit a holding below) and it will start tracking.
         </p>
       )}
 
-      {summary && summary.unpriced_items > 0 && (
+      {hasHoldings && summary && summary.unpriced_items > 0 && (
         <p className="muted small">
           {summary.unpriced_items} item{summary.unpriced_items === 1 ? "" : "s"} have no market
           price yet and count as zero — never guessed.

@@ -236,4 +236,68 @@ describe("PortfolioView", () => {
     // The wrapper provides the overflow-x fallback guard.
     expect(container.querySelector(".portfolio-table-wrap")).not.toBeNull();
   });
+  // A brand-new user's portfolio comes back with a real summary whose every
+  // figure is zero. Rendering the valuation block off that asserts a $0.00
+  // market value and cost basis for a collection that does not exist — a
+  // fabricated valuation. Nothing to value → no valuation block, just the
+  // honest empty state (the same trade Dashboard.tsx makes).
+  it("shows no valuation block for an empty collection — never a fabricated $0.00", async () => {
+    stubFetch(
+      portfolio({
+        summary: {
+          market_value: 0,
+          cost_basis: 0,
+          unrealized: 0,
+          unpriced_items: 0,
+          priced_items: 0,
+          allocation: [],
+          top_gainers: [],
+          top_losers: [],
+        },
+        items: [],
+      }),
+    );
+
+    const { container } = render(<PortfolioView />);
+
+    await waitFor(() => {
+      expect(container.textContent ?? "").toMatch(/nothing here yet/i);
+    });
+    expect(container.querySelector(".valuation")).toBeNull();
+    const text = container.textContent ?? "";
+    expect(text).not.toContain("$0.00");
+    expect(text).not.toMatch(/market value/i);
+    expect(text).not.toMatch(/cost basis/i);
+  });
+
+  // The flip side: a GENUINE zero must still be reported. Holdings that are
+  // all unpriced really are worth $0.00 so far, and the caveat says why.
+  // Suppressing that would be its own dishonesty.
+  it("still reports a genuine $0.00 market value when real holdings are all unpriced", async () => {
+    stubFetch(
+      portfolio({
+        summary: {
+          market_value: 0,
+          cost_basis: 200.0,
+          unrealized: -200.0,
+          unpriced_items: 1,
+          priced_items: 0,
+          allocation: [],
+          top_gainers: [],
+          top_losers: [],
+        },
+        items: [unpricedItem()],
+      }),
+    );
+
+    const { container } = render(<PortfolioView />);
+
+    await waitFor(() => {
+      expect(container.querySelector(".valuation")).not.toBeNull();
+    });
+    const text = container.textContent ?? "";
+    expect(text).toMatch(/market value/i);
+    expect(text).toContain("$0.00");
+    expect(text).toMatch(/count as zero — never guessed/i);
+  });
 });
