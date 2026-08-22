@@ -201,3 +201,43 @@ class SealedSoldCompsResponse(BaseModel):
     sold_comps: list[SealedSoldCompOut]
     sold_comps_unavailable: bool
     sold_comps_empty: bool
+
+
+# --------------------------------------------------------- Phase A sealed catalog
+
+
+class SealedProductOut(BaseModel):
+    """One sealed-product reference-catalog row (Phase A, roadmap row 09).
+
+    `from_attributes=True` so the ORM model serialises directly. `msrp` is nullable —
+    many products have no official US MSRP (booster boxes, premiums) and the UI shows
+    "no MSRP", never a fabricated `$0`. `print_status` is a best-effort tag
+    (`in_print` / `out_of_print` / `unknown`), never a guarantee."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    slug: str
+    name: str
+    era: str | None = None
+    product_type: str
+    msrp: float | None = None
+    msrp_currency: str = "USD"
+    print_status: str = "unknown"
+    source_url: str | None = None
+    image_url: str | None = None
+    released_at: str | None = None
+    source: str = "manual"
+    created_at: datetime
+
+
+class SealedProductsResponse(BaseModel):
+    """Catalog browse/search result. `product_type`/`print_status` echo the active
+    filters (None when unfiltered) so the UI can reflect its own state. The seed is
+    curated + in-repo (a future semi-automated community sync is a documented
+    follow-up, never magic auto-update); `count` is the returned page size, not the
+    total catalog size."""
+
+    products: list[SealedProductOut]
+    count: int
+    product_type: str | None = None
+    print_status: str | None = None

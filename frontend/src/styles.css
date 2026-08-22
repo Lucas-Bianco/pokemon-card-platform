@@ -1907,6 +1907,52 @@ body {
 }
 .proof-toggle { margin-top: 0.4rem; }
 
+/* =========================================================================
+   Phase A — sealed-product catalog (roadmap row 09)
+   Additive only: reuses .deal-* card/chip idiom. The toolbar lays out the
+   search input + two filter selects; the selects are pill-styled to match the
+   deal chip language. Print-status chips carry an honest color (in=ok green,
+   out=muted, unknown=dim) — never a "guarantee" color. Catalog cards are
+   slightly denser than deal cards so a long browse list scans easily.
+   ========================================================================= */
+.sealed-catalog-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin: 0.5rem 0 0.75rem;
+}
+.sealed-catalog-toolbar .deals-search { flex: 1 1 220px; min-width: 0; }
+.sealed-catalog-select {
+  padding: 0.4rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--fg);
+  font-size: 0.85rem;
+}
+.sealed-catalog-count { margin: 0.1rem 0 0.5rem; }
+.sealed-catalog-list { display: grid; gap: 0.6rem; }
+.sealed-catalog-chips { gap: 0.35rem; }
+.sealed-catalog-type { color: var(--fg-dim); }
+.sealed-catalog-print.print-in_print {
+  background: color-mix(in srgb, var(--ok, #2ea043) 14%, var(--surface));
+  border-color: color-mix(in srgb, var(--ok, #2ea043) 45%, var(--line));
+}
+.sealed-catalog-print.print-out_of_print {
+  color: var(--fg-faint);
+}
+.sealed-catalog-print.print-unknown {
+  color: var(--fg-faint);
+  font-style: italic;
+}
+.sealed-catalog-msrp { margin-top: 0.35rem; }
+.sealed-catalog-source {
+  display: inline-block;
+  margin-top: 0.3rem;
+  font-size: 0.8rem;
+}
+
 .alert-row:hover,
 .browse-result:hover,
 .deal-card:hover,

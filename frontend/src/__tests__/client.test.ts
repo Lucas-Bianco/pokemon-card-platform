@@ -9,6 +9,8 @@ import {
   getPortfolio,
   getSealedDeals,
   getSealedLedger,
+  getSealedProduct,
+  getSealedProducts,
   getSealedSoldComps,
   logSealedPurchase,
   patchCollectionItem,
@@ -429,6 +431,86 @@ describe("getSealedSoldComps", () => {
     expect(res.sold_comps[0].price).toBe(118.0);
     expect(res.sold_comps[0].url).toBe("https://ebay/itm/a");
     expect(res.sold_comps_unavailable).toBe(false);
+  });
+});
+
+describe("getSealedProducts", () => {
+  const body = {
+    products: [
+      {
+        slug: "base-booster-pack",
+        name: "Base Set Booster Pack",
+        era: "Base",
+        product_type: "booster_pack",
+        msrp: null,
+        msrp_currency: "USD",
+        print_status: "out_of_print",
+        source_url: null,
+        image_url: null,
+        released_at: "1999-01-09",
+        source: "manual",
+        created_at: "2026-08-22T00:00:00Z",
+      },
+    ],
+    count: 1,
+    product_type: null,
+    print_status: null,
+  };
+
+  it("calls /api/sealed/products with q/type/status/limit", async () => {
+    const spy = mockFetch(200, body);
+    await getSealedProducts("booster", "etb", "in_print", 25);
+    const url = spy.mock.calls[0][0] as string;
+    expect(url).toContain("/api/sealed/products");
+    expect(url).toContain("q=booster");
+    expect(url).toContain("type=etb");
+    expect(url).toContain("status=in_print");
+    expect(url).toContain("limit=25");
+  });
+
+  it("omits q/type/status when not provided but always sends limit", async () => {
+    const spy = mockFetch(200, body);
+    await getSealedProducts();
+    const url = spy.mock.calls[0][0] as string;
+    expect(url).toContain("limit=50");
+    expect(url).not.toContain("q=");
+    expect(url).not.toContain("type=");
+  });
+
+  it("throws with the backend detail on 422 (unknown type)", async () => {
+    mockFetch(422, { detail: "type must be one of (...)" });
+    await expect(getSealedProducts(undefined, "mega-tin" as never)).rejects.toThrow(
+      /type must be one of/,
+    );
+  });
+
+  it("returns the catalog on 200", async () => {
+    mockFetch(200, body);
+    const res = await getSealedProducts();
+    expect(res.products).toHaveLength(1);
+    expect(res.products[0].msrp).toBeNull(); // honest null, never 0
+    expect(res.count).toBe(1);
+  });
+});
+
+describe("getSealedProduct", () => {
+  it("calls /api/sealed/products/{slug}", async () => {
+    const spy = mockFetch(200, {
+      slug: "base-booster-pack",
+      name: "Base Set Booster Pack",
+      era: "Base",
+      product_type: "booster_pack",
+      msrp: null,
+      msrp_currency: "USD",
+      print_status: "out_of_print",
+      source_url: null,
+      image_url: null,
+      released_at: "1999-01-09",
+      source: "manual",
+      created_at: "2026-08-22T00:00:00Z",
+    });
+    await getSealedProduct("base-booster-pack");
+    expect(String(spy.mock.calls[0][0])).toContain("/api/sealed/products/base-booster-pack");
   });
 });
 

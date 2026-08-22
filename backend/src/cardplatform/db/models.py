@@ -376,3 +376,41 @@ class SealedValuation(Base):
     source: Mapped[str] = mapped_column(String, default="ebay_sold_median")
     comp_count: Mapped[int] = mapped_column(Integer, default=0)
     fetched_at: Mapped[datetime] = mapped_column(UtcDateTime, default=_utcnow)
+
+
+class SealedProduct(Base):
+    """A sealed Pokémon product in the reference catalog (Phase A, roadmap row 09).
+
+    Sealed products (booster packs, booster boxes, ETBs, collection boxes, tins,
+    premium bundles — everything that contains card packs) are NOT cards: no
+    card_id/variant, no price snapshots here. This is static reference data — the
+    keystone for scan-to-log (B), MSRP-vs-market (C), price-lookup (D), shopping (E).
+
+    Honesty: `msrp` is nullable. Many sealed products have NO official US MSRP
+    (booster boxes aren't sold at a fixed retail price; premiums vary) — those rows
+    are NULL and the UI shows "no MSRP", never a fabricated $0. `print_status` is a
+    best-effort tag (in_print/out_of_print/unknown), never a guarantee (products
+    re-enter print; unknown is honest, not a guess). `source` records row provenance
+    ("manual" for the curated starter seed; a community sync would set its own).
+
+    String slug PK (idempotent seeding by natural key, mirrors CardSet). Auto-
+    provisioned by `Base.metadata.create_all()` — no migration needed for a new
+    table. The starter seed lives in `sealed/seed_data.py` (in-repo, version-
+    controlled — NOT under data/, which is user data we never touch).
+    """
+
+    __tablename__ = "sealed_products"
+    __table_args__ = (Index("ix_sealed_product_browse", "product_type", "print_status"),)
+
+    slug: Mapped[str] = mapped_column(String, primary_key=True)
+    name: Mapped[str] = mapped_column(String, index=True)
+    era: Mapped[str | None] = mapped_column(String, index=True, default=None)
+    product_type: Mapped[str] = mapped_column(String, index=True)
+    msrp: Mapped[float | None] = mapped_column(Float, default=None)
+    msrp_currency: Mapped[str] = mapped_column(String, default="USD")
+    print_status: Mapped[str] = mapped_column(String, default="unknown")
+    source_url: Mapped[str | None] = mapped_column(String, default=None)
+    image_url: Mapped[str | None] = mapped_column(String, default=None)
+    released_at: Mapped[str | None] = mapped_column(String, index=True, default=None)
+    source: Mapped[str] = mapped_column(String, default="manual")
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=_utcnow)

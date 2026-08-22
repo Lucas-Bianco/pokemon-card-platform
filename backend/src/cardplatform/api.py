@@ -76,6 +76,8 @@ from cardplatform.sealed.api_models import (
     SealedLedgerEntryOut,
     SealedLedgerResponse,
     SealedPricePointOut,
+    SealedProductOut,
+    SealedProductsResponse,
     SealedPurchaseIn,
     SealedPurchaseOut,
     SealedSoldCompOut,
@@ -84,8 +86,14 @@ from cardplatform.sealed.api_models import (
     SheetsSyncResultOut,
     ValuationRefreshResultOut,
 )
+from cardplatform.sealed.catalog_service import (
+    PRINT_STATUSES,
+    PRODUCT_TYPES,
+    SealedCatalogService,
+)
 from cardplatform.sealed.engine import SealedDealEngine
 from cardplatform.sealed.ledger import LedgerService
+from cardplatform.sealed.seed_data import SEALED_PRODUCTS
 
 _database: Database | None = None
 
@@ -107,6 +115,14 @@ def _get_database() -> Database:
     if _database is None:
         database = Database()
         database.create_all()
+        # Phase A: seed the sealed-product catalog once when the table is empty.
+        # Idempotent + never deletes/updates (never-delete discipline) — the catalog
+        # is reference data the user may have edited; a re-run must not clobber it.
+        # Cheap: one COUNT per process startup, only inserts on a truly empty table.
+        with database.session() as session:
+            svc = SealedCatalogService(session)
+            if svc.count() == 0:
+                svc.ensure_seed(SEALED_PRODUCTS)
         _database = database
     return _database
 
@@ -1390,6 +1406,63 @@ def create_app() -> FastAPI:
             sold_comps_unavailable=not key_set,
             sold_comps_empty=key_set and not comps,
         )
+
+    # --------------------------------------------------------------- sealed catalog (Phase A)
+    @app.get("/sealed/products", response_model=SealedProductsResponse)
+    def sealed_products(
+        q: str | None = Query(
+            None,
+            description="Optional case-insensitive substring on name or era",
+        ),
+        type: str | None = Query(
+            None,
+            description=f"Filter by product_type; one of {PRODUCT_TYPES}",
+        ),
+        status: str | None = Query(
+            None,
+            description=f"Filter by print_status; one of {PRINT_STATUSES}",
+        ),
+        limit: int = Query(50, ge=1, le=200),
+        session: Session = Depends(get_session),
+    ) -> SealedProductsResponse:
+        """Browse/search the sealed-product reference catalog (Phase A, roadmap row 09).
+
+        Curated in-repo seed (NOT magic auto-update — no official sealed-product API
+        exists; a future semi-automated community sync with manual review is a
+        documented follow-up). `msrp` is nullable — many products have no official US
+        MSRP (booster boxes, premiums); the UI shows "no MSRP", never `$0`. Filters
+        compose with AND; no query/filters lists newest first. `type`/`status` are
+        validated against the allowed sets (422 on an unknown value).
+        """
+        if type is not None and type not in PRODUCT_TYPES:
+            raise HTTPException(
+                status_code=422,
+                detail=f"type must be one of {PRODUCT_TYPES}",
+            )
+        if status is not None and status not in PRINT_STATUSES:
+            raise HTTPException(
+                status_code=422,
+                detail=f"status must be one of {PRINT_STATUSES}",
+            )
+        svc = SealedCatalogService(session)
+        products = svc.search(query=q, product_type=type, print_status=status, limit=limit)
+        return SealedProductsResponse(
+            products=[SealedProductOut.model_validate(p) for p in products],
+            count=len(products),
+            product_type=type,
+            print_status=status,
+        )
+
+    @app.get("/sealed/products/{slug}", response_model=SealedProductOut)
+    def sealed_product(slug: str, session: Session = Depends(get_session)) -> SealedProductOut:
+        """One sealed-product catalog row by slug. Unknown slug -> 404 (honest, never
+        a fabricated blank row)."""
+        svc = SealedCatalogService(session)
+        try:
+            product = svc.get(slug)
+        except LookupError:
+            raise HTTPException(status_code=404, detail="sealed product not found")
+        return SealedProductOut.model_validate(product)
 
     # --------------------------------------------------------------- sealed ledger (05d)
     @app.get("/sealed/ledger", response_model=SealedLedgerResponse)

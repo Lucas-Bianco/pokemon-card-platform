@@ -525,6 +525,49 @@ export interface SealedSoldCompsResponse {
   sold_comps_empty: boolean;
 }
 
+// Phase A (roadmap row 09) — sealed-product reference catalog. A browsable,
+// searchable list of every sealed Pokémon product that contains card packs
+// (booster packs, booster boxes, ETBs, collection boxes, tins, premium bundles)
+// Base era → newest, with an honest MSRP (`msrp` is null when no official US MSRP
+// exists — booster boxes, premiums — and the UI shows "no MSRP", never $0) and an
+// in_print / out_of_print / unknown tag. Curated in-repo seed (NOT magic auto-
+// update — no official sealed-product API exists; a future semi-automated
+// community sync with manual review is a documented follow-up). Mirrors backend
+// SealedProductOut / SealedProductsResponse field-for-field.
+
+export type SealedProductType =
+  | "booster_pack"
+  | "booster_box"
+  | "etb"
+  | "collection_box"
+  | "tin"
+  | "premium_bundle"
+  | "other";
+
+export type SealedPrintStatus = "in_print" | "out_of_print" | "unknown";
+
+export interface SealedProduct {
+  slug: string;
+  name: string;
+  era: string | null;
+  product_type: SealedProductType;
+  msrp: number | null;
+  msrp_currency: string;
+  print_status: SealedPrintStatus;
+  source_url: string | null;
+  image_url: string | null;
+  released_at: string | null;
+  source: string;
+  created_at: string;
+}
+
+export interface SealedProductsResponse {
+  products: SealedProduct[];
+  count: number;
+  product_type: SealedProductType | null;
+  print_status: SealedPrintStatus | null;
+}
+
 // Phase 05d — sealed-purchase ledger. The user logs sealed boxes/packs they
 // bought (query-keyed, like sealed deals); the backend periodically values them
 // against the eBay sold-comps median and tracks profit. Every nullable market

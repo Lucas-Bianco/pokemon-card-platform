@@ -18,6 +18,10 @@ import type {
   Scan,
   SealedDealsResponse,
   SealedLedgerResponse,
+  SealedPrintStatus,
+  SealedProduct,
+  SealedProductType,
+  SealedProductsResponse,
   SealedPurchaseOut,
   SealedSoldCompsResponse,
   SetCompletion,
@@ -568,6 +572,33 @@ export async function getSealedSoldComps(
   const params = new URLSearchParams({ q: query, limit: String(limit) });
   return expectJsonOrDetail<SealedSoldCompsResponse>(
     await fetch(`${BASE}/sealed/sold-comps?${params}`),
+  );
+}
+
+// ----- Sealed catalog ----------------------------------------------------
+// Phase A (roadmap row 09) — browse/search the sealed-product reference catalog.
+// All params optional: no q/type/status lists newest first. `limit` defaults to 50
+// (matching the backend). Mirrors getSealedDeals (expectJsonOrDetail so a 422 from
+// an unknown type/status surfaces the backend detail). Read-only.
+export async function getSealedProducts(
+  q?: string,
+  type?: SealedProductType,
+  status?: SealedPrintStatus,
+  limit = 50,
+): Promise<SealedProductsResponse> {
+  const params = new URLSearchParams();
+  if (q !== undefined) params.set("q", q);
+  if (type) params.set("type", type);
+  if (status) params.set("status", status);
+  params.set("limit", String(limit));
+  return expectJsonOrDetail<SealedProductsResponse>(
+    await fetch(`${BASE}/sealed/products?${params}`),
+  );
+}
+
+export async function getSealedProduct(slug: string): Promise<SealedProduct> {
+  return expectJsonOrDetail<SealedProduct>(
+    await fetch(`${BASE}/sealed/products/${encodeURIComponent(slug)}`),
   );
 }
 
