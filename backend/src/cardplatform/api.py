@@ -296,6 +296,10 @@ class ScanOut(BaseModel):
     collector_number_read: str | None
     rectified_path: str | None = None
     variant: str | None = None
+    # NULL on a single-card scan (a singleton batch); set for the N cards of one
+    # bulk-cataloger photo, so a client can see the grouping actually landed.
+    batch_id: str | None = None
+    batch_index: int | None = None
 
 
 class ScanAccuracyOut(BaseModel):
@@ -685,8 +689,20 @@ def create_app() -> FastAPI:
         collector_number_read: str | None = Query(default=None),
         rectified_path: str | None = Query(default=None),
         variant: str | None = Query(default=None),
+        batch_id: str | None = Query(default=None),
+        batch_index: int | None = Query(default=None, ge=0),
         store: ScanStore = Depends(get_scan_store),
     ) -> ScanOut:
+        """Log one recognition attempt against the photo it came from.
+
+        `batch_id`/`batch_index` group the N cards of one bulk-cataloger photo.
+        The client has always sent them; until they were declared here FastAPI
+        discarded them silently, so every bulk card landed as its own singleton
+        batch and a 9-card binder photo counted nine times in
+        `GET /scans/accuracy`. Accepting them restores the batch-aware count
+        `ScanStore.accuracy()` was written for. Both stay optional: a
+        single-card scan omits them and stores NULL, as before.
+        """
         scan = store.record(
             image_bytes=await file.read(),
             status=status,
@@ -696,6 +712,8 @@ def create_app() -> FastAPI:
             collector_number_read=collector_number_read,
             rectified_path=rectified_path,
             variant=variant,
+            batch_id=batch_id,
+            batch_index=batch_index,
         )
         return _scan_out(scan)
 
@@ -1733,6 +1751,8 @@ def _scan_out(scan: ScanLog) -> ScanOut:
         collector_number_read=scan.collector_number_read,
         rectified_path=scan.rectified_path,
         variant=scan.variant,
+        batch_id=scan.batch_id,
+        batch_index=scan.batch_index,
     )
 
 

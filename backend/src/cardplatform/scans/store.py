@@ -56,7 +56,24 @@ class ScanStore:
         collector_number_read: str | None = None,
         rectified_path: str | None = None,
         variant: str | None = None,
+        batch_id: str | None = None,
+        batch_index: int | None = None,
     ) -> ScanLog:
+        """Log ONE recognition attempt.
+
+        `batch_id`/`batch_index` are for the bulk cataloger, which posts one card
+        at a time (each cell settles independently, so a slow crop never blocks
+        the others) and carries its own slot position. Stamping `batch_id` here
+        is what keeps `accuracy()` honest: it counts one representative per
+        batch, so a 9-card binder photo stays one scan in the baseline instead
+        of nine. Both default to None — a genuine single-card scan is a
+        singleton batch and stores NULL, as before.
+
+        `record_batch` is the other shape: N results assembled server-side from
+        one photo, written once. It is not this path — it would rewrite the
+        photo per call and renumber `batch_index` from its own enumeration,
+        discarding the index the caller actually measured.
+        """
         # uuid rather than a counter: two scans in the same second must not collide,
         # and the filename should not depend on database state.
         name = f"{uuid.uuid4().hex}.png"
@@ -71,6 +88,8 @@ class ScanStore:
             collector_number_read=collector_number_read,
             rectified_path=rectified_path,
             variant=variant,
+            batch_id=batch_id,
+            batch_index=batch_index,
         )
         self.session.add(scan)
         self.session.commit()

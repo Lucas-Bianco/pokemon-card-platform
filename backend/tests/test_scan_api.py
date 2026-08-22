@@ -72,6 +72,39 @@ def test_record_scan_defaults_rectified_path_and_variant_to_none(client):
     assert body["variant"] is None
 
 
+def test_record_scan_persists_batch_id_and_index(client):
+    """Phase 4: the bulk cataloger posts one card at a time, each carrying the
+    batch_id from /recognize/batch and its own slot index. Both must reach the
+    row — they were declared on the client but not on the route, so FastAPI
+    dropped them silently."""
+    body = _record(client, batch_id="batch-1", batch_index=2).json()
+
+    assert body["batch_id"] == "batch-1"
+    assert body["batch_index"] == 2
+
+
+def test_record_scan_defaults_batch_id_and_index_to_none(client):
+    """A single-card scan is a singleton batch: NULL, not an error."""
+    body = _record(client).json()
+
+    assert body["batch_id"] is None
+    assert body["batch_index"] is None
+
+
+def test_accuracy_counts_one_bulk_photo_once(client):
+    """THE point of batch grouping. Nine cards off one binder page are one
+    photograph's worth of evidence. Before the route accepted batch_id every
+    bulk card landed as its own singleton batch and inflated the baseline —
+    3 cards here would have read total == 4 instead of 2."""
+    for i in range(3):
+        _record(client, batch_id="batch-1", batch_index=i)
+    _record(client)  # a genuine single-card scan
+
+    body = client.get("/scans/accuracy").json()
+
+    assert body["total"] == 2  # 1 batch + 1 singleton, NOT 4
+
+
 def test_a_not_found_scan_can_be_recorded_without_a_card(client):
     """These are the interesting failures — they must be loggable."""
     response = _record(client, status="not_found", predicted=None)
