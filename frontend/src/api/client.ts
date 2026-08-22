@@ -474,7 +474,12 @@ export async function unsubscribePush(endpoint: string): Promise<void> {
   const response = await fetch(`${BASE}/push/subscribe?${params}`, {
     method: "DELETE",
   });
-  if (!response.ok) {
+  // 404 means the server holds no such subscription — which is the state this
+  // call exists to reach, so it is success, not failure. Turning push off must
+  // not report an error just because the row was already gone (a stale browser
+  // subscription, or a second tab that unsubscribed first). Any other non-OK
+  // status is a real failure and still throws.
+  if (!response.ok && response.status !== 404) {
     throw new Error(`request failed: ${response.status}`);
   }
 }

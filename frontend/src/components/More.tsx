@@ -6,6 +6,7 @@ import {
   getWatches,
   patchWatch,
   subscribePush,
+  unsubscribePush,
 } from "../api/client";
 import type { Watch } from "../api/types";
 
@@ -22,8 +23,18 @@ function urlBase64ToUint8Array(base64: string): Uint8Array {
 }
 
 interface PushState {
-  status: "idle" | "enabling" | "enabled" | "error";
+  status: "idle" | "enabling" | "enabled" | "disabling" | "error";
   message?: string;
+}
+
+// Read the browser's CURRENT push subscription, or null. Both the mount-time
+// state sync and the disable action need it: the component's own state says
+// nothing about a subscription made in an earlier session, and the browser is
+// the only authority on whether this device is actually subscribed.
+async function currentSubscription(): Promise<PushSubscription | null> {
+  if (!("serviceWorker" in navigator) || !navigator.serviceWorker.ready) return null;
+  const reg = await navigator.serviceWorker.ready;
+  return (await reg.pushManager.getSubscription()) ?? null;
 }
 
 // The "More" tab: settings, honest channel-status cards, and watchlist
@@ -34,6 +45,58 @@ interface PushState {
 // watchlist section lists existing watches with active toggles + delete.
 export default function More() {
   const [push, setPush] = useState<PushState>({ status: "idle" });
+
+  // Reflect the browser's real state on mount. Without this the card reads
+  // "Off" after every reload even while this device is still subscribed — and
+  // since "Disable push" only shows when enabled, the switch-off would be
+  // unreachable in the exact case you need it: you turned push on yesterday
+  // and want it off today.
+  useEffect(() => {
+    let cancelled = false;
+    currentSubscription()
+      .then((sub) => {
+        if (!cancelled && sub) setPush({ status: "enabled" });
+      })
+      .catch(() => {
+        // No service worker / no permission is not an error to report here;
+        // it just means push is off, which is the default state already shown.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Turn push OFF. Order matters: unsubscribe the BROWSER first, because that
+  // is what actually stops notifications arriving on this device — then drop
+  // the server's record so it stops sending to a dead endpoint. Doing it the
+  // other way round would leave a live browser subscription if the network
+  // call failed.
+  async function disablePush() {
+    setPush({ status: "disabling" });
+    try {
+      const sub = await currentSubscription();
+      if (sub === null) {
+        // Nothing subscribed on this device — already the desired end state.
+        setPush({ status: "idle" });
+        return;
+      }
+      const { endpoint } = sub;
+      const gone = await sub.unsubscribe();
+      if (!gone) {
+        setPush({ status: "error", message: "Couldn't turn push off in this browser." });
+        return;
+      }
+      // The endpoint is dead either way now; unsubscribePush treats a 404 as
+      // success, so an already-removed record does not surface as a failure.
+      await unsubscribePush(endpoint);
+      setPush({ status: "idle" });
+    } catch (err) {
+      setPush({
+        status: "error",
+        message: err instanceof Error ? err.message : "Couldn't turn push off.",
+      });
+    }
+  }
 
   async function enablePush() {
     setPush({ status: "enabling" });
@@ -103,8 +166,8 @@ export default function More() {
             <span className="channel-on">Enabled</span>
           ) : push.status === "enabling" ? (
             <span className="muted small">Enabling…</span>
-          ) : push.status === "error" ? (
-            <span className="channel-off">Off</span>
+          ) : push.status === "disabling" ? (
+            <span className="muted small">Turning off…</span>
           ) : (
             <span className="channel-off">Off</span>
           )}
@@ -118,7 +181,11 @@ export default function More() {
             Get pinged in-browser or on your installed PWA when an alert fires.
           </p>
         )}
-        {push.status !== "enabled" && push.status !== "enabling" && (
+        {push.status === "enabled" ? (
+          <button className="link" onClick={() => void disablePush()}>
+            Disable push
+          </button>
+        ) : push.status === "enabling" || push.status === "disabling" ? null : (
           <button className="link" onClick={() => void enablePush()}>
             Enable push
           </button>
