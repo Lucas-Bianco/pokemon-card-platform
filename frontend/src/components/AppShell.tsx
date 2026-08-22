@@ -1,7 +1,9 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { AnimatePresence } from "framer-motion";
 
 import { useIsDesktop } from "../lib/useIsDesktop";
+import { useRoute } from "../lib/useRoute";
+import type { TabView } from "../lib/route";
 import { getUnreadCount } from "../api/client";
 import type { RecognizeResponse } from "../api/types";
 import AlertsFeed from "./AlertsFeed";
@@ -13,7 +15,9 @@ import Dashboard from "./Dashboard";
 import Deals from "./Deals";
 import More from "./More";
 import PortfolioView from "./PortfolioView";
+import PriceLookup from "./PriceLookup";
 import ScanResult from "./ScanResult";
+import SealedCatalog from "./SealedCatalog";
 import SetDetail from "./SetDetail";
 import Sets from "./Sets";
 import SealedDeals from "./SealedDeals";
@@ -70,8 +74,6 @@ export interface ScanFlow {
   bulk: BulkFlow | null;
 }
 
-type TabView = "home" | "scan" | "vault" | "alerts" | "deals" | "ledger" | "sealed" | "browse" | "sets" | "more";
-
 interface Props {
   scan: ScanFlow;
 }
@@ -82,8 +84,10 @@ const TAB_TITLES: Record<TabView, string> = {
   vault: "Vault",
   alerts: "Alerts",
   deals: "Deals",
+  prices: "Prices",
   ledger: "Ledger",
   sealed: "Sealed",
+  catalog: "Catalog",
   browse: "Browse",
   sets: "Sets",
   more: "More",
@@ -97,9 +101,12 @@ const TAB_TITLES: Record<TabView, string> = {
 // current tab; back returns to it.
 export default function AppShell({ scan }: Props) {
   const { toast } = useToast();
-  const [view, setView] = useState<TabView>("home");
-  const [selectedCard, setSelectedCard] = useState<{ cardId: string; variant?: string } | null>(null);
-  const [selectedSet, setSelectedSet] = useState<string | null>(null);
+  // The tab, the open set and the open card live in the URL rather than in
+  // component state, so a reload lands back where the user was, a link can
+  // point at a specific tab/card/set, and the manifest's `?view=` home-screen
+  // shortcuts resolve. See lib/route.ts for the scheme.
+  const { route, navigate, back } = useRoute();
+  const { view, set: selectedSet, card: selectedCard } = route;
   const [unread, setUnread] = useState(0);
   const isDesktop = useIsDesktop();
   // The WatchCardSheet is app-level so any surface (AlertsFeed empty-state
@@ -132,6 +139,36 @@ export default function AppShell({ scan }: Props) {
     refreshUnread();
   }, []);
 
+  // Selecting a tab clears both overlays, exactly as the previous state-based
+  // version did. Stable identity (navigate is stable, and this reads nothing
+  // from the current route), so the keydown effect below can hold it without
+  // going stale.
+  const selectTab = useCallback(
+    (tab: TabView) => navigate({ view: tab, set: null, card: null }),
+    [navigate],
+  );
+
+  // Overlays push a history entry, so Back peels one layer off the stack
+  // (card → set → tab) instead of leaving the app. Opening a card keeps the
+  // view and any open set beneath it, which is what makes sets → set → card
+  // unwind one step at a time.
+  function openCard(card: { cardId: string; variant?: string }) {
+    navigate({ ...route, card });
+  }
+  // `back` walks the entry that opening the card pushed, so the in-app Back
+  // button and the browser Back button agree. On a card that was deep-linked
+  // or reloaded into there is no such entry, so it rewrites to the layer
+  // underneath instead — the set detail if one is open, otherwise the tab.
+  function closeCard() {
+    back({ ...route, card: null });
+  }
+  function openSet(setId: string) {
+    navigate({ ...route, set: setId, card: null });
+  }
+  function closeSet() {
+    back({ ...route, set: null, card: null });
+  }
+
   // Cmd/Ctrl+K toggles the command palette; Escape closes it. Digit-key
   // shortcuts (1-9) jump to tabs, but only when NOT typing in an input,
   // textarea, select, or contenteditable — so typing in a search box never
@@ -156,7 +193,7 @@ export default function AppShell({ scan }: Props) {
       if (isTyping()) return;
       const map: Record<string, TabView> = {
         "1": "home", "2": "scan", "3": "vault", "4": "alerts",
-        "5": "deals", "6": "sealed", "7": "ledger", "8": "browse", "9": "more",
+        "5": "deals", "6": "prices", "7": "sealed", "8": "catalog", "9": "ledger",
       };
       if (map[e.key]) {
         e.preventDefault();
@@ -165,13 +202,7 @@ export default function AppShell({ scan }: Props) {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
-
-  function selectTab(tab: TabView) {
-    setSelectedCard(null);
-    setSelectedSet(null);
-    setView(tab);
-  }
+  }, [selectTab]);
 
   const title = selectedCard ? "Card" : selectedSet ? "Sets" : TAB_TITLES[view];
 
@@ -191,7 +222,7 @@ export default function AppShell({ scan }: Props) {
               <CardDetail
                 cardId={selectedCard.cardId}
                 variant={selectedCard.variant}
-                onBack={() => setSelectedCard(null)}
+                onBack={closeCard}
                 onWatchCard={(c) => openWatchSheet(c)}
               />
             </PageTransition>
@@ -199,8 +230,8 @@ export default function AppShell({ scan }: Props) {
             <PageTransition id="set">
               <SetDetail
                 setId={selectedSet}
-                onBack={() => setSelectedSet(null)}
-                onSelectCard={(cardId) => setSelectedCard({ cardId })}
+                onBack={closeSet}
+                onSelectCard={(cardId) => openCard({ cardId })}
               />
             </PageTransition>
           ) : view === "home" ? (
@@ -215,7 +246,7 @@ export default function AppShell({ scan }: Props) {
             <PageTransition id="scan">
               <ScanPane
                 scan={scan}
-                onViewCard={(cardId) => setSelectedCard({ cardId })}
+                onViewCard={(cardId) => openCard({ cardId })}
                 onWatchCard={(card) => openWatchSheet(card)}
               />
             </PageTransition>
@@ -226,13 +257,17 @@ export default function AppShell({ scan }: Props) {
           ) : view === "alerts" ? (
             <PageTransition id="alerts">
               <AlertsFeed
-                onOpenCard={(c) => setSelectedCard(c)}
+                onOpenCard={(c) => openCard(c)}
                 onWatchCard={(c) => openWatchSheet(c)}
               />
             </PageTransition>
           ) : view === "deals" ? (
             <PageTransition id="deals">
-              <Deals onOpenCard={(c) => setSelectedCard(c)} />
+              <Deals onOpenCard={(c) => openCard(c)} />
+            </PageTransition>
+          ) : view === "prices" ? (
+            <PageTransition id="prices">
+              <PriceLookup />
             </PageTransition>
           ) : view === "ledger" ? (
             <PageTransition id="ledger">
@@ -242,13 +277,17 @@ export default function AppShell({ scan }: Props) {
             <PageTransition id="sealed">
               <SealedDeals />
             </PageTransition>
+          ) : view === "catalog" ? (
+            <PageTransition id="catalog">
+              <SealedCatalog />
+            </PageTransition>
           ) : view === "browse" ? (
             <PageTransition id="browse">
-              <Browse onSelectCard={(c) => setSelectedCard(c)} />
+              <Browse onSelectCard={(c) => openCard(c)} />
             </PageTransition>
           ) : view === "sets" ? (
             <PageTransition id="sets">
-              <Sets onSelectSet={(id) => setSelectedSet(id)} />
+              <Sets onSelectSet={(id) => openSet(id)} />
             </PageTransition>
           ) : (
             <PageTransition id="more">
@@ -275,7 +314,7 @@ export default function AppShell({ scan }: Props) {
         onClose={() => setPaletteOpen(false)}
         onNavigate={(tab) => selectTab(tab)}
         onSelectCard={(cardId) => {
-          setSelectedCard({ cardId });
+          openCard({ cardId });
           setPaletteOpen(false);
         }}
       />
@@ -301,10 +340,22 @@ export default function AppShell({ scan }: Props) {
             glyph={<TagGlyph />}
           />
           <TabButton
+            label="Prices"
+            active={view === "prices" && !selectedCard}
+            onClick={() => selectTab("prices")}
+            glyph={<PriceGlyph />}
+          />
+          <TabButton
             label="Sealed"
             active={view === "sealed" && !selectedCard}
             onClick={() => selectTab("sealed")}
             glyph={<BoxGlyph />}
+          />
+          <TabButton
+            label="Catalog"
+            active={view === "catalog" && !selectedCard}
+            onClick={() => selectTab("catalog")}
+            glyph={<CatalogGlyph />}
           />
           <TabButton
             label="Ledger"
@@ -344,7 +395,9 @@ function DesktopNav({
         <TabButton label="Vault" active={view === "vault" && !selectedCard} onClick={() => onSelect("vault")} glyph={<VaultGlyph />} />
         <TabButton label="Alerts" active={view === "alerts" && !selectedCard} onClick={() => onSelect("alerts")} glyph={<BellGlyph />} badge={unread} />
         <TabButton label="Deals" active={view === "deals" && !selectedCard} onClick={() => onSelect("deals")} glyph={<TagGlyph />} />
+        <TabButton label="Prices" active={view === "prices" && !selectedCard} onClick={() => onSelect("prices")} glyph={<PriceGlyph />} />
         <TabButton label="Sealed" active={view === "sealed" && !selectedCard} onClick={() => onSelect("sealed")} glyph={<BoxGlyph />} />
+        <TabButton label="Catalog" active={view === "catalog" && !selectedCard} onClick={() => onSelect("catalog")} glyph={<CatalogGlyph />} />
         <TabButton label="Ledger" active={view === "ledger" && !selectedCard} onClick={() => onSelect("ledger")} glyph={<LedgerGlyph />} />
         <TabButton label="Browse" active={view === "browse" && !selectedCard} onClick={() => onSelect("browse")} glyph={<SearchGlyph />} />
         <TabButton label="Sets" active={view === "sets" && !selectedCard} onClick={() => onSelect("sets")} glyph={<SetsGlyph />} />
@@ -705,6 +758,37 @@ function MoreGlyph() {
       <circle cx="5" cy="12" r="1.8" fill="currentColor" />
       <circle cx="12" cy="12" r="1.8" fill="currentColor" />
       <circle cx="19" cy="12" r="1.8" fill="currentColor" />
+    </svg>
+  );
+}
+// A price tag with a dollar sign — the Prices tab's glyph (card name -> price lookup).
+function PriceGlyph() {
+  return (
+    <svg className="nav-glyph" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M12 3v18"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+      <path
+        d="M15 7.5C15 6 13.657 5.5 12 5.5c-1.657 0-3 .75-3 2.25S10.343 10 12 10s3 .75 3 2.25-1.343 2.25-3 2.25c-1.657 0-3-.5-3-2"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+// A stacked catalog/grid — the Catalog tab's glyph (sealed-product reference catalog).
+function CatalogGlyph() {
+  return (
+    <svg className="nav-glyph" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <rect x="4" y="4" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.8" />
+      <rect x="14" y="4" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.8" />
+      <rect x="4" y="14" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.8" />
+      <rect x="14" y="14" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.8" />
     </svg>
   );
 }

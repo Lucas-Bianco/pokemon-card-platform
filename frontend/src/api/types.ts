@@ -568,6 +568,62 @@ export interface SealedProductsResponse {
   print_status: SealedPrintStatus | null;
 }
 
+// Phase B — scan-to-log. Log a sealed buy straight from a catalog row by slug.
+// The product's name + product_type are resolved server-side, so the client only
+// sends the slug + the purchase facts. `quantity` defaults to 1; `cost_per_unit`
+// is required (a logged buy always has a cost). Optional fields are null. Mirrors
+// backend SealedScanLogIn field-for-field.
+export interface SealedScanLogRequest {
+  slug: string;
+  quantity?: number;
+  cost_per_unit: number;
+  source?: string | null;
+  listing_url?: string | null;
+  notes?: string | null;
+  bought_at?: string | null;
+}
+
+// Phase C — MSRP vs market. One catalog product's curated MSRP compared to its
+// live eBay sold-comps median. Every nullable figure is null (never 0): `msrp`
+// is null where no official US MSRP exists; `market_median` is null when there
+// are no comps; `delta` is null unless BOTH msrp and market_median are real. The
+// honest flags mirror /sealed/sold-comps: `unavailable` = no listings key (the
+// provider returns [] without the network); `empty` = key set but 0 comps.
+// Mirrors backend SealedProductMarketOut field-for-field.
+export interface SealedProductMarket {
+  slug: string;
+  name: string;
+  msrp: number | null;
+  msrp_currency: string;
+  market_median: number | null;
+  market_source: string | null;
+  market_source_updated_at: string | null;
+  sold_comps_count: number;
+  delta: number | null;
+  unavailable: boolean;
+  empty: boolean;
+}
+
+// Phase D — card price lookup. One card match for the Prices tab's name -> price
+// flow. `market` is the latest snapshot's market figure, or null when no snapshot
+// exists (honest "no market price", never a fabricated 0). `source` +
+// `source_updated_at` travel with the figure so the UI can say where it came from
+// and how stale it is; both are null for an unpriced card. Mirrors backend
+// CardLookupItemOut field-for-field.
+export interface CardLookupItem {
+  card_id: string;
+  name: string;
+  set_id: string;
+  set_name: string;
+  number: string;
+  rarity: string | null;
+  image_small: string | null;
+  image_large: string | null;
+  market: number | null;
+  source: string | null;
+  source_updated_at: string | null;
+}
+
 // Phase 05d — sealed-purchase ledger. The user logs sealed boxes/packs they
 // bought (query-keyed, like sealed deals); the backend periodically values them
 // against the eBay sold-comps median and tracks profit. Every nullable market

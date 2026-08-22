@@ -7,7 +7,7 @@
 > **Keep it current.** Update this file after any change that alters architecture, measured
 > results, or the roadmap. A stale onboarding doc is worse than none, because it is trusted.
 >
-> Last updated: **2026-08-20**
+> Last updated: **2026-08-22**
 
 ---
 
@@ -59,6 +59,7 @@ Site: https://lucas-bianco.github.io/pokemon-card-platform/
 | 15 | Private repo + Pages relocation | ⬜ Planned — breaks Pages on free plan; needs paid plan or separate host |
 | 16 | Proof of sales — every market price backed by viewable sold-comps (date, price, source link) | ✅ Done 2026-08-21 — `GET /sealed/sold-comps` + `ProofOfSales.tsx` (under ScanResult price + per-row toggle on SealedDeals/SealedLedger); listed-vs-proven caveat; honest unavailable/empty, never $0; 615 backend + 195 frontend tests green, 105-scan baseline untouched |
 | 17 | Multi-TCG platform — Magic (Scryfall) + Topps sports cards | ⬜ Planned — future multi-domain arc; separate catalogs + recognition models |
+| 18 | Vending-machine restock tracker — log sightings, describe the pattern, arm the existing drop_time watch | ⬜ Planned — no restock API exists; observation-driven by design (own sightings only, no community feed, no social scraping). Never a point time: a window plus `n`, `insufficient_data` under 3 restocks, `no_pattern` when dispersion is too wide. Interval censoring from `empty` sightings is what keeps it honest. First forward-looking feature in the project — see the spec's "tension worth naming". [spec](docs/superpowers/specs/2026-08-22-vending-restock-design.md) |
 
 **Tests:** 609 backend (pytest) + 182 frontend (vitest).
 
@@ -91,9 +92,14 @@ images*, which flattered it badly.
 | | value |
 |---|---|
 | **Precision when the pipeline commits** | **100%** (29/29, zero confident errors) |
-| **Coverage** (scans producing a confident answer) | **65%** (was 31% before Phase 1c) |
+| **Coverage** (scans producing a confident answer) | **63%** (69/109 scans; was 31% before Phase 1c) |
 | True card at rank 1 | **88%** |
 | True card in top 3 | **98%** |
+
+> **The 65% figure this table carried until 2026-08-22 is not a regression to 63%.** The confident
+> count went *up*, 68 → 69 (the promo-code fix in §4). The scan set grew 105 → 109, and all four new
+> scans decline, so the denominator moved further than the numerator. Always quote the fraction, not
+> just the percentage — this is exactly the kind of drift that reads as a regression when it is not.
 
 **Do not quote a blended "accuracy" figure.** An earlier metric reported 74.4% by counting a
 *declined* `ambiguous` result as a *wrong answer* — conflating refusing to guess with guessing
@@ -274,9 +280,17 @@ data/                GITIGNORED — 20,391 card images, 40 MB FAISS index, SQLit
   rotated rectangle is the robust primitive.
 - **A single "better" detector was measured NOT strictly better.** `otsu_rect` alone recovered 33
   failures but regressed 6 working scans. The chain regresses none.
-- **Only a full `N/M` OCR reading may override the visual winner.** A bare number may confirm it,
-  never promote a different candidate — a real misread (`1/102` → bare `102`) would otherwise turn a
-  correct answer into a confident wrong one.
+- **Only a reading that proves OCR found the collector-number field may override the visual winner.**
+  Two forms qualify, for the same reason: a full `N/M` (the `/` is the proof) and a letter-prefixed
+  promo code such as `SM102` / `XY133` (the prefix is the proof). **Bare digits may confirm the visual
+  top-1 and never promote** — a real misread (`1/102` → bare `102`) would otherwise turn a correct
+  answer into a confident wrong one.
+  *Sharpened 2026-08-22.* The promo half was measured, not assumed: promos were penalised twice
+  (visually alike, and no `/M` to arbitrate with), so a correct `SM102` read could only ever confirm a
+  wrong winner. Allowing prefixed codes to promote gained 1 correct answer, lost 0, and produced 0
+  wrong ones over the 109 saved scans; `evaluate_detection.py` reports 0 regressions and coverage
+  68 → 69. The rule was made *more precise*, not weaker — the `hgss4-1` guard is untouched and has its
+  own regression test.
 
 **Frontend**
 - **The camera requires HTTPS.** `getUserMedia` is *absent* over plain HTTP — not a prompt, a hard
@@ -290,15 +304,15 @@ data/                GITIGNORED — 20,391 card images, 40 MB FAISS index, SQLit
 
 ```bash
 # install (backend)
-C:\ClaudeKnowledge\backend\.venv\Scripts\pip.exe install -e "C:\ClaudeKnowledge\backend[dev,ml]"
+C:\ClaudeKnowledge\Pokemon Project\v0.1\backend\.venv\Scripts\pip.exe install -e "C:\ClaudeKnowledge\Pokemon Project\v0.1\backend[dev,ml]"
 
 # tests
-C:\ClaudeKnowledge\backend\.venv\Scripts\python.exe -m pytest        # from repo root
-npm --prefix C:\ClaudeKnowledge\frontend test
+C:\ClaudeKnowledge\Pokemon Project\v0.1\backend\.venv\Scripts\python.exe -m pytest        # from repo root
+npm --prefix C:\ClaudeKnowledge\Pokemon Project\v0.1\frontend test
 
 # run the app — needs BOTH, in separate terminals
-C:\ClaudeKnowledge\backend\.venv\Scripts\uvicorn.exe cardplatform.api:app --host 0.0.0.0 --port 8000
-npm --prefix C:\ClaudeKnowledge\frontend run dev        # https://<lan-ip>:5173
+C:\ClaudeKnowledge\Pokemon Project\v0.1\backend\.venv\Scripts\uvicorn.exe cardplatform.api:app --host 0.0.0.0 --port 8000
+npm --prefix C:\ClaudeKnowledge\Pokemon Project\v0.1\frontend run dev        # https://<lan-ip>:5173
 
 # data maintenance
 cardplatform.exe sync-catalog                  # idempotent, resumable
@@ -342,6 +356,36 @@ trends on its own as data lands.
 3. **A different OCR engine**, if OCR is revisited. See the dead ends below: cropping and
    preprocessing are exhausted, so the remaining gain would have to come from the recogniser itself
    (PaddleOCR, or Tesseract with a digit whitelist) or from higher-resolution capture.
+
+### Margin dead ends — measured and disproved 2026-08-22, do not repeat
+
+Recognition declines on 35% of real scans. Diagnosis first, over all 109: **detection is not the
+bottleneck** (3 of 41 declines found no card). The other 38 are all tight visual margins — and the
+surprise is that they are *not* weak matches. Top-1 similarity on a declining scan has a median of
+**0.748** (p75 0.797), essentially the same as a succeeding one; only 2 of 38 fall below 0.65. The
+runner-up simply sits ~0.007 behind, and in **74% of cases it is a completely unrelated card**
+(M Altaria-EX vs M Houndoom-EX; Brock's Onix vs Crustle). Only 8% are the same-name reprint pairs
+`fusion.py` was designed around.
+
+Two rescoring rules were built and scored against the shipped `s1 - s2 >= 0.05` gate, with OCR
+arbitration held identical:
+
+| rule | best safe threshold | coverage | gained | lost | wrong |
+|---|---|---|---|---|---|
+| `(s1-s2) / stdev(top-5)` | 1.5 | 62% → 72% | 2 | **1** | 0 |
+| `(s1-s2) / stdev(ranks 5-50)` | 5 | 62% → 64% | 1 | **1** | 0 |
+
+**Both rejected.** The top-5 variant nets +1 verified correct answer while *breaking* scan 85, which
+is correct today — and the threshold immediately below it (1.25) returns a confidently wrong card
+(scan 34: claims `sm8-202` for `sm5-144`). A safe threshold adjacent to an unsafe one, calibrated on
+45 labelled scans, is the same "threshold tuned on the wrong population" failure as `MIN_BORDER_PURITY`
+in §9. It would also raise unverifiable confident answers from ~36 to 45.
+
+The useful by-product: both rules' gains were concentrated on **promos**, which led to the
+promo-code fix in §4 — a precision-preserving change rather than a threshold loosening.
+
+**64 of the 109 scans carry no ground truth**, so gains and regressions can only be counted on 45.
+Labelling more of them is the cheapest way to make every future recognition experiment sharper.
 
 ### OCR dead ends — measured and disproved, do not repeat
 
@@ -1249,3 +1293,116 @@ only honest path to a real detector, same as the grade predictor needs labelled
 data); variant-aware checklist gating once scans carry non-null `variant`; per-card
 reference-image color comparison (today uncomputable — baseline `rectified_path` is
 NULL — and white-balance-dominated even when computable).
+
+---
+
+## 22. URL routing — the shell's location lives in the URL (2026-08-22)
+
+**Why** — `AppShell` held all navigation in React state (`view`, `selectedCard`,
+`selectedSet`). Every reload dropped the user back on Home, nothing was deep-linkable,
+and — the live user-facing bug — `public/manifest.webmanifest` had shipped home-screen
+shortcuts pointing at `/?view=scan` and `/?view=portfolio` since the PWA landed, but
+nothing read `?view=`, so **both shortcuts silently opened Home**.
+
+**No router library.** One shell, ~10 flat tabs, two overlay levels. The History API
+plus a ~90-line hook covers it; react-router would add a dependency and a nested-route
+model this shape does not need.
+
+**Query-based scheme, not paths** (`src/lib/route.ts`):
+
+| URL | Meaning |
+| --- | --- |
+| `/` | Home (canonical — `view` is omitted for home) |
+| `/?view=scan` | a tab |
+| `/?view=vault&card=base1-4&variant=holofoil` | card overlay over a tab |
+| `/?view=sets&set=base1` | set detail over a tab |
+| `/?view=sets&set=base1&card=base1-4` | card over a set — the sets → set → card stack |
+
+Two reasons the scheme is query-based and must stay that way:
+1. **Installed PWA shortcuts keep the URL they were installed with.** Parsing the query
+   form is the only way the already-shipped `?view=` shortcuts keep working, so the
+   manifest was deliberately left unchanged. `portfolio` is an alias for the `vault` tab
+   (the manifest's spelling); it is read but never written, and the boot URL is
+   canonicalised in place via `replaceState`. **Do not delete that alias** — it is the
+   only thing keeping installed Portfolio shortcuts off Home.
+2. Every route is literally `/` plus a query string, so no static host needs an SPA
+   history-fallback rewrite and the manifest's `start_url: "/"` / `scope: "/"` stay true.
+
+**Back semantics** (`src/lib/useRoute.ts`) — entries the app pushes are stamped
+`history.state.appNav`. Closing an overlay steps back through that entry when it exists
+(so the in-app Back button and the browser Back button agree, and history does not grow
+on every close), and rewrites in place when it does not — a deep-linked or reloaded card
+has no app entry behind it, so `history.back()` there would eject the user from the app.
+
+### Gotchas this cost
+
+- **The route must be parsed synchronously in the `useState` initialiser.** Anything
+  async (or an effect-based redirect) breaks `BulkScan.test.tsx`, which renders full
+  `<App/>` four times and calls `getByRole("button", { name: "Scan" })` immediately after
+  mount, and would flash the wrong tab on a real deep link.
+- **`selectTab` is a `const` in the keydown effect's dep array**, so it must be declared
+  *above* that effect or the dep array hits the temporal dead zone at render time.
+- **jsdom keeps one window (and one session history) per test file.** Without
+  `vitest.setup.ts` resetting `location` per test, a test that navigates leaves the next
+  `render(<App/>)` in that file booting on the wrong tab. That setup file is what keeps
+  the pre-existing suite behaving exactly as it did before routing.
+- **URL-encode card ids.** `URLSearchParams` handles it, but note two real catalog ids are
+  `ex10-!` and `ex10-?` — an unencoded `?` truncates the query and opens the wrong card.
+- The `isDesktop` JS ternary in `AppShell` is still load-bearing and untouched: CSS-only
+  responsive hiding would put both navs in the accessibility tree under jsdom and make
+  every `getByRole` nav query ambiguous.
+
+**Not routed on purpose** — the command palette and the WatchCardSheet stay local state.
+They are transient UI, not locations; putting them in the URL would make a reload reopen
+them.
+
+**Tests** — `src/__tests__/route.test.ts` (25, pure parse/serialise incl. the awkward card
+ids) and `src/__tests__/AppRouting.test.tsx` (14, real `<App/>`: both manifest shortcuts,
+unknown-view fallback, reload restore, back/forward, and every card-overlay close path).
+238 frontend tests green; production build clean.
+
+## Phase B/C/D — Catalog tab mount + scan-to-log + MSRP-vs-market + card price lookup (shipped 2026-08-22)
+
+The deferred Phase A tab mount + the B/C/D arc, built by fanning out 4 subagents (one
+per new backend service + the PriceLookup component) then wired in by hand. All four
+agents built NEW files only + their own tests; the controller owns the entangled
+integration (api.py routes, wire models, client, router, AppShell, CSS) so the kept
+router WIP was never at risk (no worktree isolation).
+
+**Nav is now 12 tabs** (was 10): `home, scan, vault, alerts, deals, prices, sealed,
+catalog, ledger, browse, sets, more`. `TabView` + `TAB_VIEWS` in `lib/route.ts`;
+`TAB_TITLES`, view renders, bottom-nav + desktop-sidebar `TabButton`s, and the
+digit-key map (1–9 → first nine tabs) in `AppShell.tsx`; `CommandPalette.tsx`'s local
+`Tab` union + `TAB_COMMANDS`; `Dashboard.tsx`'s `Tab` union + two new shortcut links
+("Look up card prices" → prices, "Browse sealed catalog" → catalog). The bottom-nav
+already had `overflow-x: auto` so 12 tabs scroll on phone with no CSS change. Two new
+glyphs: `PriceGlyph` (dollar tag), `CatalogGlyph` (grid).
+
+**Phase B — scan-to-log (catalog-driven).** `backend/src/cardplatform/sealed/scan_log.py`
+`SealedScanLogService.log_from_catalog(slug, …)` resolves name + product_type from the
+catalog (LookupError→404) and writes a `SealedPurchase` (ValueError→422). Route
+`POST /sealed/ledger/from-catalog` (registered BEFORE `/{purchase_id}` so the static
+path matches first). Wire model `SealedScanLogIn` in `sealed/api_models.py`. Frontend:
+inline "Log to ledger" mini-form on each Catalog card (quantity + cost + optional
+source) → `logSealedFromCatalog` → toast (success/warn). The camera-OCR scan-to-box
+match is a documented follow-up; the honest catalog-driven log ships now.
+
+**Phase C — MSRP vs market.** `backend/src/cardplatform/sealed/msrp_vs_market.py`
+`MsrpVsMarketService.compare(slug)` — curated MSRP vs the live sold-comps median (same
+`fetch_sold_listings_by_query` call `/sealed/sold-comps` uses, so the figure here is
+exactly the figure proven there). Honest flags mirror sold-comps: `unavailable` (no
+listings key) / `empty` (key set, 0 comps); `market_median` null (never 0); `delta` null
+unless BOTH msrp + median real. Provider failure degrades to [] (never 5xx). Route
+`GET /sealed/products/{slug}/market`. Wire model `SealedProductMarketOut`. Frontend:
+inline "vs market" panel on each Catalog card (`getSealedProductMarket`) with over/under
+delta coloring + the honest unavailable/empty caveat.
+
+**Phase D — card price lookup.** `backend/src/cardplatform/cards/lookup.py`
+`CardLookupService.lookup(q, limit)` — `func.lower(Card.name).like()` (NOT ilike, SQLite
+ASCII-only), reuses `PriceService.latest_price` so "the price" matches the rest of the
+app; `source_updated_at` "" sentinel coerced to None on the wire. Route
+`GET /cards/lookup?q=&limit=` (min_length=2 → 422). Wire model `CardLookupItemOut`.
+Frontend: new **Prices** tab `PriceLookup.tsx` (debounced 300ms, honest "no market
+price" em dash never $0, source + staleness per row) via `getCardLookup`.
+
+**Tests** — backend +22 API tests (`test_sealed_scan_log_api.py` 7, `test_sealed_product_market_api.py` 6, `test_card_lookup_api.py` 9) on top of the 4 fan-out service suites; 685 backend green. Frontend +21 (client 11, SealedCatalog B/C 8, PriceLookup already 6) → 274 green; tsc + build clean. 105-scan baseline untouched (no `data/` writes — read-only catalog + on-demand market; lookup reads existing snapshots).

@@ -1953,6 +1953,96 @@ body {
   font-size: 0.8rem;
 }
 
+/* Phase B/C — inline actions on each catalog card: "Log to ledger" + "vs market".
+   A compact button row; the expanded form/panel sits below the card's rows. */
+.sealed-catalog-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+}
+.sealed-catalog-action {
+  flex: 1 1 0;
+  padding: 0.45rem 0.6rem;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--fg, #e9e9f0);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--t-fast) ease, border-color var(--t-fast) ease;
+}
+.sealed-catalog-action:hover {
+  background: rgba(255, 203, 5, 0.10);
+  border-color: rgba(255, 203, 5, 0.30);
+}
+.sealed-catalog-action[aria-expanded="true"] {
+  background: rgba(255, 203, 5, 0.14);
+  border-color: rgba(255, 203, 5, 0.40);
+}
+
+/* Phase B — the inline log-to-ledger mini-form. Three stacked fields + a submit
+   button; mirrors the toolbar input styling. */
+.sealed-catalog-log-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+.sealed-catalog-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.75rem;
+  color: var(--muted, #9a9aa8);
+}
+.sealed-catalog-field input {
+  padding: 0.4rem 0.5rem;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--fg, #e9e9f0);
+  font-size: 0.9rem;
+}
+.sealed-catalog-field:last-of-type {
+  grid-column: 1 / -1;
+}
+.sealed-catalog-submit {
+  grid-column: 1 / -1;
+  padding: 0.5rem 0.6rem;
+  border-radius: 10px;
+  border: none;
+  background-image: var(--grad-accent);
+  color: #1a1500;
+  font-weight: 650;
+  cursor: pointer;
+  transition: filter var(--t-fast) ease;
+}
+.sealed-catalog-submit:hover:not(:disabled) { filter: brightness(1.05); }
+.sealed-catalog-submit:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* Phase C — the inline MSRP-vs-market panel. Reuses .deal-row for layout; this
+   just frames it as a sub-card and styles the delta's over/under coloring. */
+.sealed-catalog-market {
+  margin-top: 0.6rem;
+  padding: 0.6rem 0.7rem;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.18);
+}
+.sealed-catalog-market .deal-row { margin: 0.25rem 0; }
+.sealed-catalog-market .deal-caveat { margin-top: 0.4rem; }
+.deal-delta-over { color: #ff7a7a; font-weight: 600; }
+.deal-delta-under { color: #7ad6a0; font-weight: 600; }
+
+/* Phase D — the Prices tab's lookup list. Reuses .deal-list / .deal-card; these
+   only tighten the market/source rows that are specific to a price result. */
+.price-lookup-list { list-style: none; padding: 0; margin: 0; }
+.price-lookup-card .price-lookup-market,
+.price-lookup-card .price-lookup-source { margin-top: 0.25rem; }
+
 .alert-row:hover,
 .browse-result:hover,
 .deal-card:hover,

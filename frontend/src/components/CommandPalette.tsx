@@ -9,7 +9,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { searchCards } from "../api/client";
 import type { CardSearchResult } from "../api/types";
 
-type Tab = "home" | "scan" | "vault" | "alerts" | "deals" | "ledger" | "sealed" | "browse" | "sets" | "more";
+type Tab = "home" | "scan" | "vault" | "alerts" | "deals" | "prices" | "ledger" | "sealed" | "catalog" | "browse" | "sets" | "more";
 
 const TAB_COMMANDS: { tab: Tab; label: string; hint: string }[] = [
   { tab: "home", label: "Go to Home", hint: "Dashboard" },
@@ -17,7 +17,9 @@ const TAB_COMMANDS: { tab: Tab; label: string; hint: string }[] = [
   { tab: "vault", label: "Go to Vault", hint: "Your collection" },
   { tab: "alerts", label: "Go to Alerts", hint: "Alert feed" },
   { tab: "deals", label: "Go to Deals", hint: "Deal sniper" },
+  { tab: "prices", label: "Go to Prices", hint: "Card price lookup" },
   { tab: "sealed", label: "Go to Sealed", hint: "Sealed flip-edge" },
+  { tab: "catalog", label: "Go to Catalog", hint: "Sealed product catalog" },
   { tab: "ledger", label: "Go to Ledger", hint: "Sealed purchases" },
   { tab: "browse", label: "Go to Browse", hint: "Catalog search" },
   { tab: "sets", label: "Go to Sets", hint: "Set completion" },

@@ -241,3 +241,55 @@ class SealedProductsResponse(BaseModel):
     count: int
     product_type: str | None = None
     print_status: str | None = None
+
+
+# --------------------------------------------------------- Phase B scan-to-log
+
+
+class SealedScanLogIn(BaseModel):
+    """Log a sealed-product buy straight from a catalog row, by slug (Phase B).
+
+    The product's name + product_type are looked up server-side from the catalog,
+    so the client only sends the slug + the purchase facts. `quantity`/`cost_per_unit`
+    carry Pydantic bounds (clean 422 before the service runs); the service re-validates
+    and raises ValueError -> 422. Optional fields default to None — honest empty,
+    never an empty-string fabrication."""
+
+    slug: str
+    quantity: int = Field(default=1, ge=1)
+    cost_per_unit: float = Field(ge=0)
+    source: str | None = None
+    listing_url: str | None = None
+    notes: str | None = None
+    bought_at: datetime | None = None
+
+
+# --------------------------------------------------------- Phase C MSRP vs market
+
+
+class SealedProductMarketOut(BaseModel):
+    """One catalog product's curated MSRP compared to its live sold-comps median (Phase C).
+
+    Every nullable figure is None (never 0): `msrp` is None where no official US MSRP
+    exists (booster boxes, premiums); `market_median` is None when there are no comps;
+    `delta` is None unless BOTH msrp and market_median are real numbers. The honest
+    flags mirror /sealed/sold-comps exactly: `unavailable` = no listings_api_key
+    configured (the provider returns [] without hitting the network — "we can't tell",
+    never a fabricated number); `empty` = key set but 0 confirmed sales ("no recent
+    sales"). `market_source` + `market_source_updated_at` travel with the figure so the
+    UI can say where it came from; sold comps carry no per-sale stamp, so the latter is
+    None."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    slug: str
+    name: str
+    msrp: float | None = None
+    msrp_currency: str = "USD"
+    market_median: float | None = None
+    market_source: str | None = None
+    market_source_updated_at: str | None = None
+    sold_comps_count: int
+    delta: float | None = None
+    unavailable: bool
+    empty: bool

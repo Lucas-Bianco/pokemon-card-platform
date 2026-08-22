@@ -3,6 +3,7 @@ import type {
   AlertType,
   Authenticity,
   BatchRecognizeResponse,
+  CardLookupItem,
   CardSearchResult,
   CollectionItem,
   DealsResponse,
@@ -20,9 +21,11 @@ import type {
   SealedLedgerResponse,
   SealedPrintStatus,
   SealedProduct,
+  SealedProductMarket,
   SealedProductType,
   SealedProductsResponse,
   SealedPurchaseOut,
+  SealedScanLogRequest,
   SealedSoldCompsResponse,
   SetCompletion,
   SetProgress,
@@ -599,6 +602,49 @@ export async function getSealedProducts(
 export async function getSealedProduct(slug: string): Promise<SealedProduct> {
   return expectJsonOrDetail<SealedProduct>(
     await fetch(`${BASE}/sealed/products/${encodeURIComponent(slug)}`),
+  );
+}
+
+// Phase C — one catalog product's curated MSRP vs its live sold-comps median.
+// Read-only; the honest unavailable/empty flags reach the wire even when eBay
+// is down (the backend degrades to []). Unknown slug -> 404 (thrown as Error
+// via expectJsonOrDetail). Mirrors getSealedProduct's slug-encoding.
+export async function getSealedProductMarket(
+  slug: string,
+): Promise<SealedProductMarket> {
+  return expectJsonOrDetail<SealedProductMarket>(
+    await fetch(`${BASE}/sealed/products/${encodeURIComponent(slug)}/market`),
+  );
+}
+
+// Phase B — log a sealed buy straight from a catalog row, by slug. The product's
+// name + product_type are resolved server-side, so the body is just the slug +
+// the purchase facts. Mirrors logSealedPurchase's POST-JSON shape; uses
+// expectJsonOrDetail so a 404 (unknown slug) or 422 (bad quantity/cost) surfaces
+// the backend's detail rather than a bare status.
+export async function logSealedFromCatalog(
+  body: SealedScanLogRequest,
+): Promise<SealedPurchaseOut> {
+  return expectJsonOrDetail<SealedPurchaseOut>(
+    await fetch(`${BASE}/sealed/ledger/from-catalog`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  );
+}
+
+// Phase D — the Prices tab's name -> price lookup. Returns a flat list of card
+// matches, each carrying its latest market price (or an honest null). `q` must
+// be at least 2 chars (the backend 422s otherwise — expectJsonOrDetail surfaces
+// that). Read-only. Mirrors getSealedProducts' URLSearchParams + expectJsonOrDetail.
+export async function getCardLookup(
+  q: string,
+  limit = 20,
+): Promise<CardLookupItem[]> {
+  const params = new URLSearchParams({ q, limit: String(limit) });
+  return expectJsonOrDetail<CardLookupItem[]>(
+    await fetch(`${BASE}/cards/lookup?${params}`),
   );
 }
 

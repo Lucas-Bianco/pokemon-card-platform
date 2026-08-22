@@ -4,14 +4,17 @@ import {
   addToCollection,
   confirmScan,
   correctScan,
+  getCardLookup,
   getPriceHistory,
   getResolvedPrice,
   getPortfolio,
   getSealedDeals,
   getSealedLedger,
   getSealedProduct,
+  getSealedProductMarket,
   getSealedProducts,
   getSealedSoldComps,
+  logSealedFromCatalog,
   logSealedPurchase,
   patchCollectionItem,
   recognize,
@@ -550,5 +553,139 @@ describe("sealed ledger client", () => {
     expect(String(spy.mock.calls[0][0])).toContain("/api/sealed/ledger/sync");
     expect(spy.mock.calls[0][1]?.method).toBe("POST");
     vi.unstubAllGlobals();
+  });
+});
+
+describe("getSealedProductMarket", () => {
+  const body = {
+    slug: "scarlet-violet-elite-trainer-box",
+    name: "Scarlet & Violet Elite Trainer Box",
+    msrp: 39.99,
+    msrp_currency: "USD",
+    market_median: 40.0,
+    market_source: "ebay",
+    market_source_updated_at: null,
+    sold_comps_count: 3,
+    delta: -0.01,
+    unavailable: false,
+    empty: false,
+  };
+
+  it("calls /api/sealed/products/{slug}/market", async () => {
+    const spy = mockFetch(200, body);
+    await getSealedProductMarket("scarlet-violet-elite-trainer-box");
+    expect(String(spy.mock.calls[0][0])).toContain(
+      "/api/sealed/products/scarlet-violet-elite-trainer-box/market",
+    );
+  });
+
+  it("returns the MSRP-vs-market body on 200", async () => {
+    mockFetch(200, body);
+    const res = await getSealedProductMarket("scarlet-violet-elite-trainer-box");
+    expect(res.msrp).toBe(39.99);
+    expect(res.market_median).toBe(40.0);
+    expect(res.delta).toBe(-0.01);
+    expect(res.unavailable).toBe(false);
+  });
+
+  it("throws on 404 (unknown slug)", async () => {
+    mockFetch(404, { detail: "sealed product not found" });
+    await expect(
+      getSealedProductMarket("does-not-exist"),
+    ).rejects.toThrow(/sealed product not found/);
+  });
+});
+
+describe("logSealedFromCatalog", () => {
+  const echo = {
+    id: 7,
+    query: "Scarlet & Violet Elite Trainer Box",
+    product_type: "etb",
+    quantity: 2,
+    cost_per_unit: 39.99,
+    source: "Pokémon Center",
+    listing_url: null,
+    notes: null,
+    bought_at: "",
+    created_at: "",
+  };
+
+  it("POSTs JSON to /api/sealed/ledger/from-catalog with the slug + purchase facts", async () => {
+    const spy = mockFetch(201, echo);
+    await logSealedFromCatalog({
+      slug: "scarlet-violet-elite-trainer-box",
+      quantity: 2,
+      cost_per_unit: 39.99,
+      source: "Pokémon Center",
+    });
+    const call = spy.mock.calls[0];
+    expect(String(call[0])).toContain("/api/sealed/ledger/from-catalog");
+    expect(call[1]?.method).toBe("POST");
+    const sent = JSON.parse(call[1]?.body as string);
+    expect(sent.slug).toBe("scarlet-violet-elite-trainer-box");
+    expect(sent.quantity).toBe(2);
+    expect(sent.cost_per_unit).toBe(39.99);
+  });
+
+  it("throws on 404 (unknown slug)", async () => {
+    mockFetch(404, { detail: "sealed product not found" });
+    await expect(
+      logSealedFromCatalog({ slug: "nope", cost_per_unit: 5 }),
+    ).rejects.toThrow(/sealed product not found/);
+  });
+
+  it("throws on 422 (bad quantity)", async () => {
+    mockFetch(422, { detail: "quantity must be >= 1" });
+    await expect(
+      logSealedFromCatalog({ slug: "x", quantity: 0, cost_per_unit: 5 }),
+    ).rejects.toThrow(/quantity must be >= 1/);
+  });
+});
+
+describe("getCardLookup", () => {
+  const body = [
+    {
+      card_id: "base1-4",
+      name: "Charizard",
+      set_id: "base1",
+      set_name: "Base",
+      number: "4",
+      rarity: "Rare",
+      image_small: null,
+      image_large: null,
+      market: 350.0,
+      source: "tcgplayer",
+      source_updated_at: "2026-08-20T00:00:00Z",
+    },
+  ];
+
+  it("calls /api/cards/lookup with q + limit", async () => {
+    const spy = mockFetch(200, body);
+    await getCardLookup("char", 20);
+    const url = String(spy.mock.calls[0][0]);
+    expect(url).toContain("/api/cards/lookup?");
+    expect(url).toContain("q=char");
+    expect(url).toContain("limit=20");
+  });
+
+  it("defaults limit to 20", async () => {
+    const spy = mockFetch(200, body);
+    await getCardLookup("char");
+    expect(String(spy.mock.calls[0][0])).toContain("limit=20");
+  });
+
+  it("returns the matches on 200", async () => {
+    mockFetch(200, body);
+    const res = await getCardLookup("char");
+    expect(res).toHaveLength(1);
+    expect(res[0].name).toBe("Charizard");
+    expect(res[0].market).toBe(350.0);
+  });
+
+  it("throws on 422 (short query)", async () => {
+    mockFetch(422, { detail: "q must have at least 2 characters" });
+    await expect(getCardLookup("x")).rejects.toThrow(
+      /at least 2 characters/,
+    );
   });
 });

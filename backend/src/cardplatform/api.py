@@ -76,10 +76,12 @@ from cardplatform.sealed.api_models import (
     SealedLedgerEntryOut,
     SealedLedgerResponse,
     SealedPricePointOut,
+    SealedProductMarketOut,
     SealedProductOut,
     SealedProductsResponse,
     SealedPurchaseIn,
     SealedPurchaseOut,
+    SealedScanLogIn,
     SealedSoldCompOut,
     SealedSoldCompsResponse,
     SealedThresholdsOut,
@@ -93,7 +95,10 @@ from cardplatform.sealed.catalog_service import (
 )
 from cardplatform.sealed.engine import SealedDealEngine
 from cardplatform.sealed.ledger import LedgerService
+from cardplatform.sealed.msrp_vs_market import MsrpVsMarketService
+from cardplatform.sealed.scan_log import SealedScanLogService
 from cardplatform.sealed.seed_data import SEALED_PRODUCTS
+from cardplatform.cards.lookup import CardLookupService
 
 _database: Database | None = None
 
@@ -212,6 +217,28 @@ class CardOut(BaseModel):
             image_small=card.image_small,
             image_large=card.image_large,
         )
+
+
+class CardLookupItemOut(BaseModel):
+    """One card match for the Prices tab's name -> price lookup (Phase D).
+
+    `market` is the latest snapshot's market figure, or None when no snapshot exists
+    (honest "no market price", never a fabricated 0). `source` + `source_updated_at`
+    travel with the figure so the UI can say where it came from and how stale it is;
+    both are None for an unpriced card. The empty-string `source_updated_at` sentinel
+    is coerced to None on the wire (a missing stamp means "no timestamp", not "")."""
+
+    card_id: str
+    name: str
+    set_id: str
+    set_name: str
+    number: str
+    rarity: str | None
+    image_small: str | None
+    image_large: str | None
+    market: float | None
+    source: str | None
+    source_updated_at: str | None
 
 
 class PriceOut(BaseModel):
@@ -558,6 +585,19 @@ def create_app() -> FastAPI:
             .limit(limit)
         ).all()
         return [CardOut.from_card(card) for card in cards]
+
+    @app.get("/cards/lookup", response_model=list[CardLookupItemOut])
+    def lookup_cards(
+        q: str = Query(min_length=2),
+        limit: int = Query(default=20, ge=1, le=50),
+        session: Session = Depends(get_session),
+    ) -> list[CardLookupItemOut]:
+        # Prices tab: type a name -> see matches with their latest market price.
+        # min_length=2 gives a clean 422 for blank/1-char queries (the service is
+        # safe to call directly but the route is the public boundary). Mirrors
+        # search_cards' func.lower().like() pattern (NOT ilike — SQLite ASCII-only).
+        service = CardLookupService(session, PriceService(session))
+        return [CardLookupItemOut.model_validate(item) for item in service.lookup(q, limit)]
 
     @app.get("/sets", response_model=list[SetProgressOut])
     def list_sets(
@@ -1464,6 +1504,26 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=404, detail="sealed product not found")
         return SealedProductOut.model_validate(product)
 
+    @app.get("/sealed/products/{slug}/market", response_model=SealedProductMarketOut)
+    def sealed_product_market(
+        slug: str, session: Session = Depends(get_session)
+    ) -> SealedProductMarketOut:
+        """One catalog product's curated MSRP vs its live sold-comps median (Phase C).
+
+        Read-only: no `data/` writes. The provider call is the same one
+        /sealed/sold-comps uses, so the market figure here is exactly the figure
+        proven there. Unknown slug -> 404. The service degrades to [] on any
+        provider failure (never raises out of a provider call), so the honest
+        unavailable/empty flags reach the wire even when eBay is down.
+        """
+        provider = EbayListingsProvider(settings)
+        svc = MsrpVsMarketService(session, settings, provider)
+        try:
+            result = svc.compare(slug)
+        except LookupError:
+            raise HTTPException(status_code=404, detail="sealed product not found")
+        return SealedProductMarketOut.model_validate(result)
+
     # --------------------------------------------------------------- sealed ledger (05d)
     @app.get("/sealed/ledger", response_model=SealedLedgerResponse)
     def sealed_ledger(session: Session = Depends(get_session)) -> SealedLedgerResponse:
@@ -1501,6 +1561,34 @@ def create_app() -> FastAPI:
                 notes=payload.notes,
                 bought_at=payload.bought_at,
             )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return SealedPurchaseOut.model_validate(p)
+
+    @app.post("/sealed/ledger/from-catalog", response_model=SealedPurchaseOut, status_code=201)
+    def create_sealed_purchase_from_catalog(
+        payload: SealedScanLogIn, session: Session = Depends(get_session)
+    ) -> SealedPurchaseOut:
+        """Log a sealed-product buy straight from a catalog row, by slug (Phase B).
+
+        The product's name + product_type are resolved server-side from the catalog,
+        so the client only sends the slug + the purchase facts. Unknown slug ->
+        LookupError -> 404; bad quantity/cost -> ValueError -> 422 (not a 500).
+        Registered BEFORE the {purchase_id} route so FastAPI matches the static
+        path first (mirrors /sealed/ledger/valuate's ordering note)."""
+        svc = SealedScanLogService(session)
+        try:
+            p = svc.log_from_catalog(
+                payload.slug,
+                quantity=payload.quantity,
+                cost_per_unit=payload.cost_per_unit,
+                source=payload.source,
+                listing_url=payload.listing_url,
+                notes=payload.notes,
+                bought_at=payload.bought_at,
+            )
+        except LookupError:
+            raise HTTPException(status_code=404, detail="sealed product not found")
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         return SealedPurchaseOut.model_validate(p)
