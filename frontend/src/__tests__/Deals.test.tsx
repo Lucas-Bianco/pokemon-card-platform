@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { render, waitFor } from "@testing-library/react";
+import { fireEvent, render, waitFor } from "@testing-library/react";
 
 import Deals from "../components/Deals";
-import type { DealAssessment, DealsResponse } from "../api/types";
+import type { CardSearchResult, DealAssessment, DealsResponse } from "../api/types";
 
 // A complete DealAssessment with sensible defaults; tests override the fields
 // that exercise each honest-empty branch. Every nullable column has a real
@@ -50,13 +50,18 @@ function baseResponse(over: Partial<DealsResponse> = {}): DealsResponse {
 // (GET /cards?name=) returns [] so the search box never interferes. Per-card
 // deals (GET /cards/{id}/deals) return the per-card body when a test selects
 // one. Mirrors the AlertsFeed/CardDetail stub idiom.
-function stubFetch(opts: { feed?: DealsResponse; card?: DealsResponse | null }) {
+function stubFetch(opts: {
+  feed?: DealsResponse;
+  card?: DealsResponse | null;
+  search?: CardSearchResult[];
+}) {
   const feed = opts.feed ?? baseResponse();
   const spy = vi.fn().mockImplementation(async (url: string) => {
     const u = String(url);
-    // Catalog search — empty results keep the search box out of the way.
+    // Catalog search — empty by default, so the search box stays out of the
+    // way; `search` lets a test drive the pick-a-card path into getDeals().
     if (u.includes("/cards?") || u.includes("/cards&")) {
-      return { ok: true, status: 200, json: async () => [] };
+      return { ok: true, status: 200, json: async () => opts.search ?? [] };
     }
     // Per-card deals.
     if (u.match(/\/cards\/[^/]+\/deals/)) {
@@ -161,5 +166,66 @@ describe("Deals", () => {
     expect(flip9!.textContent ?? "").toContain("—");
     // No flip chip when is_flip is false.
     expect(container.querySelector(".deal-chip.flip")).toBeNull();
+  });
+  // A DealAssessment carries only the marketplace `listing_id`; the card id
+  // lives on the RESPONSE. These two tests pin both sides of that: the
+  // cross-card feed (card_id null) must not offer a link that cannot resolve,
+  // and the per-card view must hand CardDetail the CARD id — never the
+  // listing id, which would always land on "Couldn't load this card."
+  it("cross-card feed offers no 'view' link — no card id to open", async () => {
+    stubFetch({ feed: baseResponse({ card_id: null, deals: [baseDeal()] }) });
+
+    const { container } = render(<Deals onOpenCard={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(container.querySelector(".deal-card")).not.toBeNull();
+    });
+    const view = [...container.querySelectorAll(".deal-card-meta button")].find(
+      (b) => (b.textContent ?? "").trim() === "view",
+    );
+    expect(view).toBeUndefined();
+  });
+
+  it("per-card deals open the card id, not the listing id", async () => {
+    const onOpenCard = vi.fn();
+    stubFetch({
+      search: [
+        {
+          id: "sv3-215",
+          name: "Charizard ex",
+          number: "215",
+          set_id: "sv3",
+          set_name: "Obsidian",
+          image_small: null,
+          image_large: null,
+        },
+      ],
+      card: baseResponse({
+        card_id: "sv3-215",
+        variant: null,
+        deals: [baseDeal({ listing_id: "L-ebay-999" })],
+      }),
+    });
+
+    const { container } = render(<Deals onOpenCard={onOpenCard} />);
+    const input = container.querySelector('input[type="search"]') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "chari" } });
+
+    await waitFor(() => {
+      expect(container.querySelector(".deals-search-row")).not.toBeNull();
+    });
+    fireEvent.click(container.querySelector(".deals-search-row") as HTMLElement);
+
+    await waitFor(() => {
+      expect(container.querySelector(".deal-card")).not.toBeNull();
+    });
+    const view = [...container.querySelectorAll(".deal-card-meta button")].find(
+      (b) => (b.textContent ?? "").trim() === "view",
+    ) as HTMLElement;
+    expect(view).toBeDefined();
+
+    fireEvent.click(view);
+    expect(onOpenCard).toHaveBeenCalledTimes(1);
+    expect(onOpenCard).toHaveBeenCalledWith({ cardId: "sv3-215", variant: undefined });
   });
 });

@@ -248,7 +248,13 @@ function DealsBody({
       animate="show"
     >
       {data.deals.map((d) => (
-        <DealCard key={d.listing_id} deal={d} onOpenCard={onOpenCard} />
+        <DealCard
+          key={d.listing_id}
+          deal={d}
+          cardId={data.card_id}
+          variant={data.variant}
+          onOpenCard={onOpenCard}
+        />
       ))}
     </motion.ul>
   );
@@ -256,9 +262,13 @@ function DealsBody({
 
 function DealCard({
   deal,
+  cardId,
+  variant,
   onOpenCard,
 }: {
   deal: DealAssessment;
+  cardId: string | null;
+  variant: string | null;
   onOpenCard?: (card: { cardId: string; variant?: string }) => void;
 }) {
   const reduced = useReducedMotion();
@@ -290,10 +300,19 @@ function DealCard({
       <div className="deal-card-meta muted small">
         {deal.condition ?? "Condition unknown"}
         {isAuction ? ` · auction · ${countdown}` : ""}
-        {onOpenCard ? (
+        {/* "view" opens the CARD, so it needs a real card id. A DealAssessment
+            carries only the marketplace `listing_id` — passing that to
+            CardDetail resolves nothing. The card id lives on the RESPONSE:
+            set for the per-card route, null for the cross-card feed (which
+            merges deals across cards and cannot attribute a row). No id → no
+            link, rather than a link that always dead-ends. */}
+        {onOpenCard && cardId ? (
           <>
             {" · "}
-            <button className="link" onClick={() => onOpenCard({ cardId: deal.listing_id })}>
+            <button
+              className="link"
+              onClick={() => onOpenCard({ cardId, variant: variant ?? undefined })}
+            >
               view
             </button>
           </>
