@@ -1564,6 +1564,66 @@ h1 { font-size: 1.25rem; margin: 4px 0 16px; }
 }
 .sealed-deals-btn:disabled { opacity: 0.5; }
 
+/* Phase E — Shop tab (online shopping assistant). The toolbar + submit button
+   reuse .deals-toolbar / .deals-search / .sealed-deals-btn, and the listing card
+   reuses .deal-card; these rules style only the feature-specific blocks: the
+   listing facts (image + title + price + seller), the match line, the deal
+   market/edge/verdict block, and the caveat. Honest empty states are rendered
+   as text by the component (em dash / "no recent sold comps" / "set a listings
+   key"), so no special empty-state CSS is needed. */
+.shop { gap: var(--sp-3); }
+.shop-listing {
+  display: flex;
+  flex-direction: row;
+  gap: var(--sp-3);
+  align-items: flex-start;
+}
+.shop-listing img {
+  width: 96px;
+  height: 96px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  flex: 0 0 auto;
+}
+.shop-listing-facts {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.shop-listing-title { font-weight: 600; color: var(--fg); }
+.shop-listing-price { font-size: 1.05rem; font-weight: 600; color: var(--fg); }
+.shop-listing-condition,
+.shop-listing-seller,
+.shop-listing-type { font-size: 0.8rem; color: var(--fg-dim); }
+.shop-listing-facts a { font-size: 0.8rem; color: var(--accent, #6ea8ff); }
+.shop-match {
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 0.9rem;
+  color: var(--fg-dim);
+}
+.shop-deal {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--sp-3);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.shop-deal-market { font-size: 0.85rem; color: var(--fg-dim); }
+.shop-deal-verdict { margin: 0; font-weight: 600; color: var(--fg); }
+.shop-caveat { margin: 0; }
+@media (max-width: 480px) {
+  .shop-listing { flex-direction: column; align-items: stretch; }
+  .shop-listing img { width: 100%; height: 160px; }
+}
+
 .deal-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-3); }
 .deal-card {
   display: flex;

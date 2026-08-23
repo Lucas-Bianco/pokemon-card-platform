@@ -26,6 +26,7 @@ export type TabView =
   | "catalog"
   | "browse"
   | "sets"
+  | "shop"
   | "more";
 
 const TAB_VIEWS: readonly TabView[] = [
@@ -40,6 +41,7 @@ const TAB_VIEWS: readonly TabView[] = [
   "ledger",
   "browse",
   "sets",
+  "shop",
   "more",
 ];
 

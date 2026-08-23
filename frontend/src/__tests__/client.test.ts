@@ -14,6 +14,7 @@ import {
   getSealedProductMarket,
   getSealedProducts,
   getSealedSoldComps,
+  getShopAssessment,
   logSealedFromCatalog,
   logSealedPurchase,
   patchCollectionItem,
@@ -24,7 +25,7 @@ import {
   syncSealedLedger,
   valuateSealedLedger,
 } from "../api/client";
-import type { RecognizeResponse } from "../api/types";
+import type { RecognizeResponse, ShopAssessment } from "../api/types";
 
 function mockFetch(status: number, body?: unknown) {
   const spy = vi.fn().mockResolvedValue({
@@ -687,5 +688,80 @@ describe("getCardLookup", () => {
     await expect(getCardLookup("x")).rejects.toThrow(
       /at least 2 characters/,
     );
+  });
+});
+
+describe("getShopAssessment", () => {
+  const body: ShopAssessment = {
+    url: "https://www.ebay.com/itm/123",
+    item_id: "123",
+    listing_unavailable: false,
+    listing_not_found: false,
+    listing: {
+      item_id: "123",
+      title: "SV Booster Box",
+      price: 95.0,
+      currency: "USD",
+      condition: "New",
+      listing_type: "fixed_price",
+      auction_end_at: null,
+      seller: "power-seller",
+      image_url: null,
+      url: "https://www.ebay.com/itm/123",
+      source: "ebay",
+    },
+    match: {
+      kind: "sealed",
+      confidence: "high",
+      card_id: null,
+      card_name: null,
+      card_number: null,
+      card_rarity: null,
+      set_name: null,
+      sealed_slug: "sv-booster-box",
+      sealed_name: "Scarlet & Violet Booster Box",
+    },
+    deal: {
+      market: 120.0,
+      market_source: "ebay",
+      market_source_updated_at: "2026-08-20",
+      sold_comps_count: 5,
+      edge: -25.0,
+      is_deal: false,
+      min_abs: 20.0,
+      min_pct: 0.05,
+      market_unavailable: false,
+      market_empty: false,
+    },
+    authenticity: null,
+    caveat: "A guide, not a verdict.",
+  };
+
+  it("calls /api/shop/assess with url + limit", async () => {
+    const spy = mockFetch(200, body);
+    await getShopAssessment("https://www.ebay.com/itm/123", 6);
+    const url = String(spy.mock.calls[0][0]);
+    expect(url).toContain("/api/shop/assess?");
+    expect(url).toContain("url=");
+    expect(url).toContain("limit=6");
+  });
+
+  it("defaults limit to 6", async () => {
+    const spy = mockFetch(200, body);
+    await getShopAssessment("https://www.ebay.com/itm/123");
+    expect(String(spy.mock.calls[0][0])).toContain("limit=6");
+  });
+
+  it("throws with the backend detail on 422 (bad url)", async () => {
+    mockFetch(422, { detail: "bad url" });
+    await expect(getShopAssessment("not-a-url")).rejects.toThrow(/bad url/);
+  });
+
+  it("returns the assessment on 200", async () => {
+    mockFetch(200, body);
+    const res = await getShopAssessment("https://www.ebay.com/itm/123");
+    expect(res.item_id).toBe("123");
+    expect(res.match.kind).toBe("sealed");
+    expect(res.deal?.market).toBe(120.0);
   });
 });

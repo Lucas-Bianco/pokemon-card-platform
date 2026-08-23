@@ -792,3 +792,89 @@ export interface Authenticity {
   consistency: Consistency;
   checklist: ChecklistItem[];
 }
+
+// Phase E — online shopping assistant. Paste-an-URL assessment of one eBay
+// listing: the engine fetches the listing, matches it to the catalog (card or
+// sealed product), compares the asking price to the market median, and reuses
+// the Phase 07 authenticity auto-check when the match is a card. Read-only — no
+// data/ writes, no new tables. Mirrors backend ShopListingOut / ShopMatchOut /
+// ShopDealOut / ShopAssessmentOut field-for-field. Honest empty states
+// everywhere: `market`/`edge` are null when there are no sold comps (never a
+// fabricated $0); `listing_unavailable`/`listing_not_found` are honest flags
+// the UI branches on rather than synthesizing a listing; `caveat` always
+// travels with the assessment so the guide-vs-verdict framing is shown.
+// Authenticity is the existing Phase 07 shape (imported as-is, never redefined).
+
+// One eBay listing the engine fetched. Every nullable column surfaces as
+// null when the source omits it; `source` is always present (the backend never
+// fabricates a default). `item_id` is the eBay item id extracted from the URL.
+export interface ShopListing {
+  item_id: string;
+  title: string | null;
+  price: number | null;
+  currency: string | null;
+  condition: string | null;
+  listing_type: string | null;
+  auction_end_at: string | null;
+  seller: string | null;
+  image_url: string | null;
+  url: string | null;
+  source: string;
+}
+
+// The catalog match for the listing. `kind === "none"` means no card or sealed
+// product matched — the UI shows listing facts only (no deal, no authenticity).
+// `confidence` is the matcher's own self-assessment; "low" is surfaced so the
+// user can judge whether the match is worth trusting. Card fields are null when
+// kind !== "card"; sealed fields are null when kind !== "sealed".
+export interface ShopMatch {
+  kind: "card" | "sealed" | "none";
+  confidence: "high" | "low";
+  card_id: string | null;
+  card_name: string | null;
+  card_number: string | null;
+  card_rarity: string | null;
+  set_name: string | null;
+  sealed_slug: string | null;
+  sealed_name: string | null;
+}
+
+// The deal assessment for the listing. `market`/`market_source`/
+// `market_source_updated_at` are null when there are no sold comps — never a
+// fabricated $0. `edge` (listing price minus market median) is null when market
+// is null; `is_deal` is an honest boolean against the thresholds; a null edge is
+// never a deal. `market_unavailable` (no listings key) vs `market_empty` (key
+// set, 0 comps) mirror the sealed-deals honest flags. `min_abs`/`min_pct` are
+// the thresholds the engine applied, echoed so the UI can label why.
+export interface ShopDeal {
+  market: number | null;
+  market_source: string | null;
+  market_source_updated_at: string | null;
+  sold_comps_count: number;
+  edge: number | null;
+  is_deal: boolean;
+  min_abs: number;
+  min_pct: number;
+  market_unavailable: boolean;
+  market_empty: boolean;
+}
+
+// The GET /shop/assess?url=&limit= response. `listing_unavailable` is true when
+// no listings provider key is configured (honest — no provider, never fake a
+// listing); `listing_not_found` is true when the key is set but the URL did not
+// resolve to a live eBay listing. `listing` is null in either case; `match` is
+// always present (kind "none" when there was nothing to match). `deal` is null
+// when match.kind === "none" (no catalog object to price against). `authenticity`
+// is non-null only for card matches (sealed/none have no printed-number check).
+// `caveat` always travels so the guide-not-verdict framing is shown.
+export interface ShopAssessment {
+  url: string;
+  item_id: string | null;
+  listing_unavailable: boolean;
+  listing_not_found: boolean;
+  listing: ShopListing | null;
+  match: ShopMatch;
+  deal: ShopDeal | null;
+  authenticity: Authenticity | null;
+  caveat: string;
+}

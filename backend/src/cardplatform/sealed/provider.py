@@ -35,6 +35,8 @@ class SealedListing:
     url: str | None = None
     condition: str | None = None
     source_updated_at: str | None = None
+    seller: str | None = None
+    image_url: str | None = None
 
 
 @dataclass(frozen=True)

@@ -35,6 +35,7 @@ returned listings. The Finding API has no such requirement.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any, Protocol
 from datetime import datetime, timezone
 
@@ -155,6 +156,116 @@ class EbayListingsProvider:
         except (TypeError, ValueError, KeyError, AttributeError) as exc:
             logger.warning("ebay sealed sold-comps parse failure for %r: %s", query, exc)
             return []
+
+    def fetch_listing_by_id(self, item_id: str) -> SealedListing | None:
+        """Fetch a single active listing by eBay item ID via Finding API getSingleItem.
+
+        No key -> None without a network call. Transport/4xx/5xx/parse errors -> None
+        (degrade, never raise). Returns a SealedListing (source="ebay") with seller +
+        image_url, or None if not found / unparseable. Same SECURITY-APPNAME query-param
+        auth as the other Finding-API operations — no OAuth, no new key.
+        """
+        if not self.settings.listings_api_key:
+            return None
+
+        payload = self._get_single_item(item_id)
+        if payload is None:
+            return None
+        try:
+            return self._parse_single_item(item_id, payload)
+        except (TypeError, ValueError, KeyError, AttributeError) as exc:
+            logger.warning("ebay single-item parse failure for %s: %s", item_id, exc)
+            return None
+
+    def _get_single_item(self, item_id: str) -> dict[str, Any] | None:
+        """GET the eBay Finding API getSingleItem, retrying transport/5xx/429 only.
+
+        Same terminal/retry/degrade discipline as `_search`. SECURITY-APPNAME is a
+        query param (NOT an auth header) — the Finding API uses the App ID directly,
+        no OAuth token.
+        """
+        url = self.settings.listings_base_url
+        params = {
+            "OPERATION-NAME": "getSingleItem",
+            "SERVICE-VERSION": "1.13.0",
+            "SECURITY-APPNAME": self.settings.listings_api_key,
+            "RESPONSE-DATA-FORMAT": "JSON",
+            "GLOBAL-ID": "EBAY-US",
+            "itemId": item_id,
+        }
+
+        @retry(
+            stop=stop_after_attempt(self.settings.http_max_attempts),
+            wait=wait_exponential(multiplier=1, min=1, max=20),
+            retry=retry_if_result(lambda r: r is None),
+        )
+        def _attempt() -> dict[str, Any] | None:
+            try:
+                response = httpx.get(
+                    url, params=params, timeout=self.settings.http_timeout_seconds,
+                )
+            except httpx.HTTPError as exc:
+                logger.warning("ebay single-item transport error for %r: %s", item_id, exc)
+                return None
+            if response.status_code == 200:
+                try:
+                    return response.json()
+                except (httpx.DecodingError, ValueError) as exc:
+                    logger.warning("ebay single-item bad JSON for %r: %s", item_id, exc)
+                    raise _TerminalHttpError(response.status_code) from exc
+            if response.status_code == 429 or response.status_code >= 500:
+                logger.warning("ebay single-item HTTP %s for %r (retryable)", response.status_code, item_id)
+                return None
+            logger.warning("ebay single-item HTTP %s for %r (terminal)", response.status_code, item_id)
+            raise _TerminalHttpError(response.status_code)
+
+        try:
+            return _attempt()
+        except _TerminalHttpError:
+            return None
+        except RetryError:
+            logger.error("ebay single-item gave up for %r after %s attempts", item_id, self.settings.http_max_attempts)
+            return None
+
+    @staticmethod
+    def _parse_single_item(item_id: str, payload: dict[str, Any]) -> SealedListing | None:
+        """Map getSingleItemResponse -> a single SealedListing, or None if not found /
+        ack not Success / unparseable. Handles both list- and dict-wrapped response shapes
+        defensively (eBay JSON is list-wrapped, but stay robust). Field extraction is shared
+        via `_extract_listing_fields`; seller + image_url are pulled separately from the raw
+        item (not part of the shared extractor).
+        """
+        def _first(node, key):
+            v = node.get(key)
+            return v[0] if isinstance(v, list) and v else None
+
+        resp = payload.get("getSingleItemResponse")
+        if resp is None:
+            return None
+        # eBay wraps everything in single-element lists; handle dict-wrapped defensively.
+        if isinstance(resp, list):
+            resp = resp[0] if resp else None
+        if not isinstance(resp, dict):
+            return None
+        ack = _first(resp, "ack")
+        if ack != "Success":
+            return None
+        item = _first(resp, "item")
+        if not isinstance(item, dict):
+            return None
+        f = EbayListingsProvider._extract_listing_fields(item)
+        if f is None:
+            return None
+        seller_info = _first(item, "sellerInfo")
+        seller = _first(seller_info, "sellerUserName") if isinstance(seller_info, dict) else None
+        image_url = _first(item, "pictureURL") or _first(item, "galleryURL")
+        return SealedListing(
+            query="", listing_id=item_id, source="ebay",
+            title=f["title"], price=f["price"], currency=f["currency"],
+            listing_type=f["listing_type"], auction_end_at=f["auction_end_at"],
+            url=f["url"], condition=f["condition"], source_updated_at=None,
+            seller=seller, image_url=image_url,
+        )
 
     def _build_query(self, card_id: str) -> str:
         """Build the eBay search query: card name + number (NO set name — eBay
@@ -518,6 +629,19 @@ class EbayListingsProvider:
             if len(comps) >= limit:
                 break
         return comps
+
+
+def parse_ebay_item_id(url: str) -> str | None:
+    """Extract the eBay item ID from a listing URL. Accepts any ebay.* domain
+    and the /itm/<digits> path segment (with optional query suffix). Returns the
+    digit string, or None if the URL is not an eBay listing URL. Pure, no network.
+    """
+    if not url:
+        return None
+    match = re.search(r"ebay\.[a-z.]+/itm/(\d+)", url, re.IGNORECASE)
+    if match is None:
+        return None
+    return match.group(1)
 
 
 def _parse_iso(value: str | None) -> datetime | None:

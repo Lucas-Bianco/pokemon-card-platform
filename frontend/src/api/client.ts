@@ -28,6 +28,7 @@ import type {
   SealedScanLogRequest,
   SealedSoldCompsResponse,
   SetCompletion,
+  ShopAssessment,
   SetProgress,
   SheetsSyncResult,
   SoldCompsResponse,
@@ -701,5 +702,25 @@ export async function valuateSealedLedger(): Promise<ValuationRefreshResult> {
 export async function syncSealedLedger(): Promise<SheetsSyncResult> {
   return expectJsonOrDetail<SheetsSyncResult>(
     await fetch(`${BASE}/sealed/ledger/sync`, { method: "POST" }),
+  );
+}
+
+// ----- Online shopping assistant -----------------------------------------
+// Phase E — paste-an-URL assessment of one eBay listing. The engine fetches the
+// listing, matches it to the catalog (card / sealed / none), compares the
+// asking price to the market median, and reuses the Phase 07 authenticity
+// auto-check for card matches. Read-only (no data/ writes, no new tables).
+// Mirrors getCardLookup (URLSearchParams + expectJsonOrDetail so a 422 from a
+// too-short / malformed URL surfaces the backend's detail rather than a bare
+// status). `limit` defaults to 6 (the sold-comps cluster size the deal engine
+// values against, matching the backend default). Honest empty states are
+// consumed by the component, not collapsed here.
+export async function getShopAssessment(
+  url: string,
+  limit = 6,
+): Promise<ShopAssessment> {
+  const params = new URLSearchParams({ url, limit: String(limit) });
+  return expectJsonOrDetail<ShopAssessment>(
+    await fetch(`${BASE}/shop/assess?${params}`),
   );
 }

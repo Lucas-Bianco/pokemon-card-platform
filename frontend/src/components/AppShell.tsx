@@ -22,6 +22,7 @@ import SetDetail from "./SetDetail";
 import Sets from "./Sets";
 import SealedDeals from "./SealedDeals";
 import SealedLedger from "./SealedLedger";
+import ShopAssistant from "./ShopAssistant";
 import WatchCardSheet from "./WatchCardSheet";
 import { PageTransition } from "./motion";
 import { CommandPalette } from "./CommandPalette";
@@ -90,6 +91,7 @@ const TAB_TITLES: Record<TabView, string> = {
   catalog: "Catalog",
   browse: "Browse",
   sets: "Sets",
+  shop: "Shop",
   more: "More",
 };
 
@@ -289,6 +291,10 @@ export default function AppShell({ scan }: Props) {
             <PageTransition id="sets">
               <Sets onSelectSet={(id) => openSet(id)} />
             </PageTransition>
+          ) : view === "shop" ? (
+            <PageTransition id="shop">
+              <ShopAssistant />
+            </PageTransition>
           ) : (
             <PageTransition id="more">
               <More />
@@ -365,6 +371,7 @@ export default function AppShell({ scan }: Props) {
           />
           <TabButton label="Browse" active={view === "browse" && !selectedCard} onClick={() => selectTab("browse")} glyph={<SearchGlyph />} />
           <TabButton label="Sets" active={view === "sets" && !selectedCard} onClick={() => selectTab("sets")} glyph={<SetsGlyph />} />
+          <TabButton label="Shop" active={view === "shop" && !selectedCard} onClick={() => selectTab("shop")} glyph={<ShopGlyph />} />
           <TabButton label="More" active={view === "more" && !selectedCard} onClick={() => selectTab("more")} glyph={<MoreGlyph />} />
         </nav>
       )}
@@ -401,6 +408,7 @@ function DesktopNav({
         <TabButton label="Ledger" active={view === "ledger" && !selectedCard} onClick={() => onSelect("ledger")} glyph={<LedgerGlyph />} />
         <TabButton label="Browse" active={view === "browse" && !selectedCard} onClick={() => onSelect("browse")} glyph={<SearchGlyph />} />
         <TabButton label="Sets" active={view === "sets" && !selectedCard} onClick={() => onSelect("sets")} glyph={<SetsGlyph />} />
+        <TabButton label="Shop" active={view === "shop" && !selectedCard} onClick={() => onSelect("shop")} glyph={<ShopGlyph />} />
         <TabButton label="More" active={view === "more" && !selectedCard} onClick={() => onSelect("more")} glyph={<MoreGlyph />} />
       </nav>
     </aside>
@@ -789,6 +797,18 @@ function CatalogGlyph() {
       <rect x="14" y="4" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.8" />
       <rect x="4" y="14" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.8" />
       <rect x="14" y="14" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.8" />
+    </svg>
+  );
+}
+// A shopping bag with a checkmark — the Shop tab's glyph (paste-a-listing-URL
+// assessment: deal / worth / authenticity read). Distinct from the Deals tag
+// glyph (a price-tag) so the two deal surfaces stay visually separate.
+function ShopGlyph() {
+  return (
+    <svg className="nav-glyph" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M5 8h14l-1 12H6L5 8z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+      <path d="M9 8V6a3 3 0 0 1 6 0v2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <path d="M9.5 14l1.8 1.8L15 12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

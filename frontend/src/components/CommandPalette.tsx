@@ -9,7 +9,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { searchCards } from "../api/client";
 import type { CardSearchResult } from "../api/types";
 
-type Tab = "home" | "scan" | "vault" | "alerts" | "deals" | "prices" | "ledger" | "sealed" | "catalog" | "browse" | "sets" | "more";
+type Tab = "home" | "scan" | "vault" | "alerts" | "deals" | "prices" | "ledger" | "sealed" | "catalog" | "browse" | "sets" | "shop" | "more";
 
 const TAB_COMMANDS: { tab: Tab; label: string; hint: string }[] = [
   { tab: "home", label: "Go to Home", hint: "Dashboard" },
@@ -23,6 +23,7 @@ const TAB_COMMANDS: { tab: Tab; label: string; hint: string }[] = [
   { tab: "ledger", label: "Go to Ledger", hint: "Sealed purchases" },
   { tab: "browse", label: "Go to Browse", hint: "Catalog search" },
   { tab: "sets", label: "Go to Sets", hint: "Set completion" },
+  { tab: "shop", label: "Go to Shop", hint: "Assess a listing" },
   { tab: "more", label: "Go to More", hint: "Settings" },
 ];
 

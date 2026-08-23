@@ -65,7 +65,7 @@ from cardplatform.db.models import (
 )
 from cardplatform.db.session import Database
 from cardplatform.prices import sold_comps_api_models as sold_models
-from cardplatform.prices.ebay_listings import EbayListingsProvider
+from cardplatform.prices.ebay_listings import EbayListingsProvider, parse_ebay_item_id
 from cardplatform.prices.listings_service import ListingsService
 from cardplatform.prices.service import PriceService
 from cardplatform.recognition import detectors
@@ -99,6 +99,8 @@ from cardplatform.sealed.msrp_vs_market import MsrpVsMarketService
 from cardplatform.sealed.scan_log import SealedScanLogService
 from cardplatform.sealed.seed_data import SEALED_PRODUCTS
 from cardplatform.cards.lookup import CardLookupService
+from cardplatform.shop.assess import ShopAssessor
+from cardplatform.shop.api_models import ShopAssessmentOut
 
 _database: Database | None = None
 
@@ -1446,6 +1448,42 @@ def create_app() -> FastAPI:
             sold_comps_unavailable=not key_set,
             sold_comps_empty=key_set and not comps,
         )
+
+    # --------------------------------------------------------------- shop assistant (Phase E)
+    @app.get("/shop/assess", response_model=ShopAssessmentOut)
+    def shop_assess(
+        url: str = Query(
+            ..., min_length=8,
+            description="Full eBay listing URL, e.g. https://www.ebay.com/itm/123456789012",
+        ),
+        limit: int = Query(6, ge=1, le=10),
+        session: Session = Depends(get_session),
+    ) -> ShopAssessmentOut:
+        """Assess a single eBay listing by URL (roadmap row 13 / Phase E).
+
+        Paste a listing URL -> parse the item ID -> fetch the live listing via the
+        Finding API getSingleItem (same App ID auth, no OAuth) -> match the title to
+        a sealed product (high confidence, curated catalog) or a card (low confidence,
+        best-effort) -> deal verdict against the proven market (sold-comps median for
+        sealed, latest_price for cards) -> for card matches, the Phase 07 authenticity
+        guide (printed-number consistency + rarity-gated checklist; never a fake/real
+        verdict). Composes three existing pillars (deal sniper / flip-edge, price +
+        sold-comps, authenticity) into one read. Read-only: no data/ writes, no new
+        tables, no snapshot persistence. Honest empty states mirror the rest of the
+        app: no key -> listing_unavailable; key set, not found -> listing_not_found;
+        no market -> edge null (never $0); no match -> deal None. A 422 is returned
+        when the URL is not an eBay listing URL (parse_ebay_item_id returns None).
+        """
+        item_id = parse_ebay_item_id(url)
+        if item_id is None:
+            raise HTTPException(
+                status_code=422,
+                detail="url must be an eBay listing URL like https://www.ebay.com/itm/<id>",
+            )
+        provider = EbayListingsProvider(settings)
+        assessor = ShopAssessor(session, settings, provider)
+        assessment = assessor.assess(url, limit=limit)
+        return ShopAssessmentOut.model_validate(assessment)
 
     # --------------------------------------------------------------- sealed catalog (Phase A)
     @app.get("/sealed/products", response_model=SealedProductsResponse)
