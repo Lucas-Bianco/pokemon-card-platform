@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import shutil
 from datetime import datetime, timezone
-from pathlib import Path
 
 import pytest
 from sqlalchemy import inspect, text
@@ -30,11 +29,12 @@ from cardplatform.db.models import (
 )
 from cardplatform.db.session import Database
 
-# The real populated DB lives at <repo_root>/data/cardplatform.sqlite3 (not
-# backend/data/). Used by test_existing_data_preserved to copy a live DB and
-# prove the new-table migration does not touch existing rows.
-_REPO_ROOT = Path(__file__).resolve().parents[2]
-_REAL_DB = _REPO_ROOT / "data" / "cardplatform.sqlite3"
+# Used by test_existing_data_preserved to copy a live DB and prove the new-table
+# migration does not touch existing rows. Resolve it through Settings rather than
+# assuming <repo_root>/data: since 2026-08-22 the populated store lives outside the
+# version folder (CARDPLATFORM_DATA_DIR), and a hardcoded repo-relative path silently
+# skipped this test instead of running it.
+_REAL_DB = Settings().db_path
 
 
 def _tables(engine) -> set[str]:
@@ -177,28 +177,40 @@ def test_existing_data_preserved(tmp_path):
     Base.metadata.create_all(database.engine)
     run_migrations(database.engine)
 
+    def _counts(conn) -> dict[str, int]:
+        return {
+            t: conn.execute(text(f"SELECT COUNT(*) FROM {t}")).scalar()
+            for t in (
+                "scan_logs",
+                "cards",
+                "watchlist",
+                "listing_snapshots",
+                "alert_events",
+                "push_subscriptions",
+            )
+        }
+
     with database.engine.connect() as conn:
-        before_scans = conn.execute(text("SELECT COUNT(*) FROM scan_logs")).scalar()
-        before_cards = conn.execute(text("SELECT COUNT(*) FROM cards")).scalar()
+        before = _counts(conn)
+        before_scans = before["scan_logs"]
+        before_cards = before["cards"]
 
     # Re-run to mirror repeated startup behavior; counts must not move.
     Base.metadata.create_all(database.engine)
     run_migrations(database.engine)
 
     with database.engine.connect() as conn:
-        after_scans = conn.execute(text("SELECT COUNT(*) FROM scan_logs")).scalar()
-        after_cards = conn.execute(text("SELECT COUNT(*) FROM cards")).scalar()
-        watch_count = conn.execute(text("SELECT COUNT(*) FROM watchlist")).scalar()
-        listing_count = conn.execute(text("SELECT COUNT(*) FROM listing_snapshots")).scalar()
-        alert_count = conn.execute(text("SELECT COUNT(*) FROM alert_events")).scalar()
-        push_count = conn.execute(text("SELECT COUNT(*) FROM push_subscriptions")).scalar()
+        after = _counts(conn)
+        after_scans = after["scan_logs"]
+        after_cards = after["cards"]
 
     assert before_scans == after_scans
     assert before_cards == after_cards
 
     tables = _tables(database.engine)
     assert {"watchlist", "listing_snapshots", "alert_events", "push_subscriptions"} <= tables
-    assert watch_count == 0
-    assert listing_count == 0
-    assert alert_count == 0
-    assert push_count == 0
+    # Every count is UNCHANGED by the migration — that is the invariant under test.
+    # These previously asserted `== 0`, which only held while the live DB happened to
+    # have no watches; it broke the moment a real watch existed. Asserting the user's
+    # data is empty tests the data, not the migration.
+    assert after == before

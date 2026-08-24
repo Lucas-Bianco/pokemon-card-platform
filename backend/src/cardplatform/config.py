@@ -24,7 +24,17 @@ _DUMP_BASE = "https://raw.githubusercontent.com/PokemonTCG/pokemon-tcg-data/mast
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="CARDPLATFORM_", extra="ignore")
+    # `.env` sits beside the repo root and is gitignored. Loading it here is what makes
+    # `CARDPLATFORM_DATA_DIR` (and the API keys) take effect without exporting them in
+    # every shell — before this, the file existed but nothing read it. Precedence is
+    # unchanged where it matters: constructor args and real env vars both still win, so
+    # the tests that pass `data_dir=tmp_path` or monkeypatch the env are unaffected.
+    model_config = SettingsConfigDict(
+        env_prefix="CARDPLATFORM_",
+        extra="ignore",
+        env_file=_REPO_ROOT / ".env",
+        env_file_encoding="utf-8",
+    )
 
     data_dir: Path = Field(default=_REPO_ROOT / "data")
 
