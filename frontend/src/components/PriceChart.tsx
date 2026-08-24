@@ -91,6 +91,15 @@ export default function PriceChart({ points, variant, onClose }: Props) {
       <p className="chart-caption muted small">
         {latestPriced.source} · as of {latestPriced.source_updated_at}
       </p>
+      {/* Honest about history depth. Snapshots are append-only and never trimmed,
+          so the line only reaches back as far as the price-refresh job has been
+          running for this card — a short line is a young history, not censored
+          data. The number of points makes that legible instead of implying a
+          full market lifetime. */}
+      <p className="chart-depth muted small">
+        {priced.length} point{priced.length === 1 ? "" : "s"} · depth depends on price-refresh
+        cadence (snapshots are append-only, never trimmed).
+      </p>
       {onClose && (
         <button type="button" className="link chart-close" onClick={onClose}>
           close

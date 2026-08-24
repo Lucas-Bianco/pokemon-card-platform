@@ -10,6 +10,7 @@ import type {
   Grader,
   GradingLabel,
   GradingUpside,
+  InsuranceValue,
   ListingsResponse,
   Portfolio,
   Price,
@@ -188,6 +189,12 @@ export async function getPortfolio(): Promise<Portfolio> {
   // Priced holdings + summary in one round trip; all valuation is server-side, so the
   // client never resolves 'the latest price' itself.
   return expectJson<Portfolio>(await fetch(`${BASE}/collection/portfolio`));
+}
+
+export async function getInsuranceValue(): Promise<InsuranceValue> {
+  // Replacement-value bands (conservative/median/aggressive) + a printable per-card
+  // schedule, all computed server-side from the same proven price snapshots.
+  return expectJson<InsuranceValue>(await fetch(`${BASE}/collection/insurance`));
 }
 
 export async function patchCollectionItem(

@@ -12,7 +12,7 @@ from typing import Iterator
 from fastapi import Depends, FastAPI, File, HTTPException, Query, Response, UploadFile
 from fastapi.responses import JSONResponse
 from PIL import Image, UnidentifiedImageError
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -526,6 +526,42 @@ class ValuationOut(BaseModel):
     cost_basis: float
     unrealized: float
     unpriced_items: int
+
+
+class InsuranceLineOut(BaseModel):
+    """One holding in a printable insurance schedule — low/market/high provenance."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    card_id: str
+    card_name: str
+    set_name: str
+    variant: str
+    quantity: int
+    low: float | None
+    market: float | None
+    high: float | None
+    source: str | None
+    source_updated_at: str | None
+    priced: bool
+
+
+class InsuranceValueOut(BaseModel):
+    """Replacement-value bands for the collection + a printable per-card schedule.
+
+    conservative/median/aggressive are summed across priced holdings only; unpriced
+    cards are counted in unpriced_items and excluded from the totals (never $0).
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    conservative: float
+    median: float
+    aggressive: float
+    priced_items: int
+    unpriced_items: int
+    schedule: list[InsuranceLineOut]
+    caveat: str
 
 
 class GradingUpsideTierOut(BaseModel):
@@ -1081,6 +1117,19 @@ def create_app() -> FastAPI:
             summary=_summary_out(portfolio.summary),
             items=[_portfolio_item_out(i) for i in portfolio.items],
         )
+
+    # Declared before PATCH /collection/{item_id}: a literal path must be registered
+    # ahead of the parameterised one, or "insurance" is captured as an item_id.
+    @app.get("/collection/insurance", response_model=InsuranceValueOut)
+    def collection_insurance(session: Session = Depends(get_session)) -> InsuranceValueOut:
+        """Replacement-value bands for the collection (conservative / median /
+        aggressive) plus a printable per-card schedule.
+
+        conservative = low (fallback to market); median = market; aggressive = high
+        (fallback to market); each summed across priced holdings x quantity. Unpriced
+        cards are excluded from the totals and counted in unpriced_items, never $0.
+        """
+        return InsuranceValueOut.model_validate(CollectionStore(session).insurance_value())
 
     @app.patch("/collection/{item_id}", response_model=CollectionItemOut)
     def patch_collection_item(

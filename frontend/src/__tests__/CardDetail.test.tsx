@@ -44,7 +44,7 @@ function stubFetch(options: {
   card?: typeof card | null;
   upside?: typeof upside | null;
   history?: typeof priceHistory | null;
-  price?: { market: number | null; source: string; source_updated_at: string } | null;
+  price?: { market: number | null; low: number | null; mid: number | null; high: number | null; source: string; source_updated_at: string } | null;
   priceStatus?: number;
   listings?: Array<Record<string, unknown>>;
   listingsUnavailable?: boolean;
@@ -55,7 +55,7 @@ function stubFetch(options: {
     card,
     upside,
     history: priceHistory,
-    price: { market: 800.0, source: "tcgplayer", source_updated_at: "2026/07/29" },
+    price: { market: 800.0, low: 760.0, mid: 800.0, high: 900.0, source: "tcgplayer", source_updated_at: "2026/07/29" },
     listings: [],
     listingsUnavailable: false,
     deals: [] as Array<Record<string, unknown>>,
@@ -148,7 +148,9 @@ describe("CardDetail", () => {
       expect(container.textContent ?? "").toContain("$800.00");
     });
     const text = container.textContent ?? "";
-    expect(text).toContain("tcgplayer");
+    // The card-detail price line renders the friendly "market reference" label
+    // for the source, not the opaque lowercase slug.
+    expect(text).toMatch(/TCGplayer market reference/i);
     expect(text).toContain("as of 2026/07/29");
   });
 
@@ -354,5 +356,49 @@ describe("CardDetail", () => {
     });
     // No scan -> centering is unmeasured for a collection card.
     expect(container.textContent ?? "").toMatch(/unmeasured/i);
+  });
+
+  it("renders the low/mid/high provenance band above the market-reference-vs-proven-sales caveat", async () => {
+    stubFetch({});
+    const { container } = render(<CardDetail cardId="base1-4" variant="normal" onBack={noop} />);
+
+    // The band surfaces the low/mid/high range, not just the market point — a
+    // single point hides how soft a market is.
+    await waitFor(() => {
+      expect(container.querySelector(".price-band")).not.toBeNull();
+    });
+    const bandText = container.querySelector(".price-band")?.textContent ?? "";
+    expect(bandText).toContain("$800.00"); // market / mid
+    expect(bandText).toMatch(/low/i);
+    expect(bandText).toMatch(/high/i);
+
+    // The provenance caveat sits between the price and the sold comps, telling
+    // the user the two figures can honestly differ.
+    const caveat = container.querySelector(".price-provenance");
+    expect(caveat).not.toBeNull();
+    const caveatText = caveat?.textContent ?? "";
+    expect(caveatText).toMatch(/market reference/i);
+    expect(caveatText).toMatch(/proven transactions/i);
+
+    // The sold-comps panel renders its honest empty state.
+    await waitFor(() => {
+      expect(container.querySelector(".sold-comps")).not.toBeNull();
+    });
+
+    // DOM order: price band precedes the caveat precedes the sold comps. This
+    // is the contract that makes the caveat read as "the figure above vs the
+    // sales below" — flip the order and the words become a lie.
+    const section = container.querySelector(".card-detail");
+    expect(section).not.toBeNull();
+    const band = section!.querySelector(".price-band");
+    const comps = section!.querySelector(".sold-comps");
+    expect(band).not.toBeNull();
+    expect(comps).not.toBeNull();
+    expect(
+      band!.compareDocumentPosition(caveat!) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      caveat!.compareDocumentPosition(comps!) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 });

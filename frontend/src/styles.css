@@ -251,6 +251,18 @@ h1 { font-size: 1.25rem; margin: 4px 0 16px; }
 .price.muted { font-size: 0.9rem; color: var(--fg-dim); }
 .price-meta { display: block; font-size: 0.78rem; color: var(--fg-dim); font-weight: 400; }
 
+/* The card-detail view's richer price read: the market figure plus the
+   low/mid/high provenance band and a legible source label. The band is
+   honest about spread — a single point hides how soft a market is. */
+.price-band .price-band-range {
+  display: block;
+  margin-top: 0.15rem;
+}
+/* The "market reference vs proven sales" caveat that sits between the
+   price line and the sold comps. Small, dim, no border — it is a
+   truthfulness note, not a UI element competing for attention. */
+.price-provenance { margin: 4px 0 0; line-height: 1.45; }
+
 .ocr-note {
   margin: 0;
   padding: 8px 14px;
@@ -493,6 +505,7 @@ h1 { font-size: 1.25rem; margin: 4px 0 16px; }
 }
 .chart-labels .current { color: var(--fg); font-weight: 600; }
 .chart-caption { margin: 0; }
+.chart-depth { margin: 4px 0 0; }
 .chart-close { margin-top: 6px; }
 
 /* Portfolio view — supersedes .collection. Reuses .valuation/.muted/.up/.down/.unknown. */
@@ -504,6 +517,55 @@ h1 { font-size: 1.25rem; margin: 4px 0 16px; }
 .movers li { padding: 2px 0; }
 .movers .up { color: var(--ok); }
 .movers .down { color: #ff8f84; }
+
+/* Insurance value — replacement-value bands + printable schedule. */
+.insurance { margin-top: 16px; }
+.insurance h3 { font-size: 0.9rem; margin: 0 0 8px; color: var(--fg-dim); }
+.insurance-bands {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+}
+.insurance-band {
+  background: var(--glass, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px;
+}
+.insurance-band .label { display: block; font-size: 0.72rem; color: var(--fg-dim); margin-bottom: 4px; }
+.insurance-band strong { font-size: 1.05rem; display: block; }
+.insurance-band .muted { font-size: 0.68rem; }
+.insurance-caveat { margin: 8px 0 0; }
+.insurance-toggle { margin-top: 8px; }
+.insurance-schedule-wrap { margin-top: 12px; }
+.insurance-schedule {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+.insurance-schedule th {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  color: var(--fg-dim);
+  font-weight: 500;
+}
+.insurance-schedule td { padding: 8px 10px; border-bottom: 1px solid var(--line); }
+.insurance-schedule tr.unpriced td { opacity: 0.55; }
+.insurance-schedule .d-block { display: block; }
+.insurance-schedule .col-variant,
+.insurance-schedule .col-source { white-space: nowrap; }
+.insurance-print { margin-top: 12px; }
+
+/* Print: only the insurance schedule is useful on paper. */
+@media print {
+  body * { visibility: hidden; }
+  .insurance-schedule-wrap,
+  .insurance-schedule-wrap * { visibility: visible; }
+  .insurance-schedule-wrap { position: absolute; left: 0; top: 0; width: 100%; }
+  .insurance-print { display: none; }
+}
+
 .portfolio-table {
   width: 100%;
   margin-top: 16px;

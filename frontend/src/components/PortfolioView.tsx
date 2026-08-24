@@ -10,6 +10,7 @@ import {
 } from "../api/client";
 import type { Portfolio, PortfolioItem, PricePoint } from "../api/types";
 import { formatMoney } from "../lib/format";
+import InsuranceValue from "./InsuranceValue";
 import PriceChart from "./PriceChart";
 import { staggerContainer, staggerItem } from "./motion";
 
@@ -182,6 +183,8 @@ export default function PortfolioView(_props: Props) {
           price yet and count as zero — never guessed.
         </p>
       )}
+
+      {hasHoldings && <InsuranceValue />}
 
       {summary && summary.allocation.length > 1 && (
         <div className="allocation">

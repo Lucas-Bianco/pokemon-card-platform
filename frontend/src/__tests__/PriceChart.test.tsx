@@ -79,4 +79,25 @@ describe("PriceChart", () => {
     expect(container.textContent ?? "").toMatch(/unpriced/i);
     expect(container.querySelector("polyline")).toBeNull();
   });
+
+  it("states the point count and the append-only depth caveat for a multi-point trend", () => {
+    // A short line is a young history, not censored data. The caption makes the
+    // number of points legible and says snapshots are append-only, so a shallow
+    // trend is never read as a full market lifetime.
+    const points = [
+      point({ market: 80.0, source_updated_at: "2026/07/01", fetched_at: "2026-07-01T12:00:00Z" }),
+      point({ market: 100.0, source_updated_at: "2026/07/15", fetched_at: "2026-07-15T12:00:00Z" }),
+      point({ market: 90.0, source_updated_at: "2026/07/29", fetched_at: "2026-07-29T12:00:00Z" }),
+    ];
+
+    const { container } = render(<PriceChart points={points} variant="holofoil" />);
+
+    const depth = container.querySelector(".chart-depth");
+    expect(depth).not.toBeNull();
+    const text = depth?.textContent ?? "";
+    expect(text).toContain("3 points");
+    expect(text).toMatch(/depth depends on price-refresh cadence/i);
+    expect(text).toMatch(/append-only/i);
+    expect(text).toMatch(/never trimmed/i);
+  });
 });

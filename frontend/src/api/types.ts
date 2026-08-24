@@ -151,6 +151,37 @@ export interface Portfolio {
   items: PortfolioItem[];
 }
 
+// One holding in a printable insurance schedule — low/market/high provenance from
+// the same snapshot the rest of the app uses. Priced is false when there is no
+// usable market figure; such a line still appears (so nothing is silently dropped)
+// but contributes to no band total.
+export interface InsuranceLine {
+  card_id: string;
+  card_name: string;
+  set_name: string;
+  variant: string;
+  quantity: number;
+  low: number | null;
+  market: number | null;
+  high: number | null;
+  source: string | null;
+  source_updated_at: string | null;
+  priced: boolean;
+}
+
+// Replacement-value bands for the collection. conservative = low (fallback to
+// market); median = market; aggressive = high (fallback to market). Unpriced cards
+// are excluded from the totals and counted in unpriced_items — never $0.
+export interface InsuranceValue {
+  conservative: number;
+  median: number;
+  aggressive: number;
+  priced_items: number;
+  unpriced_items: number;
+  schedule: InsuranceLine[];
+  caveat: string;
+}
+
 export interface Scan {
   id: number;
   status: string;

@@ -146,8 +146,20 @@ export default function CardDetail({ cardId, variant = "normal", onBack, onWatch
       </div>
 
       <div className="card-detail-price">
-        <PriceLine cardId={cardId} variant={variant} initial={null} />
+        <PriceLine cardId={cardId} variant={variant} initial={null} showBand />
       </div>
+
+      {/* Two honest figures that can differ. The number above is a market
+          reference (an asking price, TCGplayer-derived via pokemontcg.io).
+          The eBay sales below are proven transactions. The two often
+          disagree, and that gap is the honest signal — not a bug to paper
+          over. If the reference is unavailable, the sales may still have
+          evidence. */}
+      <p className="price-provenance muted small">
+        The figure above is a market reference (an ask). The eBay sales below are proven
+        transactions — two honest figures that can differ. If the reference is unavailable, the
+        sales may still have evidence.
+      </p>
 
       {/* Evidence backing the raw market price above. Sold comps fetch their
           own data (reused, not duplicated) — they're evidence, not a price. */}

@@ -73,6 +73,58 @@ class Portfolio:
     items: list[PortfolioItem]
 
 
+@dataclass(frozen=True)
+class InsuranceLine:
+    """One holding's replacement-value provenance for a printable insurance schedule.
+
+    low/market/high are the raw figures from the same proven snapshot the rest of the
+    app uses (None when the snapshot omits them, or when the holding is unpriced).
+    `priced` is False when there is no usable market figure — such a line still appears
+    in the schedule (so nothing is silently dropped) but contributes to no band total.
+    """
+
+    card_id: str
+    card_name: str
+    set_name: str
+    variant: str
+    quantity: int
+    low: float | None
+    market: float | None
+    high: float | None
+    source: str | None
+    source_updated_at: str | None
+    priced: bool
+
+
+@dataclass(frozen=True)
+class InsuranceValue:
+    """Replacement-value bands for the collection, from proven price snapshots.
+
+    conservative = low (fallback to market when low is missing); median = market;
+    aggressive = high (fallback to market when high is missing). Unpriced cards are
+    excluded from all three totals and counted in unpriced_items — never guessed at
+    $0. The schedule lists every holding (priced and unpriced) with per-line source
+    and source_updated_at so a printed schedule never shows a number without saying
+    where it came from.
+    """
+
+    conservative: float
+    median: float
+    aggressive: float
+    priced_items: int
+    unpriced_items: int
+    schedule: list[InsuranceLine]
+    caveat: str
+
+
+_INSURANCE_CAVEAT = (
+    "Replacement-value bands from the same proven price snapshot the rest of the app "
+    "uses (TCGplayer market reference via pokemontcg.io, or Cardmarket aggregate as "
+    "fallback). Unpriced cards are excluded from the totals, never guessed at $0. "
+    "An indicative estimate, not a binding appraisal."
+)
+
+
 class CollectionStore:
     def __init__(self, session: Session) -> None:
         self.session = session
@@ -148,6 +200,70 @@ class CollectionStore:
             cost_basis=cost_basis,
             unrealized=market_value - cost_basis,
             unpriced_items=unpriced_items,
+        )
+
+    def insurance_value(self) -> InsuranceValue:
+        """Replacement-value bands for insurance: conservative (low), median (market),
+        aggressive (high), each summed across priced holdings × quantity.
+
+        Uses the same `latest_price` resolution as total_value (TCGplayer snapshot
+        preferred, Cardmarket aggregate fallback). low/high fall back to market when
+        the snapshot omits them, so a holding with only a market figure still
+        contributes to all three bands at its best-known value. Unpriced holdings
+        (no snapshot or market is None) are excluded from every total and counted in
+        unpriced_items — never estimated at $0. The schedule lists every holding with
+        per-line source + source_updated_at (the "" sentinel coerced to None).
+        """
+        conservative = 0.0
+        median = 0.0
+        aggressive = 0.0
+        priced_items = 0
+        unpriced_items = 0
+        schedule: list[InsuranceLine] = []
+
+        for item in self.list_items():
+            snapshot = self.prices.latest_price(item.card_id, item.variant)
+            market = snapshot.market if snapshot is not None else None
+            low = snapshot.low if snapshot is not None else None
+            high = snapshot.high if snapshot is not None else None
+            priced = market is not None
+
+            if priced:
+                conservative += (low if low is not None else market) * item.quantity
+                median += market * item.quantity
+                aggressive += (high if high is not None else market) * item.quantity
+                priced_items += 1
+                source = snapshot.source
+                source_updated_at = snapshot.source_updated_at or None
+            else:
+                unpriced_items += 1
+                source = None
+                source_updated_at = None
+
+            schedule.append(
+                InsuranceLine(
+                    card_id=item.card_id,
+                    card_name=item.card.name,
+                    set_name=item.card.card_set.name,
+                    variant=item.variant,
+                    quantity=item.quantity,
+                    low=low,
+                    market=market,
+                    high=high,
+                    source=source,
+                    source_updated_at=source_updated_at,
+                    priced=priced,
+                )
+            )
+
+        return InsuranceValue(
+            conservative=conservative,
+            median=median,
+            aggressive=aggressive,
+            priced_items=priced_items,
+            unpriced_items=unpriced_items,
+            schedule=schedule,
+            caveat=_INSURANCE_CAVEAT,
         )
 
     def portfolio(self) -> Portfolio:

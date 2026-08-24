@@ -64,9 +64,35 @@ function portfolio(over: Partial<Portfolio> = {}): Portfolio {
 }
 
 function stubFetch(body: Portfolio, history?: PriceHistory) {
+  const insurance = {
+    conservative: 90.0,
+    median: 100.0,
+    aggressive: 120.0,
+    priced_items: 1,
+    unpriced_items: 1,
+    schedule: [
+      {
+        card_id: "base1-4",
+        card_name: "Charizard",
+        set_name: "Base",
+        variant: "holofoil",
+        quantity: 1,
+        low: 90.0,
+        market: 100.0,
+        high: 120.0,
+        source: "tcgplayer",
+        source_updated_at: "2026/07/29",
+        priced: true,
+      },
+    ],
+    caveat: "An indicative estimate, not a binding appraisal.",
+  };
   const spy = vi.fn().mockImplementation(async (url: string) => {
     if (String(url).includes("/collection/portfolio")) {
       return { ok: true, status: 200, json: async () => body };
+    }
+    if (String(url).includes("/collection/insurance")) {
+      return { ok: true, status: 200, json: async () => insurance };
     }
     if (String(url).includes("/prices/history")) {
       return {

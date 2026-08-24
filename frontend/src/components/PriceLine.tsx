@@ -8,11 +8,22 @@ interface Props {
   cardId: string;
   variant: string;
   initial: Price | null;
+  /** Show the low/mid/high provenance band + a clearer source label. Compact line
+   *  by default (scan result); the band is the card-detail view's richer read. */
+  showBand?: boolean;
 }
 
 type State = "idle" | "loading" | "fetching" | "none";
 
-export default function PriceLine({ cardId, variant, initial }: Props) {
+// Raw source strings ("tcgplayer" / "cardmarket") are opaque to a user. The card
+// detail view labels them so the figure is legible as a market reference vs a fallback.
+function sourceLabel(source: string): string {
+  if (source === "tcgplayer") return "TCGplayer market reference";
+  if (source === "cardmarket") return "Cardmarket aggregate";
+  return source;
+}
+
+export default function PriceLine({ cardId, variant, initial, showBand = false }: Props) {
   const [price, setPrice] = useState<Price | null>(initial);
   const [state, setState] = useState<State>(initial ? "idle" : "loading");
 
@@ -46,6 +57,23 @@ export default function PriceLine({ cardId, variant, initial }: Props) {
   if (state === "loading") return <p className="price muted">Checking price…</p>;
   if (state === "fetching") return <p className="price muted">Fetching live price…</p>;
   if (!price) return <p className="price muted">No price available</p>;
+
+  if (showBand) {
+    // The card-detail view's richer read: market figure plus the low/mid/high band
+    // and a legible source label. Every figure carries source + staleness, so a
+    // number is never shown without saying where it came from.
+    return (
+      <p className="price price-band">
+        <strong>{formatMoney(price.market)}</strong>
+        <span className="price-meta">
+          {sourceLabel(price.source)} · {formatStaleness(price.source_updated_at)}
+        </span>
+        <span className="price-band-range muted small">
+          low {formatMoney(price.low)} · mid {formatMoney(price.mid)} · high {formatMoney(price.high)}
+        </span>
+      </p>
+    );
+  }
 
   return (
     <p className="price">
