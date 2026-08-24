@@ -60,6 +60,16 @@ Site: https://lucas-bianco.github.io/pokemon-card-platform/
 | 16 | Proof of sales — every market price backed by viewable sold-comps (date, price, source link) | ✅ Done 2026-08-21 — `GET /sealed/sold-comps` + `ProofOfSales.tsx` (under ScanResult price + per-row toggle on SealedDeals/SealedLedger); listed-vs-proven caveat; honest unavailable/empty, never $0; 615 backend + 195 frontend tests green, 105-scan baseline untouched |
 | 17 | Multi-TCG platform — Magic (Scryfall) + Topps sports cards | ⬜ Planned — future multi-domain arc; separate catalogs + recognition models |
 | 18 | Vending-machine restock tracker — log sightings, describe the pattern, arm the existing drop_time watch | ⬜ Planned — no restock API exists; observation-driven by design (own sightings only, no community feed, no social scraping). Never a point time: a window plus `n`, `insufficient_data` under 3 restocks, `no_pattern` when dispersion is too wide. Interval censoring from `empty` sightings is what keeps it honest. First forward-looking feature in the project — see the spec's "tension worth naming". [spec](docs/superpowers/specs/2026-08-22-vending-restock-design.md) |
+| 19 | Navigation & IA overhaul — 4 tabs, plain English, a real help section | Designed 2026-08-22, not built. Ten top-level tabs collapse to Scan / My cards / Money / More with sub-tabs; Alerts becomes a header bell. Kills the Home-vs-Vault duplication (both render the same three panels from one `getPortfolio()` call and disagree about what empty means). Scan result stops stacking ten panels: card, price, one action, everything else behind "Take a closer look". Adds a **Setup & status** surface so the four CLI-only prerequisites (`sync-catalog`, `build-index`, `refresh-graded-prices`, `refresh-collection-prices`) stop silently gating features, and gives precision/coverage its first screen. Trading jargon replaced throughout. Design canvas: `.superpowers/design/`. Do-not-break: Scan must stay a top-level tab named exactly "Scan" (4 tests click it on mount) and the `isDesktop` JS ternary must stay (CSS-only hiding puts both navs in the jsdom a11y tree) |
+| 20 | URL routing & deep links — the app has no URLs at all | In progress. Every reload returns to the default view; nothing can be linked to; and the PWA manifest's home-screen shortcuts point at `/?view=scan` and `/?view=portfolio`, which nothing reads — both silently land on Home. Needs back/forward to work, including closing a card overlay, and must not break `BulkScan.test.tsx`, the only test that renders the full `<App/>` |
+| 21 | Scan review & labelling — turn unlabelled scans into ground truth | Planned — the highest-leverage small change available. 64 of 109 saved scans carry no label, so every recognition experiment rests on 45 samples and the promo findings on 7. `POST /scans/{id}/correct` and `GET /scans` already exist with no UI. A swipe review (image, guess, ✓ / ✗ / pick the right one) would roughly double the evidence base in minutes, and finally gives `GET /scans/accuracy` — the honesty metric the project is organised around — a screen |
+| 22 | Sell signal — is now a good time to sell, with an evidence-confidence percent | Planned. **The percent describes EVIDENCE STRENGTH, never a forecast probability** — it is computed from how many distinct price readings exist, over what span, whether tcgplayer and cardmarket agree, and how stale the newest is. It is the same kind of number as recognition confidence ("how sure am I of this reading"), NOT "72% chance it goes down". One reading → 0%, no signal shown at all. The signal itself is descriptive ("down 12% over 60 days across 8 readings from 2 agreeing sources"), never an instruction and never a predicted future price — this app does not forecast. Data-blocked today: `refresh-collection-prices` is CLI-only (row 19 surfaces it) and as of 2026-08-01 zero card+variant series had more than one distinct source date |
+| 23 | Ambiguity explainer + near-duplicate atlas — say WHY it declined | Planned. Measured 2026-08-22: declines are not weak matches — top-1 similarity has a median of 0.748, about the same as a success, and the runner-up sits ~0.007 behind. 74% of the time that runner-up is a completely unrelated card; the rest are genuine twins (`bwp-BW99` ↔ `BW101` at 0.965, `smp-SM30` ↔ `SM30a` at 0.960). Show the pair side by side with the real number and the distinguishing feature instead of a generic "not sure". Precompute the tightest pairs across the whole index so a known twin pair goes straight to "which one?" — for identical artwork that IS the correct answer, not a failure |
+| 24 | Capture coaching + multi-frame capture — attack the recognition ceiling | Planned — the remaining recognition lever is the photo, not the parser. Measured: 4 of 5 failing promo scans had **nothing legible** in the collector-number band (both the tight 0.88-1.0 and a 0.93-1.0 floor return empty), so no threshold or parser change can reach them. Detect blur/glare on the number strip before the shutter and coach ("move closer", "tilt to kill glare"); when a scan lands ambiguous with silent OCR, ask for one close-up of the corner rather than a full rescan. Cheap variant to test first: capture 3 frames, embed all (2.2 ms each), keep the best |
+| 25 | Show when price sources disagree | Planned — `GET /cards/{card_id}/prices` returns every source and variant and **no UI calls it**. Real measured case: cardmarket $1531 vs tcgplayer $800 for the same card on the same day. For an app whose identity is calibrated honesty, surfacing "these sources disagree by 90% — treat this number with caution" is the differentiator, not a footnote. Today the app quietly resolves to one source and shows a single confident number |
+| 26 | Binder memory — find the physical card | Planned. Bulk-scan a binder page and remember page + slot, so searching a card tells you where it physically is ("page 4, slot 3"). The natural payoff of bulk mode, and the `batch_id` / `batch_index` grouping it needs was only just repaired — the client had been sending both to `POST /scans` where the endpoint declared neither, so FastAPI discarded them and every bulk scan logged as N unlinked singletons |
+| 27 | Export & backup — let the data leave | Planned. The data store holds 20,391 card images, a 40 MB index, the database and 109 irreplaceable scan photos, all gitignored, with **no backup story and no way to export a collection**. A local-first app earns trust by letting you leave: CSV/JSON collection export, and a documented backup/restore of the store |
+| 28 | On-device scanning — recognise with no backend | Planned, branch decision pending. The PWA is already offline-capable and OCR is already ONNX (rapidocr-onnxruntime), so the remaining pieces are a quantised encoder and shipping the ~40 MB index. Would make the scanner work with no server at all and removes the largest barrier to publishing (row 14). Potentially major; costs a real evaluation of accuracy loss from quantisation, scored against the zero-regression bar like any recognition change |
 
 **Tests:** 609 backend (pytest) + 182 frontend (vitest).
 
@@ -356,6 +366,46 @@ trends on its own as data lands.
 3. **A different OCR engine**, if OCR is revisited. See the dead ends below: cropping and
    preprocessing are exhausted, so the remaining gain would have to come from the recogniser itself
    (PaddleOCR, or Tesseract with a digit whitelist) or from higher-resolution capture.
+
+### Promos — measured 2026-08-22, and why "more data" does not fix them
+
+Promos are 1,220 cards across 10 sets (6% of the catalog). Index coverage is not the
+problem: 1,218 of 1,220 were already indexed. Measured over the labelled real scans:
+
+| | rank-1 | top-3 | median margin | OCR read a number | full `N/M` |
+|---|---|---|---|---|---|
+| promo (n=7) | 86% | 100% | **0.0376** | 2/7 | **0/7** |
+| non-promo (n=38) | 89% | 97% | **0.0790** | 27/38 | 26/38 |
+
+**Promos are found correctly about as often as any card. They fail the confidence gate**,
+because their median margin is half a normal card's and sits under the 0.05 threshold,
+and OCR almost never rescues them. `n=7` — direction solid, magnitude provisional.
+
+**Hires reference images do NOT help — measured, do not repeat.** The index is built from
+`image_small` (240x330) while queries are rectified to 600x825, so matching the reference
+to `image_large` (600x825) looked principled. 1,215 promo hires images (1.07 GB) were
+downloaded and embedded. Mean nearest-neighbour similarity across promo references moved
+**0.7855 -> 0.7837 (-0.0017)**, with 57% of cards better separated — a coin flip. CLIP
+ViT-B-32 downsamples to 224x224 regardless, so the extra pixels carry almost no signal.
+Full-catalog hires would be **17.6 GB** for the same nothing. The cache lives at
+`data/reference_images_hires/` and has no consumer; it would only matter if the encoder
+were swapped for a higher-resolution model.
+
+**Why promo margins are low is intrinsic, not fixable with pixels.** The tightest pairs
+are the same artwork reissued: `bwp-BW99` <-> `bwp-BW101` (0.965), `smp-SM30` <-> `smp-SM30a`
+(0.960), `xyp-XY205` <-> `xyp-XY203` (0.960). No resolution separates identical pictures —
+only the collector number can, which is what the promo-code fix in §4 exists for.
+
+**Promo OCR is limited by the photo, not the parser.** Of the 5 promo scans where OCR read
+nothing usable, **4 have nothing legible in the number band at all** (tight 0.88-1.0 and a
+0.93-1.0 floor both return empty). The fifth reads `SM1S` @0.81 / `SMTS` @0.84 for `SM15` —
+present, misread, and under the 0.85 gate. A promo-shaped `S`->`5` repair would fix `SM1S`
+and break `SMTS` into `SM75`; the general form of that repair was already measured and
+rejected in the OCR section below (+2 wrong, +0 correct). One recoverable case in seven is
+not evidence.
+
+**So the remaining promo lever is capture, not data:** a sharper photo of the number, or a
+UI that asks for one when the top candidates are near-duplicate promos and OCR is silent.
 
 ### Margin dead ends — measured and disproved 2026-08-22, do not repeat
 

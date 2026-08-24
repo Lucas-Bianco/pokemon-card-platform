@@ -189,3 +189,59 @@ def test_single_candidate_has_full_margin():
 
     assert result.status == "confident"
     assert result.card_id == "base1-4"
+
+
+def test_promo_code_promotes_a_lower_ranked_candidate():
+    """A letter-prefixed promo code is strong evidence, like a full 'N/M' read.
+
+    Measured 2026-08-22 over the 109 saved scans: promos are penalised twice — they
+    look like other promos visually, and their numbers carry no '/M' denominator, so
+    under the old rule OCR could only ever confirm the visual top-1, never correct it.
+    Scan 59 read 'SM102' correctly against a wrong visual winner and had to decline.
+
+    The prefix does the same evidentiary job the '/' does: it proves OCR located the
+    collector-number field rather than lifting an HP value, a retreat cost, or a
+    copyright year. Uniqueness across the shortlist is still required.
+    """
+    candidates = (Candidate("smp-SM68", 0.79), Candidate("smp-SM102", 0.78))
+
+    result = fuse(
+        candidates,
+        OcrReading(collector_number="SM102", printed_total=None),
+        {"smp-SM68": "SM68", "smp-SM102": "SM102"},
+    )
+
+    assert result.card_id == "smp-SM102"
+    assert result.status == "confident"
+
+
+def test_bare_digits_still_cannot_promote_after_the_promo_change():
+    """The hgss4-1 guard must survive: digits alone remain confirm-only.
+
+    This is the invariant the promo change must NOT weaken — a bare '102' misread
+    from '1/102' still may not override a correct visual winner.
+    """
+    candidates = (Candidate("base1-4", 0.88), Candidate("base4-4", 0.61))
+
+    result = fuse(
+        candidates,
+        OcrReading(collector_number="102", printed_total=None),
+        {"base1-4": "17", "base4-4": "102"},
+    )
+
+    assert result.card_id == "base1-4"
+    assert result.status == "confident"
+
+
+def test_promo_code_matching_two_candidates_does_not_decide():
+    """Ambiguous evidence decides nothing, prefix or not."""
+    candidates = (Candidate("smp-SM68", 0.79), Candidate("other-SM68", 0.785))
+
+    result = fuse(
+        candidates,
+        OcrReading(collector_number="SM68", printed_total=None),
+        {"smp-SM68": "SM68", "other-SM68": "SM68"},
+    )
+
+    assert result.status == "ambiguous"
+    assert result.card_id is None

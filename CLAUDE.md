@@ -5,29 +5,31 @@ This file gives Claude Code guidance when working in this repository.
 ## Project overview
 
 <!-- One or two sentences: what this project is and what it does. -->
-ClaudeKnowledge — a local-first Pokemon trading card recognition and valuation platform. Phase 0 is the data foundation: catalog, pricing, collection store.
+A local-first Pokemon trading card recognition and valuation platform. Phase 0 is the data foundation: catalog, pricing, collection store.
+
+**Layout (since 2026-08-22).** This repo lives at `C:\ClaudeKnowledge\Pokemon Project\v0.1\`. A completed phase bumps the version into a sibling folder (`v0.2`, ...). The 3.4 GB data store is deliberately OUTSIDE the version folder at `C:\ClaudeKnowledge\Pokemon Project\data\` so a version bump never duplicates it; `CARDPLATFORM_DATA_DIR` in `.env` points there. The repo's own `data/` holds only the 4 tracked batch fixtures.
 
 ## Setup
 
 <!-- How to get the project running from a fresh clone. -->
 ```sh
 # install dependencies
-C:\ClaudeKnowledge\backend\.venv\Scripts\pip.exe install -e "C:\ClaudeKnowledge\backend[dev]"
+C:\ClaudeKnowledge\Pokemon Project\v0.1\backend\.venv\Scripts\pip.exe install -e "C:\ClaudeKnowledge\Pokemon Project\v0.1\backend[dev,ml]"
 ```
 
 ## Commands
 
 <!-- The commands you run most often. Keep these accurate — Claude will trust them. -->
 - Build: no build step configured yet.
-- Test: `C:\ClaudeKnowledge\backend\.venv\Scripts\python.exe -m pytest` (run from repo root)
+- Test: `C:\ClaudeKnowledge\Pokemon Project\v0.1\backend\.venv\Scripts\python.exe -m pytest` (run from repo root)
 - Lint / format: no lint/format step configured yet.
-- Run / dev server: `C:\ClaudeKnowledge\backend\.venv\Scripts\uvicorn.exe cardplatform.api:app --reload --port 8000`
-- Coverage: `C:\ClaudeKnowledge\backend\.venv\Scripts\python.exe -m pytest --cov=cardplatform --cov-report=term-missing`
-- Sync the card catalog: `C:\ClaudeKnowledge\backend\.venv\Scripts\cardplatform.exe sync-catalog` (idempotent, resumable)
-- Fetch prices: `C:\ClaudeKnowledge\backend\.venv\Scripts\cardplatform.exe refresh-prices base1-4 hgss4-1`
-- Accrue price history: `C:\ClaudeKnowledge\backend\.venv\Scripts\cardplatform.exe refresh-collection-prices` (run on a schedule; Phase 2 charts need repeated runs)
-- Build the recognition index: `C:\ClaudeKnowledge\backend\.venv\Scripts\cardplatform.exe build-index` (downloads ~20k images; re-runs skip cached)
-- Evaluate recognition accuracy: `C:\ClaudeKnowledge\backend\.venv\Scripts\python.exe backend/scripts/evaluate_recognition.py --sample 500`
+- Run / dev server: `C:\ClaudeKnowledge\Pokemon Project\v0.1\backend\.venv\Scripts\uvicorn.exe cardplatform.api:app --reload --port 8000`
+- Coverage: `C:\ClaudeKnowledge\Pokemon Project\v0.1\backend\.venv\Scripts\python.exe -m pytest --cov=cardplatform --cov-report=term-missing`
+- Sync the card catalog: `C:\ClaudeKnowledge\Pokemon Project\v0.1\backend\.venv\Scripts\cardplatform.exe sync-catalog` (idempotent, resumable)
+- Fetch prices: `C:\ClaudeKnowledge\Pokemon Project\v0.1\backend\.venv\Scripts\cardplatform.exe refresh-prices base1-4 hgss4-1`
+- Accrue price history: `C:\ClaudeKnowledge\Pokemon Project\v0.1\backend\.venv\Scripts\cardplatform.exe refresh-collection-prices` (run on a schedule; Phase 2 charts need repeated runs)
+- Build the recognition index: `C:\ClaudeKnowledge\Pokemon Project\v0.1\backend\.venv\Scripts\cardplatform.exe build-index` (downloads ~20k images; re-runs skip cached)
+- Evaluate recognition accuracy: `C:\ClaudeKnowledge\Pokemon Project\v0.1\backend\.venv\Scripts\python.exe backend/scripts/evaluate_recognition.py --sample 500`
 
 ## Project structure
 
@@ -48,7 +50,7 @@ C:\ClaudeKnowledge\backend\.venv\Scripts\pip.exe install -e "C:\ClaudeKnowledge\
 - No SQLite-specific SQL: everything goes through the SQLAlchemy ORM so a Postgres swap stays cheap.
 - **Install torch and torchvision together from the cu128 index, and re-run that install after any package that depends on torch.** `pip install open-clip-torch` silently replaces the CUDA build with a CPU one, and repairing torch alone then breaks torchvision (`operator torchvision::nms does not exist`).
 - **Never derive a cache filename from an image URL.** 661 catalog images have no file extension, and two real card ids (`ex10-!`, `ex10-?`) contain characters illegal in NTFS filenames. Key on `card_id` and percent-encode it.
-- **Recognition must report uncertainty, never guess.** A confidently wrong identification is the worst outcome this pipeline can produce — prefer an `ambiguous` result with ranked candidates. Only a full `N/M` OCR reading may override the visual winner; a bare number may only confirm it.
+- **Recognition must report uncertainty, never guess.** A confidently wrong identification is the worst outcome this pipeline can produce — prefer an `ambiguous` result with ranked candidates. **Only a reading that proves OCR found the collector-number field may override the visual winner** — either a full `N/M` form (the `/` is the proof) or a letter-prefixed promo code like `SM102` (the prefix is the proof). **Bare digits may only confirm the visual top-1, never promote** — that is the `hgss4-1` guard, where `1/102` misread as `102` would otherwise turn a correct answer into a confidently wrong one.
 - **Detection proposals are selected by which crop recognises best, not by which strategy ran first.** Each strategy in `detectors.py` proposes a quad; the service embeds every proposal (2.2 ms each) and keeps the best match, running OCR once on the winner. A single "better" detector was measured *not* strictly better — `otsu_rect` alone recovered 33 real failures but regressed 6 working scans; the chain regresses none.
 - **Never count "found a card-shaped quad" as "found the card".** Adaptive thresholding scored 56/56 in an early comparison purely by returning the whole image border, whose aspect ratio passes the shape gate on a portrait photo. Verify a detector by running recognition on its output, and keep the `MAX_AREA_FRACTION` guard that rejects whole-frame quads.
 - **`approxPolyDP` demanding exactly 4 vertices is what broke detection originally.** Real photos have rounded corners and noise, so it lands on 5–7 vertices and discards a visible card; fitting a rotated rectangle to the largest blob is the more robust primitive.
@@ -60,6 +62,6 @@ C:\ClaudeKnowledge\backend\.venv\Scripts\pip.exe install -e "C:\ClaudeKnowledge\
 
 <!-- Anything Claude should always keep in mind: gotchas, do-nots, priorities. -->
 - Ask before running destructive or irreversible commands.
-- **Never delete anything under `data/`** — it holds 20,391 downloaded card images, a 40 MB FAISS index, the SQLite database, and 101 irreplaceable real scan photos. It is gitignored, so nothing there can be recovered from git.
+- **Never delete anything under the shared data store** (`C:\ClaudeKnowledge\Pokemon Project\data\`) — it holds 20,391 downloaded card images, a 40 MB FAISS index, the SQLite database, and 109 irreplaceable real scan photos. It is outside the repo and gitignored, so nothing there can be recovered from git. The repo's own `data/scans/batch_fixtures/` is tracked and safe.
 - **Keep `AI_CONTEXT.md` current.** It is the onboarding document for any AI working on this repo, and a stale one is worse than none because it gets trusted. Update it — including the "Last updated" date — after any change to architecture, measured results, the roadmap, or a newly discovered gotcha. Rule of thumb: if a fresh AI would make a worse decision without knowing it, it belongs there.
 - Match the style of surrounding code.

@@ -12,11 +12,20 @@ Defaults here are starting points. Task 11 calibrates them against real photogra
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Mapping
 
 from cardplatform.recognition.ocr import normalize_collector_number
 from cardplatform.recognition.types import Candidate, OcrReading, RecognitionResult
+
+
+# A promo-style collector number: a short letter prefix followed by digits, e.g.
+# 'SM102', 'XY133', 'BW19', 'SWSH284'. Matched against the value AFTER
+# `normalize_collector_number`, which upper-cases and strips leading zeros, so the
+# pattern only has to describe the canonical form. Bare digits deliberately do not
+# match — see the promotion rule in `fuse`.
+_PROMO_CODE = re.compile(r"^[A-Z]{1,4}\d+$")
 
 
 @dataclass(frozen=True)
@@ -104,8 +113,26 @@ def fuse(
         ]
         if len(matches) == 1:
             matched = matches[0]
-            captured_full_form = ocr.printed_total is not None
-            if captured_full_form or matched.card_id == top.card_id:
+            # Two readings are strong enough to promote, and they qualify for the same
+            # reason: both prove OCR located the collector-number field rather than
+            # lifting an HP value, a retreat cost, or a copyright year.
+            #
+            #   'N/M'    -> the '/' is the proof.
+            #   'SM102'  -> the letter prefix is the proof.
+            #
+            # Promos carry no '/M' denominator, so under the full-form-only rule they
+            # were penalised twice: visually they resemble other promos, and their
+            # numbers could only ever confirm the visual top-1, never correct it.
+            # Measured 2026-08-22 over the 109 saved scans: allowing prefixed codes to
+            # promote gained 1 correct answer, lost 0, and produced 0 wrong ones.
+            #
+            # Bare digits are deliberately still excluded — that is the hgss4-1 guard
+            # ('1/102' misread as '102'), and it is what keeps this a sharpening of the
+            # rule rather than a loosening of it.
+            strong_reading = (
+                ocr.printed_total is not None or _PROMO_CODE.match(read_number) is not None
+            )
+            if strong_reading or matched.card_id == top.card_id:
                 return RecognitionResult(
                     card_id=matched.card_id,
                     confidence=config.agreement_confidence,
