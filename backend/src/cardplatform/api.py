@@ -17,6 +17,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from cardplatform.alerts.api_models import (
+    AlertCheckResult,
     AlertEventOut,
     ListingOut,
     PushSubscribeIn,
@@ -101,6 +102,8 @@ from cardplatform.sealed.seed_data import SEALED_PRODUCTS
 from cardplatform.cards.lookup import CardLookupService
 from cardplatform.shop.assess import ShopAssessor
 from cardplatform.shop.api_models import ShopAssessmentOut
+from cardplatform.tradeup import api_models as tradeup_models
+from cardplatform.tradeup.service import TradeUpService
 
 _database: Database | None = None
 
@@ -773,6 +776,46 @@ def create_app() -> FastAPI:
             **GradingUpsideService(session).upside(card_id, variant)
         )
 
+    @app.get("/cards/{card_id}/trade-up", response_model=tradeup_models.TradeUpAssessmentOut)
+    def trade_up(
+        card_id: str,
+        variant: str = Query(...),
+        grade: float = Query(default=10.0),
+        grader: str = Query(default="PSA"),
+        centering_cap: int | None = Query(default=None),
+        session: Session = Depends(get_session),
+    ) -> tradeup_models.TradeUpAssessmentOut:
+        """Trade-up / sell-now simulator (roadmap row 19).
+
+        For a card you own, compares two exit legs honestly:
+
+          * **Sell raw now** — proven eBay sold-comps median, net of an estimated
+            selling fee. Realised transactions, not a listed ask.
+          * **Grade then sell** — graded market price, net of the grading fee and
+            the selling fee. Assumes the card achieves the target grade; a measured
+            `centering_cap` below the target flags that grade as not reachable.
+
+        The TCGplayer/`latest_price` market figure is returned as a *reference*
+        (an ask) for context, never used as the sell price. The recommendation is
+        descriptive of which net is higher — never a forecast. Every leg carries
+        source + staleness; a missing leg is an em dash + a reason, never $0.
+        Unknown card returns 404.
+        """
+        _require_card(session, card_id)
+        service = TradeUpService(
+            session,
+            settings,
+            sold_comps_provider=EbayListingsProvider(catalog=_catalog_lookup(session)),
+        )
+        assessment = service.assess(
+            card_id,
+            variant,
+            grader=grader,
+            target_grade=grade,
+            centering_cap=centering_cap,
+        )
+        return tradeup_models.TradeUpAssessmentOut.model_validate(assessment)
+
     @app.post("/scans", response_model=ScanOut, status_code=201)
     async def record_scan(
         file: UploadFile = File(...),
@@ -1295,6 +1338,54 @@ def create_app() -> FastAPI:
             select(func.count(AlertEvent.id)).where(AlertEvent.read_at.is_(None))
         )
         return {"count": int(count or 0)}
+
+    @app.post("/alerts/check", response_model=AlertCheckResult)
+    def check_alerts_now(session: Session = Depends(get_session)) -> AlertCheckResult:
+        """On-demand alert check — the honest *pull* model (roadmap row 20).
+
+        Runs one `AlertEngine.check_alerts()` tick against the currently-known
+        listings/snapshots and returns the count of freshly-fired events plus
+        the events themselves (newest first). This is the user-driven pull:
+        rather than waiting for the server's poll loop or relying on a push
+        notification, the user taps "Check now" and the thresholds are
+        evaluated there and then.
+
+        Honest framing: the check evaluates what is known *now*; it never
+        promises a notification. Push/email delivery only happens if a
+        notifier is configured (VAPID/SMTP) and dispatches as part of this same
+        tick — the in-app AlertEvent row is the always-available floor, and it
+        is what the response surfaces. Reuses the exact engine the poll loop
+        uses, so a pull and a poll can never disagree on what fires.
+        """
+        # Capture the high-water mark BEFORE the tick so the freshly-fired rows
+        # can be isolated afterward (check_alerts returns a count, not the rows).
+        prev_max = session.scalar(select(func.max(AlertEvent.id))) or 0
+
+        listings = ListingsService(
+            session, EbayListingsProvider(catalog=_catalog_lookup(session))
+        )
+        engine = AlertEngine(
+            session,
+            listings,
+            NotificationService(session, settings),
+            settings,
+            deal_engine=DealEngine(session, settings, listings_service=listings),
+        )
+        fired = engine.check_alerts()
+
+        fresh = (
+            session.scalars(
+                select(AlertEvent)
+                .where(AlertEvent.id > prev_max)
+                .order_by(AlertEvent.created_at.desc(), AlertEvent.id.desc())
+            ).all()
+            if fired > 0
+            else []
+        )
+        return AlertCheckResult(
+            fired=fired,
+            events=[AlertEventOut.model_validate(e) for e in fresh],
+        )
 
     @app.patch("/alerts/{alert_id}", response_model=AlertEventOut)
     def mark_alert_read(

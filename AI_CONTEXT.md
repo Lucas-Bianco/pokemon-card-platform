@@ -1456,3 +1456,26 @@ Frontend: new **Prices** tab `PriceLookup.tsx` (debounced 300ms, honest "no mark
 price" em dash never $0, source + staleness per row) via `getCardLookup`.
 
 **Tests** — backend +22 API tests (`test_sealed_scan_log_api.py` 7, `test_sealed_product_market_api.py` 6, `test_card_lookup_api.py` 9) on top of the 4 fan-out service suites; 685 backend green. Frontend +21 (client 11, SealedCatalog B/C 8, PriceLookup already 6) → 274 green; tsc + build clean. 105-scan baseline untouched (no `data/` writes — read-only catalog + on-demand market; lookup reads existing snapshots).
+
+## Row 19 — Trade-up / sell-now simulator (shipped 2026-08-24)
+
+The honest form of an exit-strategy tool. For a card you own, two exit legs side by side:
+
+- **Sell raw now** — proven eBay sold-comps median, net of an estimated selling fee (`settings.selling_fee_pct`, 0.13). Realised transactions, not a listed ask.
+- **Grade then sell** — graded market (`GradedPriceService.latest_graded`), net of the grading fee (`settings.grading_fee`, 25.0) + selling fee. Assumes the card achieves the target grade; a measured PSA centering cap below the target flags that grade as unreachable (`centering_blocks_grading`).
+
+A listed ask (`ListingsService.lowest_price`) is shown as the **market reference for context only — never the sell price**. The recommendation is descriptive of which net is higher (`grade` / `sell_raw` / null), never a forecast. Every null leg renders an em dash + "no estimate", never a fabricated $0.
+
+`backend/src/cardplatform/tradeup/` — `service.py` (`TradeUpLeg` / `TradeUpAssessment` frozen dataclasses, `TradeUpService.assess`), `api_models.py` (`TradeUpAssessmentOut.model_validate`, Pydantic v2 `from_attributes`). Route `GET /cards/{card_id}/trade-up?variant=&grade=&grader=&centering_cap=` after grading-upside. Frontend: `TradeUp.tsx` mounted in `ScanResult` (pre-fills the centering cap from the scan's `centering.psa_cap`) and `CardDetail`; grade select (10/9/8) + optional centering cap input.
+
+**Tests** — `test_tradeup_service.py` 24 + `test_tradeup_api.py` 8; 760 backend green. Frontend `TradeUp.test.tsx` 10; 309 green. tsc + build clean. 105-scan baseline untouched (read-only: sold-comps + graded-price + listings reads, no `data/` writes).
+
+## Row 20 — Price-alert thresholds, pull not push (shipped 2026-08-24)
+
+An on-demand **pull**, not a push promise. `POST /alerts/check` runs one `AlertEngine.check_alerts()` tick against the listings known right now and returns `{ fired, events }` — the freshly-fired `AlertEvent` rows, newest first. Reuses the exact engine the background poll loop uses, so a pull and a poll can never disagree. The in-app `AlertEvent` row is the always-available floor; push/email only if the notifier is configured and dispatches in the same check — the copy never says "we'll notify you". `AlertCheckResult` in `alerts/api_models.py`; route registered before `/{alert_id}`.
+
+Frontend: `postAlertsCheck` client fn; "Check now" button in `AlertsFeed` (both the empty state and the populated toolbar) with honest notes — "Checked — N new" (prepends the fresh rows, deduped by id), "nothing new yet" on 0-fire, and the verbatim error on failure (never a fabricated friendly fallback). A "Pull, not push" caption states the contract.
+
+**Latent production bug fixed alongside.** `ListingsService.refresh_listings` commits the outer transaction; `check_alerts` ran each watch's eval inside a `begin_nested()` savepoint, so the inner commit closed the savepoint, its context manager raised on exit, the never-raise handler swallowed it, and the watch was silently skipped. Every listing-based alert (restock / new_listing / price_target / auction_ending) was suppressed in the **production poll loop** whenever a real `ListingsService` was wired through — the engine tests never caught it because their `FakeListingsService.refresh_listings` is a no-op that doesn't commit. Fix: refresh once per watch in `check_alerts` BEFORE the savepoint (`_refresh_for`); `_current_listings` and `_eval_price_target` are now read-only. The service's commit contract is unchanged (the HTTP listings endpoint + CLI rely on it).
+
+**Tests** — `test_alerts_check_api.py` 7 (the firing tests that exposed the bug now pass); full alert suite 39 green, 767 backend green. Frontend `AlertsFeed.test.tsx` +3 → 8; 312 green. tsc + build clean. 105-scan baseline untouched.

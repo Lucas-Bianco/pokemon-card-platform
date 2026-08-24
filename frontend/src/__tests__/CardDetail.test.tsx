@@ -98,6 +98,30 @@ function stubFetch(options: {
       if (opts.upside === null) return { ok: false, status: 500, json: async () => ({}) };
       return { ok: true, status: 200, json: async () => opts.upside };
     }
+    if (u.includes("/trade-up")) {
+      // Row 19 trade-up simulator — a full assessment so the panel renders
+      // cleanly rather than as a spurious error alongside the card content.
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          card_id: "base1-4",
+          variant: "normal",
+          grader: "PSA",
+          target_grade: 10,
+          raw_leg: { label: "Sell raw now", gross: 119.0, fee: 15.47, net: 103.53, source: "ebay_sold_median", source_updated_at: null, evidence_count: 3, note: "Median of 3 sales." },
+          grade_leg: { label: "Grade to PSA 10, then sell", gross: 1200.0, fee: 181.0, net: 1019.0, source: "pkmnprices", source_updated_at: "2026/07/28", evidence_count: null, note: "Graded market." },
+          market_reference: 800.0,
+          market_reference_source: "tcgplayer",
+          market_reference_source_updated_at: "2026/07/29",
+          recommendation: "grade",
+          recommendation_note: "Grading nets more.",
+          centering_cap: null,
+          centering_blocks_grading: false,
+          caveats: ["Net figures subtract an estimated selling fee."],
+        }),
+      };
+    }
     if (u.includes("/prices/history")) {
       if (opts.history === null) return { ok: false, status: 500, json: async () => ({}) };
       return { ok: true, status: 200, json: async () => opts.history };

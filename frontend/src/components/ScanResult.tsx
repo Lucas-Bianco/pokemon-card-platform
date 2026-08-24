@@ -10,6 +10,7 @@ import GradingStudio from "./GradingStudio";
 import GradingUpside from "./GradingUpside";
 import PriceLine from "./PriceLine";
 import ProofOfSales from "./ProofOfSales";
+import TradeUp from "./TradeUp";
 
 interface Props {
   result: RecognizeResponse;
@@ -166,6 +167,17 @@ export default function ScanResult({
           band. A calculator of the user's inputs, not a prediction from the image.
           Card-gated like GradingUpside/CenteringPanel — no card, no estimate. */}
       {card && <GradingStudio centering={result.centering} grader="PSA" />}
+
+      {/* Row 19 — trade-up / sell-now simulator. A scan with a measured
+          centering ceiling pre-fills the cap box, so grades the card can't
+          reach are ruled out from the start. Card-gated like the panels above. */}
+      {card && (
+        <TradeUp
+          cardId={card.id}
+          variant={variant}
+          initialCenteringCap={result.centering?.psa_cap ?? null}
+        />
+      )}
 
       {/* The honest counterfeit tool: the one measurable auto-signal (printed
           number vs catalog) + a user-driven physical checklist. A guide, never a

@@ -983,6 +983,122 @@ h1 { font-size: 1.25rem; margin: 4px 0 16px; }
   border: 1px solid var(--line);
 }
 
+/* ----- Trade-up / sell-now simulator (row 19) ----------------------------- */
+/* Sits in the same stacked card as the grading spread; continues the
+   surface/border language. Two exit legs, a market reference, and an honest
+   descriptive read — never a forecast. Mirrors .grading-upside's structure. */
+.tradeup {
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-top: none;
+}
+.tradeup-headline { margin: 0; font-size: 0.95rem; font-weight: 600; }
+.tradeup-sub { margin: 4px 0 0; font-size: 0.78rem; color: var(--fg-dim); }
+
+.tradeup-controls {
+  margin: 12px 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.tradeup-control {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1 1 120px;
+}
+.tradeup-control select,
+.tradeup-control input {
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  color: var(--fg);
+  font-size: 0.85rem;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.tradeup-legs {
+  margin: 12px 0 0;
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+}
+.tradeup-leg {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 4px 0;
+}
+.tradeup-leg + .tradeup-leg { border-top: 1px solid var(--line); }
+.tradeup-leg.unpriced dd strong,
+.tradeup-leg.unpriced dd .unknown { color: var(--fg-dim); }
+.tradeup-leg dt {
+  font-size: 0.8rem;
+  color: var(--fg-dim);
+  flex: 0 0 auto;
+  padding-top: 2px;
+}
+.tradeup-leg dd {
+  margin: 0;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono);
+  text-align: right;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  min-width: 0;
+}
+.tradeup-net { font-weight: 600; }
+
+.tradeup-reference,
+.tradeup-recommendation {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin-top: 10px;
+  font-size: 0.88rem;
+}
+.tradeup-reference .label,
+.tradeup-recommendation .label {
+  font-size: 0.78rem;
+  color: var(--fg-dim);
+}
+.tradeup-reference strong,
+.tradeup-recommendation strong {
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono);
+}
+.tradeup-recommendation .up { color: var(--ok); }
+.tradeup-recommendation .neutral { color: var(--fg); }
+.tradeup-recommendation .unknown { color: var(--fg-dim); }
+
+.tradeup-note {
+  font-family: var(--font-sans);
+  font-variant-numeric: normal;
+  width: 100%;
+  text-align: right;
+  line-height: 1.35;
+}
+
+.tradeup-block-note {
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+}
+
 /* ----- Self-annotation form / display ------------------------------------ */
 /* Sits inside the stacked result card; continues the surface/border language.
    Inputs are full-width on narrow viewports so the form never overflows. */
@@ -1294,6 +1410,31 @@ h1 { font-size: 1.25rem; margin: 4px 0 16px; }
   color: var(--fg-dim);
   font-size: 0.95rem;
   line-height: 1.5;
+}
+/* Row 20 — the on-demand pull. The empty state pairs the "Watch a card" CTA
+ * with a "Check now" pull so a user with watches but no fired alerts can
+ * evaluate them immediately. The pull note is the honest "pull, not push"
+ * contract, never an overclaim of proactive delivery. */
+.alerts-empty-actions {
+  display: flex;
+  gap: var(--sp-3);
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.alerts-check-note {
+  margin: 0;
+  max-width: 40ch;
+  text-align: center;
+}
+.alerts-pull-note {
+  max-width: 38ch;
+  line-height: 1.5;
+}
+/* The populated toolbar's check-note sits under the chips/actions row. */
+.alerts-toolbar + .alerts-check-note {
+  margin: var(--sp-1) 0 0;
+  text-align: left;
 }
 
 /* ----- WatchCardSheet (bottom-sheet modal) ------------------------------- */

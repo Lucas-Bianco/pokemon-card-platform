@@ -1,4 +1,5 @@
 import type {
+  AlertCheckResult,
   AlertEvent,
   AlertType,
   Authenticity,
@@ -33,6 +34,7 @@ import type {
   SetProgress,
   SheetsSyncResult,
   SoldCompsResponse,
+  TradeUpAssessment,
   Valuation,
   ValuationRefreshResult,
   Watch,
@@ -260,6 +262,26 @@ export async function getGradingUpside(
   );
 }
 
+// Row 19 — trade-up / sell-now simulator. Read-only. `grade` defaults to 10
+// (the grade leg's target tier) and `centeringCap` is optional (a measured PSA
+// ceiling from a scan, used to rule out grades the card can't reach). Mirrors
+// getGradingUpside's query-string shape.
+export async function getTradeUp(
+  cardId: string,
+  variant: string,
+  opts?: { grade?: number; grader?: string; centeringCap?: number | null },
+): Promise<TradeUpAssessment> {
+  const params = new URLSearchParams({ variant });
+  params.set("grade", String(opts?.grade ?? 10));
+  if (opts?.grader) params.set("grader", opts.grader);
+  if (opts?.centeringCap != null) {
+    params.set("centering_cap", String(opts.centeringCap));
+  }
+  return expectJson<TradeUpAssessment>(
+    await fetch(`${BASE}/cards/${cardId}/trade-up?${params}`),
+  );
+}
+
 // The label attached to a scan, or null when none exists yet. "No label yet"
 // is the common case (most scans are never mailed in) and the backend signals
 // it with 404 — distinct from a real error, so we swallow it to null rather
@@ -456,6 +478,19 @@ export async function markAlertRead(id: number): Promise<AlertEvent> {
 export async function readAllAlerts(): Promise<{ updated: number }> {
   return expectJson<{ updated: number }>(
     await fetch(`${BASE}/alerts/read-all`, { method: "POST" }),
+  );
+}
+
+// Row 20 — the on-demand pull. Runs one AlertEngine tick against the
+// currently-known listings/snapshots and returns the freshly-fired events.
+// Pull, not push: it evaluates thresholds against what's known NOW and never
+// promises a notification. The in-app AlertEvent row is the always-available
+// floor; push/email only happen if the notifier is configured and dispatches
+// as part of the same check. Reuses the exact engine the poll loop uses, so a
+// pull and a poll can never disagree.
+export async function postAlertsCheck(): Promise<AlertCheckResult> {
+  return expectJson<AlertCheckResult>(
+    await fetch(`${BASE}/alerts/check`, { method: "POST" }),
   );
 }
 

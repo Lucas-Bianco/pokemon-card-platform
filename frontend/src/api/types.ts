@@ -359,6 +359,17 @@ export interface AlertEvent {
   created_at: string;
 }
 
+// The result of an on-demand alert check (roadmap row 20 — the honest *pull*
+// model). `fired` is the count of AlertEvent rows created by this check;
+// `events` is those rows, newest first. Pull, not push: the check evaluates
+// thresholds against what's known NOW (cached listings / snapshots) and never
+// promises a notification — the in-app event row is the always-available floor.
+// Mirrors AlertCheckResult in backend alerts/api_models.py.
+export interface AlertCheckResult {
+  fired: number;
+  events: AlertEvent[];
+}
+
 // A Web Push subscription endpoint + its ECDH key material. The browser
 // generates p256dh/auth on subscribe; they rotate, so the upsert updates them
 // when the same endpoint re-subscribes. Mirrors PushSubscribeIn.
@@ -908,4 +919,41 @@ export interface ShopAssessment {
   deal: ShopDeal | null;
   authenticity: Authenticity | null;
   caveat: string;
+}
+
+// Row 19 — trade-up / sell-now simulator. For a card you own, two honest exit
+// legs: sell raw now (proven eBay sold-comps median, net of a selling fee) vs
+// grade then sell (graded market, net of grading fee + selling fee). The
+// TCGplayer/`latest_price` market figure is returned as a *reference* (an ask)
+// for context, never the sell price. The recommendation is descriptive of which
+// net is higher — never a forecast. Mirrors backend TradeUpLegOut /
+// TradeUpAssessmentOut field-for-field. Every gross/fee/net is null when the leg
+// can't be estimated honestly — the UI shows an em dash + the note, never $0.
+
+export interface TradeUpLeg {
+  label: string;
+  gross: number | null;
+  fee: number | null;
+  net: number | null;
+  source: string | null;
+  source_updated_at: string | null;
+  evidence_count: number | null;
+  note: string;
+}
+
+export interface TradeUpAssessment {
+  card_id: string;
+  variant: string;
+  grader: string;
+  target_grade: number;
+  raw_leg: TradeUpLeg;
+  grade_leg: TradeUpLeg;
+  market_reference: number | null;
+  market_reference_source: string | null;
+  market_reference_source_updated_at: string | null;
+  recommendation: string | null;
+  recommendation_note: string;
+  centering_cap: number | null;
+  centering_blocks_grading: boolean;
+  caveats: string[];
 }

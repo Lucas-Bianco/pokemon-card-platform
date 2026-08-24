@@ -5,6 +5,7 @@ import type { CardSearchResult, DealAssessment, Listing, PricePoint } from "../a
 import { formatMoney } from "../lib/format";
 import GradingStudio from "./GradingStudio";
 import GradingUpside from "./GradingUpside";
+import TradeUp from "./TradeUp";
 import PriceChart from "./PriceChart";
 import PriceLine from "./PriceLine";
 import SoldComps from "./SoldComps";
@@ -167,6 +168,11 @@ export default function CardDetail({ cardId, variant = "normal", onBack, onWatch
 
       {/* Reused — not duplicated. The spread panel fetches its own data. */}
       <GradingUpside cardId={cardId} variant={variant} />
+
+      {/* Row 19 — trade-up / sell-now simulator. Reused, not duplicated: fetches
+          its own assessment. A per-card exit-strategy tool, card-gated like the
+          spread panel above. */}
+      <TradeUp cardId={cardId} variant={variant} />
 
       {/* Sub-score-only self-assessment for a card you own. No scan -> centering
           unmeasured; the user rates corners/edges/surface for an estimated band.

@@ -107,3 +107,17 @@ class PushSubscribeIn(BaseModel):
     endpoint: str
     p256dh: str
     auth: str
+
+
+class AlertCheckResult(BaseModel):
+    """The result of an on-demand alert check (roadmap row 20 — the honest
+    *pull* model). `fired` is the count of AlertEvent rows created by this
+    check; `events` is those rows, newest first, so the UI can surface just the
+    fresh ones without a full reload. Pull, not push: the check evaluates
+    thresholds against what's known *now* (cached listings / snapshots); it
+    never promises a notification. Push/email delivery only happens if the
+    notifier is configured (VAPID/SMTP) and dispatches as part of the same
+    check — the in-app event row is the always-available floor."""
+
+    fired: int
+    events: list[AlertEventOut]

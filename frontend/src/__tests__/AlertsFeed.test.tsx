@@ -92,6 +92,28 @@ function stubFetch(events: AlertEvent[]) {
   return spy;
 }
 
+// A fetch stub whose POST /alerts/check returns a pinned pull result. The
+// catchall GET /alerts returns the supplied feed so the empty-state pull can
+// still render. Used by the row-20 pull tests.
+function stubFetchWithCheck(events: AlertEvent[], check: { fired: number; events: AlertEvent[] }) {
+  const spy = vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
+    const u = String(url);
+    const method = init?.method ?? "GET";
+    if (u.includes("/alerts/unread-count")) {
+      return { ok: true, status: 200, json: async () => ({ count: 0 }) };
+    }
+    if (u.includes("/alerts/check") && method === "POST") {
+      return { ok: true, status: 200, json: async () => check };
+    }
+    if (u.includes("/alerts")) {
+      return { ok: true, status: 200, json: async () => events };
+    }
+    return { ok: false, status: 404, json: async () => ({}) };
+  });
+  vi.stubGlobal("fetch", spy);
+  return spy;
+}
+
 afterEach(() => vi.unstubAllGlobals());
 
 describe("AlertsFeed", () => {
@@ -221,5 +243,117 @@ describe("AlertsFeed", () => {
     await waitFor(() => {
       expect(openCard).toHaveBeenCalledWith({ cardId: "base1-4", variant: undefined });
     });
+  });
+
+  // ----- Row 20: the on-demand pull (Check now) ---------------------------
+
+  it("Check now prepends freshly-fired events and shows an honest 'N new' note", async () => {
+    const events = sampleEvents();
+    const fresh: AlertEvent = {
+      id: 99,
+      watch_id: 20,
+      card_id: "base1-4",
+      alert_type: "price_target",
+      message: "Charizard hit your target",
+      context: null,
+      delivered_push: false,
+      delivered_email: false,
+      read_at: null,
+      created_at: new Date().toISOString(),
+    };
+    const spy = stubFetchWithCheck(events, { fired: 1, events: [fresh] });
+
+    const { container } = render(
+      <AlertsFeed onOpenCard={noop} onWatchCard={noop} />,
+    );
+    await waitFor(() => {
+      expect(container.querySelector(".alert-row")).not.toBeNull();
+    });
+
+    const checkBtn = [...container.querySelectorAll("button")].find((b) =>
+      /check now/i.test(b.textContent ?? ""),
+    ) as HTMLButtonElement;
+    expect(checkBtn).toBeDefined();
+    fireEvent.click(checkBtn);
+
+    // A POST /alerts/check fired.
+    await waitFor(() => {
+      const checkCalls = spy.mock.calls.filter(
+        ([u, init]) =>
+          String(u).includes("/alerts/check") &&
+          (init as RequestInit | undefined)?.method === "POST",
+      );
+      expect(checkCalls.length).toBeGreaterThanOrEqual(1);
+    });
+
+    // The fresh row is prepended at the top, and the honest note names the count.
+    await waitFor(() => {
+      expect(container.textContent ?? "").toContain("Checked — 1 new alert.");
+    });
+    const rows = container.querySelectorAll(".alert-row");
+    expect(rows[0].textContent ?? "").toContain("Charizard hit your target");
+  });
+
+  it("Check now with 0 fired shows the honest 'nothing new yet' note and fabricates no event", async () => {
+    stubFetchWithCheck([], { fired: 0, events: [] });
+
+    const { container } = render(
+      <AlertsFeed onOpenCard={noop} onWatchCard={noop} />,
+    );
+    await waitFor(() => {
+      expect(container.textContent ?? "").toMatch(/radar/i);
+    });
+
+    // Empty state still surfaces the Check now pull.
+    const checkBtn = [...container.querySelectorAll("button")].find((b) =>
+      /check now/i.test(b.textContent ?? ""),
+    ) as HTMLButtonElement;
+    expect(checkBtn).toBeDefined();
+    fireEvent.click(checkBtn);
+
+    await waitFor(() => {
+      expect(container.textContent ?? "").toContain("nothing new yet");
+    });
+    // The pull-model contract copy is present.
+    expect(container.textContent ?? "").toMatch(/pull, not push/i);
+    // No fabricated event row.
+    expect(container.querySelector(".alert-row")).toBeNull();
+  });
+
+  it("Check now surfaces an honest error note when the pull fails (never a fabricated event)", async () => {
+    const spy = vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
+      const u = String(url);
+      const method = init?.method ?? "GET";
+      if (u.includes("/alerts/unread-count")) {
+        return { ok: true, status: 200, json: async () => ({ count: 0 }) };
+      }
+      if (u.includes("/alerts/check") && method === "POST") {
+        return { ok: false, status: 500, json: async () => ({}) };
+      }
+      if (u.includes("/alerts")) {
+        return { ok: true, status: 200, json: async () => [] };
+      }
+      return { ok: false, status: 404, json: async () => ({}) };
+    });
+    vi.stubGlobal("fetch", spy);
+
+    const { container } = render(
+      <AlertsFeed onOpenCard={noop} onWatchCard={noop} />,
+    );
+    await waitFor(() => {
+      expect(container.textContent ?? "").toMatch(/radar/i);
+    });
+
+    const checkBtn = [...container.querySelectorAll("button")].find((b) =>
+      /check now/i.test(b.textContent ?? ""),
+    ) as HTMLButtonElement;
+    fireEvent.click(checkBtn);
+
+    await waitFor(() => {
+      // The honest error message surfaces verbatim, not a fabricated friendly
+      // fallback — the user sees the real failure.
+      expect(container.textContent ?? "").toContain("request failed: 500");
+    });
+    expect(container.querySelector(".alert-row")).toBeNull();
   });
 });

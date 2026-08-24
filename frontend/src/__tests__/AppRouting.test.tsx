@@ -145,6 +145,31 @@ function stubFetch() {
         }),
       };
     }
+    if (u.includes("/trade-up")) {
+      // Row 19 — a full assessment so the panel renders cleanly. Must be
+      // matched BEFORE the bare /cards/ fallthrough, which would otherwise
+      // hand TradeUp a card payload with none of the fields it reads.
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          card_id: "base1-4",
+          variant: "normal",
+          grader: "PSA",
+          target_grade: 10,
+          raw_leg: { label: "Sell raw now", gross: null, fee: null, net: null, source: null, source_updated_at: null, evidence_count: 0, note: "No proven sales." },
+          grade_leg: { label: "Grade to PSA 10, then sell", gross: null, fee: null, net: null, source: null, source_updated_at: null, evidence_count: null, note: "No graded price." },
+          market_reference: null,
+          market_reference_source: null,
+          market_reference_source_updated_at: null,
+          recommendation: null,
+          recommendation_note: "Neither leg could be estimated.",
+          centering_cap: null,
+          centering_blocks_grading: false,
+          caveats: ["Net figures subtract an estimated selling fee."],
+        }),
+      };
+    }
     // 204 = "no price": the honest null, never a fabricated $0.
     if (u.includes("/price")) {
       return { ok: true, status: 204, json: async () => null };

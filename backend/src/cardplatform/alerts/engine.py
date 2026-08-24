@@ -32,6 +32,22 @@ from cardplatform.db.models import AlertEvent, Card, Watch
 
 log = logging.getLogger(__name__)
 
+# Alert types that read the live listing set each tick. Their listings are
+# refreshed once per watch in check_alerts BEFORE the per-watch savepoint —
+# NOT from inside the eval. ListingsService.refresh_listings commits the
+# outer transaction, and a commit emitted inside the begin_nested()
+# savepoint closes that savepoint; its context manager then raises on exit,
+# the never-raise handler swallows it, and the watch is silently skipped.
+# That bug suppressed every listing-based alert whenever a real
+# ListingsService (whose refresh commits, unlike the test FakeListingsService)
+# was wired through check_alerts — i.e. the production poll loop and the
+# on-demand /alerts/check route. Refreshing before the savepoint keeps the
+# commit's transaction boundary intact; the savepoint then only guards the
+# eval's flush, which is all it was ever meant to do.
+_LISTING_ALERT_TYPES = frozenset(
+    {"restock", "new_listing", "price_target", "auction_ending"}
+)
+
 
 class AlertEngine:
     """Evaluates active watches each tick and writes AlertEvent rows.
@@ -92,15 +108,31 @@ class AlertEngine:
             return w.subject_label or card_name or str(w.card_id)
         return card_name or w.subject_label or str(w.card_id)
 
+    def _refresh_for(self, w: Watch) -> None:
+        """Refresh listings for the watch's card+variant, ONCE, before the
+        per-watch savepoint. Only the listing-based alert types need a fresh
+        fetch; deal/drop_time do not read this service. Never raises — a
+        refresh failure (no key, network, transport) is logged and the watch
+        is skipped by the caller, preserving the never-raise tick contract."""
+        if self._listings is None or w.card_id is None:
+            return
+        if w.alert_type not in _LISTING_ALERT_TYPES:
+            return
+        try:
+            # Ignore the returned count; refresh just populates snapshots.
+            self._listings.refresh_listings(w.card_id, w.variant or "")
+        except Exception:
+            log.warning("refresh failed for watch %s", w.id, exc_info=True)
+            raise
+
     def _current_listings(self, w: Watch):
-        """Refresh + return latest listings for the watch's card+variant, or
-        None if there is no listings_service (caller skips silently)."""
+        """Return latest listings for the watch's card+variant, or None if
+        there is no listings_service (caller skips silently). Read-only — the
+        refresh happens once per watch in check_alerts, OUTSIDE the savepoint
+        (see _LISTING_ALERT_TYPES)."""
         if self._listings is None:
             return None
-        variant = w.variant or ""
-        # Ignore the returned count; refresh just populates snapshots.
-        self._listings.refresh_listings(w.card_id, variant)
-        return self._listings.latest_listings(w.card_id, variant)
+        return self._listings.latest_listings(w.card_id, w.variant or "")
 
     def _fire(self, w: Watch, message: str, context: str) -> None:
         """Insert one immutable AlertEvent row and dispatch the notifier if any.
@@ -144,6 +176,13 @@ class AlertEngine:
         )
         for w in watches:
             try:
+                # Refresh FIRST, outside the savepoint: refresh_listings commits
+                # the outer transaction, and a commit inside begin_nested()
+                # would close the savepoint and silently suppress this watch
+                # (see _LISTING_ALERT_TYPES). A refresh failure raises here and
+                # is caught by the same never-raise guard below — the watch is
+                # skipped, the rest of the tick proceeds.
+                self._refresh_for(w)
                 # A SAVEPOINT isolates this watch's flush from the outer
                 # transaction. If _eval (or _fire's flush) raises, the savepoint
                 # ROLLs back to here and re-raises; the outer except swallows it
@@ -153,7 +192,8 @@ class AlertEngine:
                 # PendingRollbackError and the final commit would ESCAPE,
                 # violating the never-raise contract. Prior watches' successful
                 # rows stay in the outer (uncommitted) transaction and are
-                # committed by the final commit below.
+                # committed by the final commit below (or by the next watch's
+                # refresh, which commits the outer transaction — also fine).
                 with self.session.begin_nested():
                     count += self._eval(w)
             except Exception:
@@ -347,7 +387,9 @@ class AlertEngine:
         if w.card_id is None or self._listings is None:
             return 0
         variant = w.variant or ""
-        self._listings.refresh_listings(w.card_id, variant)
+        # Read-only: the refresh happened once in check_alerts before the
+        # savepoint (see _LISTING_ALERT_TYPES). Committing here would close the
+        # savepoint and silently suppress the alert.
         low = self._listings.lowest_price(w.card_id, variant)
         if low is None:
             # No priced listings. Do NOT reset last_fired_at here — keep state.

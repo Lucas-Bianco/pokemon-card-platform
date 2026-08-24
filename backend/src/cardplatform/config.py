@@ -72,6 +72,14 @@ class Settings(BaseSettings):
     # "grading upside" spread (graded market price minus raw price minus fee).
     grading_fee: float = Field(default=25.0)
 
+    # Estimated marketplace + payment fee taken from a gross sale, as a fraction.
+    # eBay's final-value fee for trading cards is ~13.25% incl. the $0.30/order
+    # portion (approximated here as a flat percentage); the trade-up simulator
+    # subtracts it from both legs so the comparison is net-of-fees, not gross.
+    # A knob, not a quote — the honest number is whatever the platform charges on
+    # the day, this is a planning estimate.
+    selling_fee_pct: float = Field(default=0.13)
+
     # Graded-price source (PkmnPrices eBay sold comps). Opt-in: when the key is
     # None (the default) the provider returns [] without touching the network,
     # so graded prices are simply unavailable until a key is configured. Base

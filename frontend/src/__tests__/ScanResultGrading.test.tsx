@@ -100,6 +100,30 @@ function stubFetch(label: GradingLabel | null = null) {
         }),
       };
     }
+    if (u.includes("/trade-up")) {
+      // Row 19 trade-up simulator — a full assessment so the panel renders
+      // cleanly instead of an error state alongside the grading surfaces.
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          card_id: "base1-4",
+          variant: "holofoil",
+          grader: "PSA",
+          target_grade: 10,
+          raw_leg: { label: "Sell raw now", gross: 119.0, fee: 15.47, net: 103.53, source: "ebay_sold_median", source_updated_at: null, evidence_count: 3, note: "Median of 3 sales." },
+          grade_leg: { label: "Grade to PSA 10, then sell", gross: 1200.0, fee: 181.0, net: 1019.0, source: "pkmnprices", source_updated_at: "2026/07/28", evidence_count: null, note: "Graded market." },
+          market_reference: 120.0,
+          market_reference_source: "tcgplayer",
+          market_reference_source_updated_at: "2026/07/29",
+          recommendation: "grade",
+          recommendation_note: "Grading nets more.",
+          centering_cap: null,
+          centering_blocks_grading: false,
+          caveats: ["Net figures subtract an estimated selling fee."],
+        }),
+      };
+    }
     return { ok: false, status: 404, json: async () => ({}) };
   });
   vi.stubGlobal("fetch", spy);
@@ -346,6 +370,18 @@ describe("ScanResult proof of sales (roadmap row 16)", () => {
           consistency: { printed_number: "4", catalog_number: "4", card_id: "base1-4",
             card_name: "Charizard", match: "match", note: "matches" },
           checklist: [],
+        }) };
+      }
+      if (u.includes("/trade-up")) {
+        // Row 19 — clean assessment so the panel doesn't error in these tests.
+        return { ok: true, status: 200, json: async () => ({
+          card_id: "base1-4", variant: "holofoil", grader: "PSA", target_grade: 10,
+          raw_leg: { label: "Sell raw now", gross: 812.0, fee: 105.56, net: 706.44, source: "ebay_sold_median", source_updated_at: null, evidence_count: 1, note: "Median of 1 sale." },
+          grade_leg: { label: "Grade to PSA 10, then sell", gross: null, fee: null, net: null, source: null, source_updated_at: null, evidence_count: null, note: "No graded price." },
+          market_reference: 800.0, market_reference_source: "tcgplayer", market_reference_source_updated_at: "2026/07/29",
+          recommendation: "sell_raw", recommendation_note: "Only the sell-raw leg could be estimated.",
+          centering_cap: null, centering_blocks_grading: false,
+          caveats: ["Net figures subtract an estimated selling fee."],
         }) };
       }
       return { ok: false, status: 404, json: async () => ({}) };
