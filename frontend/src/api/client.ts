@@ -248,6 +248,20 @@ export async function getAcquisitionTimeline(): Promise<AcquisitionTimeline> {
   return expectJson<AcquisitionTimeline>(await fetch(`${BASE}/collection/acquisition-timeline`));
 }
 
+// Row 28 — full holding schedule export (CSV or JSON). The backend returns the
+// file with attachment headers; the client reads the raw body and the component
+// wraps it in a Blob + triggers a download (local-first, like the binder HTML
+// export). Reuses the same portfolio serialization the Vault renders, so the
+// export and the app can never disagree on a price. Unpriced holdings export
+// with a blank market-price cell / null field and no source — never $0.
+export async function exportVault(format: "csv" | "json"): Promise<string> {
+  const r = await fetch(`${BASE}/collection/export?format=${format}`);
+  if (!r.ok) {
+    throw new Error(`request failed: ${r.status}`);
+  }
+  return await r.text();
+}
+
 export async function patchCollectionItem(
   id: number,
   update: {

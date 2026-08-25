@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import csv
 import io
+import json
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -1612,6 +1614,72 @@ def create_app() -> FastAPI:
             CollectionStore(session).acquisition_timeline()
         )
 
+    @app.get("/collection/export")
+    def collection_export(
+        format: str = Query("csv", pattern="^(csv|json)$"),
+        session: Session = Depends(get_session),
+    ) -> Response:
+        """Full holding schedule export — every holding with card, set, variant,
+        quantity, paid, resolved market price + source + staleness, and unrealized
+        P/L. The serious-collector utility: get your vault out as a spreadsheet.
+
+        Reuses the same portfolio() + _portfolio_item_out serialization the Vault
+        renders, so the export and the app can never disagree on a price. Honest:
+        an unpriced holding exports with a blank market-price cell / null JSON
+        field and no source — never a fabricated $0.00. market prices resolve
+        TCGplayer-then-Cardmarket and carry their source stamp; unpriced means no
+        snapshot exists yet, not a zero value. No data/ writes.
+        """
+        portfolio = CollectionStore(session).portfolio()
+        items = [_portfolio_item_out(i) for i in portfolio.items]
+        if format == "json":
+            body = {
+                "items": [it.model_dump(mode="json") for it in items],
+                "summary": _summary_out(portfolio.summary).model_dump(mode="json"),
+                "caveat": _EXPORT_CAVEAT,
+            }
+            return JSONResponse(
+                content=body,
+                media_type="application/json",
+                headers={
+                    "Content-Disposition": 'attachment; filename="vault-export.json"'
+                },
+            )
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        writer.writerow(_EXPORT_COLUMNS)
+        for it in items:
+            row = it.model_dump()
+            # csv.writer stringifies None as "" already, but datetime must be
+            # rendered as ISO 8601 (a blank cell for an undated holding, never
+            # an empty-string-as-zero).
+            acquired_at = row["acquired_at"]
+            writer.writerow(
+                [
+                    row["id"],
+                    row["card_name"],
+                    row["set_name"],
+                    row["set_id"],
+                    row["card_id"],
+                    row["variant"],
+                    row["quantity"],
+                    row["condition"] or "",
+                    _fmt_money(row["acquired_price"]),
+                    acquired_at.isoformat() if acquired_at else "",
+                    _fmt_money(row["market_price"]),
+                    row["market_source"] or "",
+                    row["market_source_updated_at"] or "",
+                    _fmt_money(row["unrealized"]),
+                    "yes" if row["priced"] else "no",
+                    row["notes"] or "",
+                ]
+            )
+        return Response(
+            content=buf.getvalue(),
+            media_type="text/csv",
+            headers={"Content-Disposition": 'attachment; filename="vault-export.csv"'},
+        )
+
     @app.patch("/collection/{item_id}", response_model=CollectionItemOut)
     def patch_collection_item(
         item_id: int,
@@ -2672,6 +2740,44 @@ def _summary_out(s: PortfolioSummary) -> PortfolioSummaryOut:
         top_gainers=[_portfolio_item_out(i) for i in s.top_gainers],
         top_losers=[_portfolio_item_out(i) for i in s.top_losers],
     )
+
+
+# --- Vault export (Row 28) -------------------------------------------------
+# CSV column order for /collection/export?format=csv. Every column a serious
+# collector needs to reconcile the export against the in-app Vault.
+_EXPORT_COLUMNS = [
+    "id",
+    "card_name",
+    "set_name",
+    "set_id",
+    "card_id",
+    "variant",
+    "quantity",
+    "condition",
+    "acquired_price",
+    "acquired_at",
+    "market_price",
+    "market_source",
+    "market_source_updated_at",
+    "unrealized",
+    "priced",
+    "notes",
+]
+
+_EXPORT_CAVEAT = (
+    "Every holding's resolved market price and source, never $0 — an unpriced "
+    "holding has a blank market-price cell / null field and no source. Market "
+    "prices resolve TCGplayer-then-Cardmarket and carry their source stamp; "
+    "unpriced means no price snapshot exists yet, not a zero value. Reuses the "
+    "same portfolio serialization the Vault renders, so the export and the app "
+    "can never disagree on a price."
+)
+
+
+def _fmt_money(value: float | None) -> str:
+    """Render a money field for CSV: two decimals, or an empty cell when there
+    is no value. An empty cell is an honest blank, never a dressed-up $0.00."""
+    return "" if value is None else f"{value:.2f}"
 
 
 app = create_app()
