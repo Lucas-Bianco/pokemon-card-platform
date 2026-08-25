@@ -126,6 +126,43 @@ class CollectionItem(Base):
     card: Mapped[Card] = relationship()
 
 
+class SoldLot(Base):
+    """A disposal — one card (or lot of the same card/variant) you've sold (roadmap row 29).
+
+    The immutable counterpart to a CollectionItem acquisition: a sale is an
+    event, recorded once. `acquired_price` is the per-unit cost basis
+    *snapshotted at sale time* so realized P/L is fixed and never recomputed
+    against a later-edited cost basis on the holding (which may no longer
+    exist). Nullable: a sale without a known cost basis has unknown realized
+    P/L (shown honestly, never a fabricated `$0`).
+
+    No unique constraint — you can sell the same card/variant many times; each
+    sale is a distinct event. `Base.metadata.create_all()` adds this table
+    additively (no migration needed).
+    """
+
+    __tablename__ = "sold_lots"
+    __table_args__ = (Index("ix_sold_lot_card", "card_id", "variant"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    card_id: Mapped[str] = mapped_column(ForeignKey("cards.id"), index=True)
+    variant: Mapped[str] = mapped_column(String, default="normal")
+    quantity: Mapped[int] = mapped_column(Integer, default=1)
+    # Per-unit sale price (a sale has a price — NOT NULL). Mirrors
+    # acquired_price's per-unit convention so totals scale with quantity.
+    sale_price: Mapped[float] = mapped_column(Float)
+    # Per-unit selling fee (platform/shipping you paid), nullable honest.
+    sale_fee: Mapped[float | None] = mapped_column(Float, default=None)
+    # Cost basis per unit snapshotted at sale time, nullable honest.
+    acquired_price: Mapped[float | None] = mapped_column(Float, default=None)
+    sold_at: Mapped[datetime] = mapped_column(UtcDateTime, default=_utcnow)
+    source: Mapped[str | None] = mapped_column(String, default=None)  # "eBay" | "private" | ...
+    notes: Mapped[str | None] = mapped_column(String, default=None)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=_utcnow)
+
+    card: Mapped[Card] = relationship()
+
+
 class BinderItem(Base):
     """A curated row in the shareable binder (roadmap row 21).
 

@@ -1193,3 +1193,60 @@ export interface WantPatchRequest {
   target_price?: number | null;
   note?: string | null;
 }
+
+// Row 29 — realized gains / sold-lot ledger. The disposal counterpart to the
+// vault: a permanent, append-only record of cards you've *sold*. Each lot
+// carries its sale price, optional fee, and the cost basis *snapshotted at
+// sale time*, so realized P/L is fixed and never recomputed against a holding
+// you may have since edited or deleted. Honest: `proceeds` is always known (a
+// sale has a price); `cost_basis` / `realized` are null when no cost basis was
+// recorded — never a fabricated $0. Mirrors backend SoldLotOut /
+// SoldListResponse / SoldAddIn / SoldSummaryOut field-for-field.
+
+export interface SoldLot {
+  id: number;
+  card_id: string;
+  variant: string;
+  quantity: number;
+  sale_price: number;
+  sale_fee: number | null;
+  acquired_price: number | null;
+  sold_at: string;
+  source: string | null;
+  notes: string | null;
+  card_name: string;
+  set_id: string;
+  set_name: string;
+  number: string;
+  proceeds: number;
+  cost_basis: number | null;
+  realized: number | null;
+}
+
+export interface SoldListResponse {
+  items: SoldLot[];
+}
+
+export interface SoldAddRequest {
+  card_id: string;
+  variant?: string;
+  quantity?: number;
+  sale_price: number;
+  sale_fee?: number | null;
+  acquired_price?: number | null;
+  sold_at?: string | null;
+  source?: string | null;
+  notes?: string | null;
+}
+
+export interface SoldSummary {
+  lot_count: number;
+  lots_with_cost: number;
+  lots_without_cost: number;
+  total_proceeds: number;
+  total_cost_basis: number;
+  total_realized: number;
+  winners: number;
+  losers: number;
+  caveat: string;
+}

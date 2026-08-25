@@ -16,6 +16,8 @@ import PortfolioHistoryChart from "./PortfolioHistoryChart";
 import PriceFreshness from "./PriceFreshness";
 import AcquisitionTimelineChart from "./AcquisitionTimelineChart";
 import VaultExport from "./VaultExport";
+import SoldLedger from "./SoldLedger";
+import type { SoldPrefill } from "./SoldLedger";
 import PriceChart from "./PriceChart";
 import { staggerContainer, staggerItem } from "./motion";
 
@@ -38,6 +40,9 @@ export default function PortfolioView(_props: Props) {
   const [editing, setEditing] = useState<number | null>(null);
   const [editPrice, setEditPrice] = useState("");
   const [saving, setSaving] = useState(false);
+  // Prefill for the sold-lot "Log a sale" form, handed down from a holding
+  // row's "Log sale" button. Cleared once the SoldLedger consumes it.
+  const [salePrefill, setSalePrefill] = useState<SoldPrefill | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
@@ -201,6 +206,8 @@ export default function PortfolioView(_props: Props) {
 
       {hasHoldings && <VaultExport />}
 
+      <SoldLedger prefill={salePrefill} onPrefillConsumed={() => setSalePrefill(null)} />
+
       {summary && summary.allocation.length > 1 && (
         <div className="allocation">
           <h3>Allocation by set</h3>
@@ -338,6 +345,19 @@ export default function PortfolioView(_props: Props) {
                           </button>
                           <button className="link" onClick={() => handleRemove(item)}>
                             Remove
+                          </button>
+                          <button
+                            className="link"
+                            onClick={() =>
+                              setSalePrefill({
+                                card_id: item.card_id,
+                                variant: item.variant,
+                                card_name: item.card_name,
+                                acquired_price: item.acquired_price,
+                              })
+                            }
+                          >
+                            Log sale
                           </button>
                         </>
                       )}

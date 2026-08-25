@@ -598,6 +598,62 @@ h1 { font-size: 1.25rem; margin: 4px 0 16px; }
 .vault-export > h3 { margin: 0 0 8px; }
 .vault-export-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 .vault-export-actions .btn[disabled] { opacity: 0.6; cursor: default; }
+
+/* Sold-lot ledger (Row 29) — realized gains panel + log-a-sale form. */
+.sold-ledger { margin-top: 16px; }
+.sold-ledger > h3 { margin: 0 0 8px; }
+.sold-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px;
+  margin-top: 10px;
+}
+.sold-summary > div { display: flex; flex-direction: column; gap: 4px; }
+.sold-summary .label { display: block; font-size: 0.72rem; color: var(--fg-dim); }
+.sold-summary strong { font-size: 1.05rem; }
+.sold-summary .up { color: var(--ok); }
+.sold-summary .down { color: #ff8f84; }
+.sold-summary .unknown { color: var(--fg-dim); }
+.sold-form-toggle { margin-top: 12px; }
+.sold-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.sold-form h4 { margin: 0 0 4px; grid-column: 1 / -1; }
+.sold-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.8rem;
+  color: var(--fg-dim);
+}
+.sold-form-notes { grid-column: 1 / -1; }
+.sold-form input,
+.sold-form textarea {
+  width: 100%;
+  padding: 9px 10px;
+  min-height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+}
+.sold-form textarea { min-height: 60px; resize: vertical; }
+.sold-form .error { grid-column: 1 / -1; }
+.sold-form-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.sold-table .actions { white-space: nowrap; }
 .freshness-bands { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-direction: column; gap: 10px; }
 .freshness-band { display: flex; flex-direction: column; gap: 6px; }
 .freshness-band-head {

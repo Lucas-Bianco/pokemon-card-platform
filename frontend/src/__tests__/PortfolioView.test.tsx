@@ -168,6 +168,27 @@ function stubFetch(body: Portfolio, history?: PriceHistory) {
         json: async () => history ?? { card_id: "base1-4", variant: "holofoil", points: [] },
       };
     }
+    if (String(url).includes("/sold-lots/summary")) {
+      // Honest empty sold-ledger summary — no sales recorded.
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          lot_count: 0,
+          lots_with_cost: 0,
+          lots_without_cost: 0,
+          total_proceeds: 0,
+          total_cost_basis: 0,
+          total_realized: 0,
+          winners: 0,
+          losers: 0,
+          caveat: "",
+        }),
+      };
+    }
+    if (String(url).endsWith("/sold-lots")) {
+      return { ok: true, status: 200, json: async () => ({ items: [] }) };
+    }
     return { ok: false, status: 404, json: async () => ({}) };
   });
   vi.stubGlobal("fetch", spy);

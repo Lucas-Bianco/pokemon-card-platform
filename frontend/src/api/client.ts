@@ -42,7 +42,11 @@ import type {
   ShopAssessment,
   SetProgress,
   SheetsSyncResult,
+  SoldAddRequest,
   SoldCompsResponse,
+  SoldListResponse,
+  SoldLot,
+  SoldSummary,
   TradeUpAssessment,
   Valuation,
   ValuationRefreshResult,
@@ -260,6 +264,48 @@ export async function exportVault(format: "csv" | "json"): Promise<string> {
     throw new Error(`request failed: ${r.status}`);
   }
   return await r.text();
+}
+
+// Row 29 — realized gains / sold-lot ledger. The disposal counterpart to the
+// vault: a permanent, append-only record of cards you've sold. `proceeds` is
+// always known (a sale has a price); `cost_basis` / `realized` are null when
+// no cost basis was recorded at sale time — never a fabricated $0. The summary
+// computes `total_realized` over the cost-known subset only; lots without a
+// cost basis are counted but excluded, never $0.
+
+export async function getSoldLots(): Promise<SoldLot[]> {
+  const body = await expectJson<SoldListResponse>(await fetch(`${BASE}/sold-lots`));
+  return body.items;
+}
+
+export async function getSoldSummary(): Promise<SoldSummary> {
+  return expectJson<SoldSummary>(await fetch(`${BASE}/sold-lots/summary`));
+}
+
+export async function addSoldLot(req: SoldAddRequest): Promise<SoldLot> {
+  const response = await fetch(`${BASE}/sold-lots`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      card_id: req.card_id,
+      variant: req.variant ?? "normal",
+      quantity: req.quantity ?? 1,
+      sale_price: req.sale_price,
+      sale_fee: req.sale_fee ?? null,
+      acquired_price: req.acquired_price ?? null,
+      sold_at: req.sold_at ?? null,
+      source: req.source ?? null,
+      notes: req.notes ?? null,
+    }),
+  });
+  return expectJson<SoldLot>(response);
+}
+
+export async function removeSoldLot(lotId: number): Promise<void> {
+  const response = await fetch(`${BASE}/sold-lots/${lotId}`, { method: "DELETE" });
+  if (!response.ok) {
+    throw new Error(`request failed: ${response.status}`);
+  }
 }
 
 export async function patchCollectionItem(

@@ -105,6 +105,8 @@ from cardplatform.binder import api_models as binder_models
 from cardplatform.binder.service import BinderService
 from cardplatform.wants import api_models as want_models
 from cardplatform.wants.service import WantService
+from cardplatform.sold import api_models as sold_lot_models
+from cardplatform.sold.service import SoldLotService
 from cardplatform.cards.lookup import CardLookupService
 from cardplatform.shop.assess import ShopAssessor
 from cardplatform.shop.api_models import ShopAssessmentOut
@@ -1187,6 +1189,71 @@ def create_app() -> FastAPI:
             raise HTTPException(
                 status_code=404, detail=f"not in want list: {card_id!r} / {variant!r}"
             )
+
+    @app.get("/sold-lots", response_model=sold_lot_models.SoldListResponse)
+    def list_sold_lots(
+        session: Session = Depends(get_session),
+    ) -> sold_lot_models.SoldListResponse:
+        """The sold-lots ledger (roadmap row 29) — a permanent, append-only
+        record of cards you've sold. Each lot carries its sale price, optional
+        fee, and the cost basis *snapshotted at sale time*, so realized P/L is
+        fixed and never recomputed against a holding you may have since edited
+        or deleted. Honest: `proceeds` is always known (a sale has a price);
+        `cost_basis`/`realized` are null when no cost basis was recorded — never
+        a fabricated `$0`. Lots whose card was deleted from the catalog are
+        skipped, never half-blank rows."""
+        service = SoldLotService(session)
+        return sold_lot_models.SoldListResponse(
+            items=[sold_lot_models.SoldLotOut.model_validate(e) for e in service.list_lots()]
+        )
+
+    @app.get("/sold-lots/summary", response_model=sold_lot_models.SoldSummaryOut)
+    def sold_lots_summary(
+        session: Session = Depends(get_session),
+    ) -> sold_lot_models.SoldSummaryOut:
+        """Aggregate over the sold-lots ledger. `total_realized` is computed
+        over the lots WITH a cost basis only; lots without one are counted in
+        `lots_without_cost` and excluded from realized, never `$0`.
+        `total_proceeds` sums all sales (a sale always has a price)."""
+        return sold_lot_models.SoldSummaryOut.model_validate(SoldLotService(session).summary())
+
+    @app.post("/sold-lots", response_model=sold_lot_models.SoldLotOut, status_code=201)
+    def add_sold_lot(
+        payload: sold_lot_models.SoldAddIn,
+        session: Session = Depends(get_session),
+    ) -> sold_lot_models.SoldLotOut:
+        """Record a sale. `acquired_price` is the per-unit cost basis snapshotted
+        at sale time (nullable honest — a sale without a known cost has unknown
+        realized P/L, never $0). `sold_at` defaults to now. Unknown card -> 404;
+        non-positive quantity or negative sale price -> 400."""
+        service = SoldLotService(session)
+        try:
+            entry = service.add(
+                payload.card_id,
+                payload.variant,
+                payload.quantity,
+                payload.sale_price,
+                payload.sale_fee,
+                payload.acquired_price,
+                payload.sold_at,
+                payload.source,
+                payload.notes,
+            )
+        except LookupError:
+            raise HTTPException(status_code=404, detail=f"unknown card: {payload.card_id!r}")
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        return sold_lot_models.SoldLotOut.model_validate(entry)
+
+    @app.delete("/sold-lots/{lot_id}", status_code=204)
+    def remove_sold_lot(
+        lot_id: int,
+        session: Session = Depends(get_session),
+    ) -> None:
+        """Delete a sold lot (mistake correction). 404 if the lot wasn't in the
+        ledger (honest — the caller knows it wasn't there)."""
+        if not SoldLotService(session).remove(lot_id):
+            raise HTTPException(status_code=404, detail=f"no sold lot: {lot_id}")
 
     @app.post("/scans", response_model=ScanOut, status_code=201)
     async def record_scan(
