@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { getCard, getDeals, getPriceHistory, refreshListings } from "../api/client";
 import type { CardSearchResult, DealAssessment, Listing, PricePoint } from "../api/types";
 import { formatMoney } from "../lib/format";
+import AddToBinderButton from "./AddToBinderButton";
 import GradingStudio from "./GradingStudio";
 import GradingUpside from "./GradingUpside";
 import TradeUp from "./TradeUp";
@@ -238,6 +239,11 @@ export default function CardDetail({ cardId, variant = "normal", onBack, onWatch
       >
         Watch this card
       </button>
+
+      {/* Row 21 — add this card to the shareable binder. Self-contained: POSTs
+          /binder/items and surfaces honest inline status (added / already in /
+          not found / verbatim error). Distinct verb-phrase from every nav tab. */}
+      <AddToBinderButton cardId={cardId} variant={variant} />
     </section>
   );
 }

@@ -957,3 +957,62 @@ export interface TradeUpAssessment {
   centering_blocks_grading: boolean;
   caveats: string[];
 }
+
+// Row 21 — shareable binder. A curated, ordered subset of your vault you show
+// off — NOT a second copy of collection_items, just a thin ordered reference
+// list of (card, variant) slots. Each slot carries an optional free-form note
+// and is joined at read time to its catalog row + single most-recent *proven*
+// eBay sale. Honest flags on every slot: `proven_sale` is the whole object or
+// null (a missing sale is null, never a fabricated `$0`); `proven_sale_unavailable`
+// is true when no eBay key is configured (so the UI says "set a key" not "no
+// sales"); `proven_sale_empty` is true when a key IS set but eBay returned no
+// comps for that card. Mirrors backend ProvenSaleOut / BinderItemOut /
+// BinderListResponse / BinderAddIn / BinderReorderIn / BinderNoteIn field-for-
+// field.
+
+export interface ProvenSale {
+  listing_id: string;
+  title: string | null;
+  price: number;
+  currency: string | null;
+  url: string | null;
+  condition: string | null;
+  sold_at: string | null;
+  source: string;
+}
+
+export interface BinderItem {
+  card_id: string;
+  variant: string;
+  sort_order: number;
+  note: string | null;
+  added_at: string;
+  card_name: string;
+  set_id: string;
+  set_name: string;
+  number: string;
+  rarity: string | null;
+  image_small: string | null;
+  image_large: string | null;
+  proven_sale: ProvenSale | null;
+  proven_sale_unavailable: boolean;
+  proven_sale_empty: boolean;
+}
+
+export interface BinderListResponse {
+  items: BinderItem[];
+}
+
+export interface BinderAddRequest {
+  card_id: string;
+  variant?: string;
+  note?: string | null;
+}
+
+export interface BinderReorderRequest {
+  items: { card_id: string; variant?: string }[];
+}
+
+export interface BinderNoteRequest {
+  note: string | null;
+}

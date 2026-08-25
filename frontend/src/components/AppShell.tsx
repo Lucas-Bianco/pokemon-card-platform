@@ -7,6 +7,7 @@ import type { TabView } from "../lib/route";
 import { getUnreadCount } from "../api/client";
 import type { RecognizeResponse } from "../api/types";
 import AlertsFeed from "./AlertsFeed";
+import Binder from "./Binder";
 import CameraCapture from "./CameraCapture";
 import CardDetail from "./CardDetail";
 import CornerAdjust from "./CornerAdjust";
@@ -83,6 +84,7 @@ const TAB_TITLES: Record<TabView, string> = {
   home: "Home",
   scan: "Scan",
   vault: "Vault",
+  binder: "Binder",
   alerts: "Alerts",
   deals: "Deals",
   prices: "Prices",
@@ -256,6 +258,10 @@ export default function AppShell({ scan }: Props) {
             <PageTransition id="vault">
               <PortfolioView />
             </PageTransition>
+          ) : view === "binder" ? (
+            <PageTransition id="binder">
+              <Binder />
+            </PageTransition>
           ) : view === "alerts" ? (
             <PageTransition id="alerts">
               <AlertsFeed
@@ -332,6 +338,7 @@ export default function AppShell({ scan }: Props) {
           <TabButton label="Home" active={view === "home" && !selectedCard} onClick={() => selectTab("home")} glyph={<HomeGlyph />} />
           <TabButton label="Scan" active={view === "scan" && !selectedCard} onClick={() => selectTab("scan")} glyph={<ScanGlyph />} />
           <TabButton label="Vault" active={view === "vault" && !selectedCard} onClick={() => selectTab("vault")} glyph={<VaultGlyph />} />
+          <TabButton label="Binder" active={view === "binder" && !selectedCard} onClick={() => selectTab("binder")} glyph={<BinderGlyph />} />
           <TabButton
             label="Alerts"
             active={view === "alerts" && !selectedCard}
@@ -400,6 +407,7 @@ function DesktopNav({
         <TabButton label="Home" active={view === "home" && !selectedCard} onClick={() => onSelect("home")} glyph={<HomeGlyph />} />
         <TabButton label="Scan" active={view === "scan" && !selectedCard} onClick={() => onSelect("scan")} glyph={<ScanGlyph />} />
         <TabButton label="Vault" active={view === "vault" && !selectedCard} onClick={() => onSelect("vault")} glyph={<VaultGlyph />} />
+        <TabButton label="Binder" active={view === "binder" && !selectedCard} onClick={() => onSelect("binder")} glyph={<BinderGlyph />} />
         <TabButton label="Alerts" active={view === "alerts" && !selectedCard} onClick={() => onSelect("alerts")} glyph={<BellGlyph />} badge={unread} />
         <TabButton label="Deals" active={view === "deals" && !selectedCard} onClick={() => onSelect("deals")} glyph={<TagGlyph />} />
         <TabButton label="Prices" active={view === "prices" && !selectedCard} onClick={() => onSelect("prices")} glyph={<PriceGlyph />} />
@@ -683,6 +691,17 @@ function VaultGlyph() {
     <svg className="nav-glyph" viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <rect x="3.5" y="4.5" width="17" height="6" rx="1.5" stroke="currentColor" strokeWidth="1.8" />
       <rect x="3.5" y="13.5" width="17" height="6" rx="1.5" stroke="currentColor" strokeWidth="1.8" />
+    </svg>
+  );
+}
+// A binder page — a card sleeve / sleeve-pocket, distinct from the Vault stack
+// (the binder is a curated subset you show off, not the whole collection).
+function BinderGlyph() {
+  return (
+    <svg className="nav-glyph" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <rect x="4" y="3" width="16" height="18" rx="2" stroke="currentColor" strokeWidth="1.8" />
+      <rect x="7" y="6.5" width="10" height="11" rx="1.2" stroke="currentColor" strokeWidth="1.6" />
+      <circle cx="12" cy="5.5" r="0.9" fill="currentColor" />
     </svg>
   );
 }

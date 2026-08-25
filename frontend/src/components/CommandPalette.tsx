@@ -9,12 +9,13 @@ import { AnimatePresence, motion } from "framer-motion";
 import { searchCards } from "../api/client";
 import type { CardSearchResult } from "../api/types";
 
-type Tab = "home" | "scan" | "vault" | "alerts" | "deals" | "prices" | "ledger" | "sealed" | "catalog" | "browse" | "sets" | "shop" | "more";
+type Tab = "home" | "scan" | "vault" | "binder" | "alerts" | "deals" | "prices" | "ledger" | "sealed" | "catalog" | "browse" | "sets" | "shop" | "more";
 
 const TAB_COMMANDS: { tab: Tab; label: string; hint: string }[] = [
   { tab: "home", label: "Go to Home", hint: "Dashboard" },
   { tab: "scan", label: "Go to Scan", hint: "Scan a card" },
   { tab: "vault", label: "Go to Vault", hint: "Your collection" },
+  { tab: "binder", label: "Go to Binder", hint: "Shareable binder" },
   { tab: "alerts", label: "Go to Alerts", hint: "Alert feed" },
   { tab: "deals", label: "Go to Deals", hint: "Deal sniper" },
   { tab: "prices", label: "Go to Prices", hint: "Card price lookup" },

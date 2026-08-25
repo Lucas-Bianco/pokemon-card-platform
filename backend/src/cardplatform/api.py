@@ -99,6 +99,8 @@ from cardplatform.sealed.ledger import LedgerService
 from cardplatform.sealed.msrp_vs_market import MsrpVsMarketService
 from cardplatform.sealed.scan_log import SealedScanLogService
 from cardplatform.sealed.seed_data import SEALED_PRODUCTS
+from cardplatform.binder import api_models as binder_models
+from cardplatform.binder.service import BinderService
 from cardplatform.cards.lookup import CardLookupService
 from cardplatform.shop.assess import ShopAssessor
 from cardplatform.shop.api_models import ShopAssessmentOut
@@ -815,6 +817,119 @@ def create_app() -> FastAPI:
             centering_cap=centering_cap,
         )
         return tradeup_models.TradeUpAssessmentOut.model_validate(assessment)
+
+    # ----------------------------------------------- shareable binder (21)
+    @app.get("/binder", response_model=binder_models.BinderListResponse)
+    def list_binder(session: Session = Depends(get_session)) -> binder_models.BinderListResponse:
+        """The curated binder (roadmap row 21). An ordered subset of your vault,
+        each slot joined to its catalog row and most-recent *proven* eBay sale.
+        Honest: a slot with no proven sale carries `proven_sale: null` (never a
+        fabricated `$0`); `proven_sale_unavailable` flags a keyless server, and
+        `proven_sale_empty` flags a key set but no comps for that card. Sold comps
+        are on-demand reads, never persisted here."""
+        service = BinderService(
+            session,
+            sold_comps_provider=EbayListingsProvider(catalog=_catalog_lookup(session)),
+            listings_api_key_set=settings.listings_api_key is not None,
+        )
+        return binder_models.BinderListResponse(
+            items=[binder_models.BinderItemOut.model_validate(e) for e in service.list_items()]
+        )
+
+    @app.post("/binder/items", response_model=binder_models.BinderItemOut, status_code=201)
+    def add_binder_item(
+        payload: binder_models.BinderAddIn,
+        session: Session = Depends(get_session),
+    ) -> binder_models.BinderItemOut:
+        """Add a card to the binder (one slot per card-variant). Appended at the
+        end. Unknown card -> 404; already in binder -> 409."""
+        service = BinderService(
+            session,
+            sold_comps_provider=EbayListingsProvider(catalog=_catalog_lookup(session)),
+            listings_api_key_set=settings.listings_api_key is not None,
+        )
+        try:
+            service.add(payload.card_id, payload.variant, payload.note)
+        except LookupError:
+            raise HTTPException(status_code=404, detail=f"unknown card: {payload.card_id!r}")
+        except ValueError:
+            raise HTTPException(
+                status_code=409,
+                detail=f"already in binder: {payload.card_id!r} / {payload.variant!r}",
+            )
+        # Re-read the slot through list_items so the response carries the joined
+        # catalog row + proven sale (add() returns a bare BinderItem).
+        entries = service.list_items()
+        entry = next(
+            (e for e in entries if e.card_id == payload.card_id and e.variant == payload.variant),
+            None,
+        )
+        assert entry is not None  # just added, must be present
+        return binder_models.BinderItemOut.model_validate(entry)
+
+    @app.patch("/binder/items/{card_id}/{variant}", response_model=binder_models.BinderItemOut)
+    def set_binder_note(
+        card_id: str,
+        variant: str,
+        payload: binder_models.BinderNoteIn,
+        session: Session = Depends(get_session),
+    ) -> binder_models.BinderItemOut:
+        """Set or clear a slot's note (`note: null` clears). Slot not in the
+        binder -> 404."""
+        service = BinderService(
+            session,
+            sold_comps_provider=EbayListingsProvider(catalog=_catalog_lookup(session)),
+            listings_api_key_set=settings.listings_api_key is not None,
+        )
+        try:
+            service.set_note(card_id, variant, payload.note)
+        except LookupError:
+            raise HTTPException(
+                status_code=404, detail=f"not in binder: {card_id!r} / {variant!r}"
+            )
+        entries = service.list_items()
+        entry = next(
+            (e for e in entries if e.card_id == card_id and e.variant == variant), None
+        )
+        assert entry is not None
+        return binder_models.BinderItemOut.model_validate(entry)
+
+    @app.delete("/binder/items/{card_id}/{variant}", status_code=204)
+    def remove_binder_item(
+        card_id: str,
+        variant: str,
+        session: Session = Depends(get_session),
+    ) -> None:
+        """Remove a slot from the binder. Idempotent-ish: 404 if the slot wasn't
+        in the binder (honest — the caller knows it wasn't there)."""
+        service = BinderService(session)
+        if not service.remove(card_id, variant):
+            raise HTTPException(
+                status_code=404, detail=f"not in binder: {card_id!r} / {variant!r}"
+            )
+
+    @app.post("/binder/reorder", status_code=204)
+    def reorder_binder(
+        payload: binder_models.BinderReorderIn,
+        session: Session = Depends(get_session),
+    ) -> None:
+        """Reassign sort_order to match the supplied slot order. Slots not named
+        keep their current relative order, appended after the named ones."""
+        service = BinderService(session)
+        service.reorder([(k.card_id, k.variant) for k in payload.items])
+
+    @app.get("/binder/export")
+    def export_binder(session: Session = Depends(get_session)) -> Response:
+        """Render the binder as a standalone self-contained HTML document — the
+        shareable artifact. Inline CSS, hotlinked card images, a proven-sale
+        line per card (or an honest "no proven sale yet"). Returned as text/html;
+        the frontend triggers a file download. Unknown cards are skipped."""
+        service = BinderService(
+            session,
+            sold_comps_provider=EbayListingsProvider(catalog=_catalog_lookup(session)),
+            listings_api_key_set=settings.listings_api_key is not None,
+        )
+        return Response(content=service.export_html(), media_type="text/html")
 
     @app.post("/scans", response_model=ScanOut, status_code=201)
     async def record_scan(

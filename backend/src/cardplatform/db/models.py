@@ -126,6 +126,31 @@ class CollectionItem(Base):
     card: Mapped[Card] = relationship()
 
 
+class BinderItem(Base):
+    """A curated row in the shareable binder (roadmap row 21).
+
+    The binder is an ordered subset of the vault you curate to show off — NOT a
+    second copy of collection_items. A row references a card + variant (unique
+    together, one slot per card in the binder), carries a free-form note, and an
+    integer `sort_order` for manual ordering. `Base.metadata.create_all()` adds
+    this table additively (no migration needed). Proven sold-comps are fetched
+    on demand at read time (never persisted here) — the binder row itself is the
+    only durable state.
+    """
+
+    __tablename__ = "binder_items"
+    __table_args__ = (UniqueConstraint("card_id", "variant", name="uq_binder_slot"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    card_id: Mapped[str] = mapped_column(ForeignKey("cards.id"), index=True)
+    variant: Mapped[str] = mapped_column(String, default="normal")
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, index=True)
+    note: Mapped[str | None] = mapped_column(String, default=None)
+    added_at: Mapped[datetime] = mapped_column(UtcDateTime, default=_utcnow)
+
+    card: Mapped[Card] = relationship()
+
+
 class ScanLog(Base):
     """One recognition attempt, kept for evaluation and future fine-tuning.
 

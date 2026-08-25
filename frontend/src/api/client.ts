@@ -4,6 +4,11 @@ import type {
   AlertType,
   Authenticity,
   BatchRecognizeResponse,
+  BinderAddRequest,
+  BinderItem,
+  BinderListResponse,
+  BinderNoteRequest,
+  BinderReorderRequest,
   CardLookupItem,
   CardSearchResult,
   CollectionItem,
@@ -765,4 +770,79 @@ export async function getShopAssessment(
   return expectJsonOrDetail<ShopAssessment>(
     await fetch(`${BASE}/shop/assess?${params}`),
   );
+}
+
+// ----- Shareable binder (row 21) -----------------------------------------
+// A curated, ordered subset of your vault. Each slot is one (card_id, variant);
+// add/remove/reorder/note mutate, list/export read. Honest: a slot with no
+// proven sale carries proven_sale=null (never a fabricated $0); the backend
+// distinguishes proven_sale_unavailable (no eBay key) from proven_sale_empty
+// (key set, no comps). card_id/variant are URL-encoded — real card ids include
+// `ex10-!` and `ex10-?`, and an unencoded `?` would truncate the path.
+
+export async function getBinder(): Promise<BinderItem[]> {
+  const body = await expectJson<BinderListResponse>(await fetch(`${BASE}/binder`));
+  return body.items;
+}
+
+export async function addBinderItem(req: BinderAddRequest): Promise<BinderItem> {
+  const response = await fetch(`${BASE}/binder/items`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      card_id: req.card_id,
+      variant: req.variant ?? "normal",
+      note: req.note ?? null,
+    }),
+  });
+  return expectJson<BinderItem>(response);
+}
+
+export async function setBinderNote(
+  cardId: string,
+  variant: string,
+  req: BinderNoteRequest,
+): Promise<BinderItem> {
+  const v = encodeURIComponent(variant);
+  const response = await fetch(`${BASE}/binder/items/${encodeURIComponent(cardId)}/${v}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ note: req.note }),
+  });
+  return expectJson<BinderItem>(response);
+}
+
+export async function removeBinderItem(cardId: string, variant: string): Promise<void> {
+  const v = encodeURIComponent(variant);
+  const response = await fetch(`${BASE}/binder/items/${encodeURIComponent(cardId)}/${v}`, {
+    method: "DELETE",
+  });
+  if (!response.ok) {
+    throw new Error(`request failed: ${response.status}`);
+  }
+}
+
+export async function reorderBinder(req: BinderReorderRequest): Promise<void> {
+  const response = await fetch(`${BASE}/binder/reorder`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      items: req.items.map((i) => ({ card_id: i.card_id, variant: i.variant ?? "normal" })),
+    }),
+  });
+  if (!response.ok) {
+    throw new Error(`request failed: ${response.status}`);
+  }
+}
+
+// Export the binder as a standalone self-contained HTML document (inline CSS,
+// hotlinked card images, a proven-sale line per card). The backend streams
+// text/html; we return it as a string so the caller can trigger a Blob download
+// or open it in a new tab. Honest empty states are baked in server-side.
+export async function exportBinder(): Promise<string> {
+  const response = await fetch(`${BASE}/binder/export`);
+  if (!response.ok) {
+    throw new Error(`request failed: ${response.status}`);
+  }
+  return await response.text();
 }

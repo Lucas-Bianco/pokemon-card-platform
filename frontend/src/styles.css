@@ -2826,3 +2826,62 @@ body::before {
 @media (prefers-reduced-motion: reduce) {
   .authenticity-panel { animation: none; }
 }
+
+/* Row 21 — shareable binder. A curated grid of (card, variant) slots, each
+   joined to its catalog row + most-recent proven eBay sale. Honest: a slot with
+   no proven sale shows "No proven sale yet", never a fabricated $0. The toolbar
+   offers Export (download standalone HTML) + Print. */
+.binder { padding: var(--sp-3); }
+.binder-toolbar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3);
+  margin-bottom: var(--sp-2);
+}
+.binder-toolbar .muted.small { margin-right: auto; }
+.binder-note-hint { margin: var(--sp-1) 0 var(--sp-4); max-width: 60ch; }
+.binder-grid {
+  display: grid; gap: var(--sp-4);
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+}
+.binder-slot {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: var(--sp-3);
+  display: flex; flex-direction: column; gap: var(--sp-3);
+}
+.binder-img {
+  width: 100%; aspect-ratio: 2.5 / 3.5; object-fit: cover;
+  border-radius: 8px; background: var(--bg);
+}
+.binder-img.ph {
+  display: flex; align-items: center; justify-content: center;
+  color: var(--fg-faint); font-size: 0.8rem;
+}
+.binder-slot-meta { display: flex; flex-direction: column; gap: var(--sp-1); }
+.binder-name { font-size: 1rem; }
+.binder-note-row { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }
+.binder-note { color: var(--fg); font-style: italic; }
+.binder-note-edit { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }
+.binder-note-input {
+  flex: 1 1 140px; min-width: 0;
+  background: var(--bg); color: var(--fg);
+  border: 1px solid var(--line); border-radius: 8px;
+  padding: var(--sp-1) var(--sp-2);
+}
+.binder-sale { font-size: 0.85rem; }
+.binder-sale-price { color: var(--accent); font-weight: 650; }
+.binder-sale.none { color: var(--fg-dim); }
+.binder-slot-actions {
+  display: flex; flex-wrap: wrap; gap: var(--sp-3);
+  margin-top: var(--sp-1); padding-top: var(--sp-2);
+  border-top: 1px solid var(--line);
+}
+.binder-remove { color: var(--down); }
+
+/* CardDetail's inline add-to-binder affordance. */
+.add-to-binder {
+  display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center;
+  margin-top: var(--sp-2);
+}
+.add-to-binder-note.ok { color: var(--ok); }
+.add-to-binder-note.err { color: var(--down); }
