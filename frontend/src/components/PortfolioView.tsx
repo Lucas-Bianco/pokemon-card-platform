@@ -16,6 +16,7 @@ import PortfolioHistoryChart from "./PortfolioHistoryChart";
 import PriceFreshness from "./PriceFreshness";
 import AcquisitionTimelineChart from "./AcquisitionTimelineChart";
 import VaultExport from "./VaultExport";
+import VaultImport from "./VaultImport";
 import SoldLedger from "./SoldLedger";
 import type { SoldPrefill } from "./SoldLedger";
 import PriceChart from "./PriceChart";
@@ -205,6 +206,8 @@ export default function PortfolioView(_props: Props) {
       {hasHoldings && <AcquisitionTimelineChart />}
 
       {hasHoldings && <VaultExport />}
+
+      <VaultImport />
 
       <SoldLedger prefill={salePrefill} onPrefillConsumed={() => setSalePrefill(null)} />
 

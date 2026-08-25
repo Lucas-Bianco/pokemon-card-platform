@@ -42,6 +42,7 @@ import type {
   ShopAssessment,
   SetProgress,
   SheetsSyncResult,
+  ImportReport,
   SoldAddRequest,
   SoldCompsResponse,
   SoldListResponse,
@@ -264,6 +265,27 @@ export async function exportVault(format: "csv" | "json"): Promise<string> {
     throw new Error(`request failed: ${r.status}`);
   }
   return await r.text();
+}
+
+// Row 30 — vault import (CSV/JSON). Bulk-add holdings from a file. Rows are
+// inserted directly (acquired_at preserved so the Row 27 timeline stays
+// honest); rows whose card_id isn't in the catalog, or is missing, or has
+// quantity < 1, are skipped with an honest reason — never silently dropped.
+// The body is sent as text/plain so the backend's `Body(..., media_type=
+// "text/plain")` reads the raw CSV/JSON string.
+export async function importVault(
+  body: string,
+  format: "csv" | "json",
+): Promise<ImportReport> {
+  const r = await fetch(`${BASE}/collection/import?format=${format}`, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain" },
+    body,
+  });
+  if (!r.ok) {
+    throw new Error(`request failed: ${r.status}`);
+  }
+  return expectJson<ImportReport>(r);
 }
 
 // Row 29 — realized gains / sold-lot ledger. The disposal counterpart to the

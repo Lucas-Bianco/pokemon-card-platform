@@ -11,7 +11,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Iterator
 
-from fastapi import Depends, FastAPI, File, HTTPException, Query, Response, UploadFile
+from fastapi import Body, Depends, FastAPI, File, HTTPException, Query, Response, UploadFile
 from fastapi.responses import JSONResponse
 from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel, ConfigDict, Field
@@ -107,6 +107,8 @@ from cardplatform.wants import api_models as want_models
 from cardplatform.wants.service import WantService
 from cardplatform.sold import api_models as sold_lot_models
 from cardplatform.sold.service import SoldLotService
+from cardplatform.collection.importer import ImportRow, import_holdings
+from cardplatform.collection import api_models as collection_import_models
 from cardplatform.cards.lookup import CardLookupService
 from cardplatform.shop.assess import ShopAssessor
 from cardplatform.shop.api_models import ShopAssessmentOut
@@ -1747,6 +1749,63 @@ def create_app() -> FastAPI:
             headers={"Content-Disposition": 'attachment; filename="vault-export.csv"'},
         )
 
+    @app.post("/collection/import", response_model=collection_import_models.ImportReportOut)
+    def collection_import(
+        format: str = Query("csv", pattern="^(csv|json)$"),
+        session: Session = Depends(get_session),
+        body: str = Body(..., media_type="text/plain"),
+    ) -> collection_import_models.ImportReportOut:
+        """Bulk-add holdings from a CSV or JSON file (the symmetric pair to the
+        Row 28 export). Each valid row becomes a holding; rows whose card_id
+        isn't in the catalog, or is missing, or has a quantity below 1, are
+        skipped with an honest reason — never silently dropped or coerced.
+
+        Rows are inserted directly as CollectionItems (not via
+        CollectionStore.add) so the imported acquired_at is preserved and the
+        Row 27 acquisition timeline stays accurate. Optional empty fields
+        (acquired_price, condition, notes, acquired_at) are null, never a
+        fabricated $0. No data/ writes. Literal route registered before the
+        parametric PATCH /collection/{item_id} so 'import' isn't captured as
+        an item id.
+        """
+        if format == "json":
+            try:
+                payload = json.loads(body)
+            except json.JSONDecodeError as exc:
+                raise HTTPException(status_code=400, detail=f"invalid JSON: {exc.msg}") from exc
+            items = payload.get("items") if isinstance(payload, dict) else None
+            if not isinstance(items, list):
+                raise HTTPException(
+                    status_code=400,
+                    detail="JSON body must be an object with an 'items' list",
+                )
+            rows = [_import_row_from_dict(index, item) for index, item in enumerate(items, start=1)]
+        else:
+            reader = csv.DictReader(io.StringIO(body))
+            rows = [
+                _import_row_from_dict(row_number, raw)
+                for row_number, raw in enumerate(reader, start=1)
+            ]
+        if len(rows) > _IMPORT_MAX_ROWS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"too many rows: {len(rows)} exceeds the {_IMPORT_MAX_ROWS}-row import cap",
+            )
+        report = import_holdings(session, rows)
+        return collection_import_models.ImportReportOut(
+            total=report.total,
+            added=report.added,
+            skipped=[
+                collection_import_models.ImportSkipOut(
+                    row_number=s.row_number,
+                    card_id=s.card_id,
+                    reason=s.reason,
+                )
+                for s in report.skipped
+            ],
+            caveat=report.caveat,
+        )
+
     @app.patch("/collection/{item_id}", response_model=CollectionItemOut)
     def patch_collection_item(
         item_id: int,
@@ -2845,6 +2904,91 @@ def _fmt_money(value: float | None) -> str:
     """Render a money field for CSV: two decimals, or an empty cell when there
     is no value. An empty cell is an honest blank, never a dressed-up $0.00."""
     return "" if value is None else f"{value:.2f}"
+
+
+# --- Vault import (Row 30) -------------------------------------------------
+# Hard cap on rows per import so a runaway file can't hold a write transaction
+# open indefinitely or OOM the process. A file over the cap is rejected with a
+# 400 BEFORE any row is written — never a half-imported report.
+_IMPORT_MAX_ROWS = 10000
+
+
+def _import_cell(raw: dict, field: str) -> str | None:
+    """Read a value for `field` from a CSV/JSON row dict, tolerant of header
+    case differences. Returns the stripped string, or `None` when the cell is
+    blank / absent (an honest empty, never a fabricated $0)."""
+    if not isinstance(raw, dict):
+        return None
+    for key, value in raw.items():
+        if key is None:
+            continue
+        if str(key).strip().lower() == field:
+            if value is None:
+                return None
+            text = str(value).strip()
+            return text or None
+    return None
+
+
+def _import_parse_number(text: str | None) -> float | None:
+    if text is None:
+        return None
+    try:
+        return float(text)
+    except (TypeError, ValueError):
+        return None
+
+
+def _import_parse_int(text: str | None) -> int | None:
+    if text is None:
+        return None
+    try:
+        return int(text)
+    except (TypeError, ValueError):
+        return None
+
+
+def _import_parse_datetime(text: str | None) -> datetime | None:
+    """Parse an acquired_at cell. Accepts ISO 8601 (what the export writes) and
+    degrades to `None` on a blank/unparseable value — an honest undated row,
+    never a fabricated epoch. `datetime.fromisoformat` on 3.12 accepts a
+    trailing 'Z' and naive datetimes; we leave the value as-is so the export's
+    aware timestamps round-trip and naive values still import."""
+    if text is None:
+        return None
+    try:
+        return datetime.fromisoformat(text)
+    except (TypeError, ValueError):
+        return None
+
+
+def _import_row_from_dict(row_number: int, raw: dict) -> ImportRow:
+    """Turn one CSV/JSON row dict into a typed ImportRow. Cell parsing is
+    tolerant: blanks become None (honest), unparseable numbers/dates become
+    None (honest), quantity defaults to 1 when blank. Validation of unknown
+    cards / bad quantity happens in the importer, not here — but a blank or
+    non-positive quantity reads as `1` only when absent; an explicit `0` is
+    preserved so the importer can skip it with an honest reason."""
+    card_id = _import_cell(raw, "card_id")
+    variant = _import_cell(raw, "variant")
+    qty_text = _import_cell(raw, "quantity")
+    if qty_text is None:
+        quantity = 1
+    else:
+        quantity = _import_parse_int(qty_text)
+        if quantity is None:
+            # Non-numeric quantity — let the importer skip it with a reason
+            # rather than guessing, but we need an int to carry the row.
+            quantity = 0
+    return ImportRow(
+        card_id=card_id or "",
+        variant=variant or "normal",
+        quantity=quantity,
+        acquired_price=_import_parse_number(_import_cell(raw, "acquired_price")),
+        acquired_at=_import_parse_datetime(_import_cell(raw, "acquired_at")),
+        condition=_import_cell(raw, "condition"),
+        notes=_import_cell(raw, "notes"),
+    )
 
 
 app = create_app()

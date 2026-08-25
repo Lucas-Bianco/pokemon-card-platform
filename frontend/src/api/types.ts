@@ -1250,3 +1250,22 @@ export interface SoldSummary {
   losers: number;
   caveat: string;
 }
+
+// Row 30 — vault import (CSV/JSON). The symmetric pair to the Row 28 export:
+// bulk-add holdings from a file. Each valid row becomes a holding; rows whose
+// card_id isn't in the catalog (or is missing, or has qty < 1) are skipped with
+// an honest reason — never silently dropped or coerced. Optional empty fields
+// are null, never a fabricated $0. acquired_at is preserved on insert so the
+// Row 27 acquisition timeline stays accurate.
+export interface ImportSkip {
+  row_number: number;
+  card_id: string | null;
+  reason: string;
+}
+
+export interface ImportReport {
+  total: number;
+  added: number;
+  skipped: ImportSkip[];
+  caveat: string;
+}
