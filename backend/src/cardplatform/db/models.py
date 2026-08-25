@@ -151,6 +151,34 @@ class BinderItem(Base):
     card: Mapped[Card] = relationship()
 
 
+class WantItem(Base):
+    """A curated row in the want list / hunt list (roadmap row 24).
+
+    The want list is a planning surface — cards you want to *acquire*, distinct
+    from the binder (cards you own and show off) and from alerts (which watch
+    listing conditions). A row references a card + variant (unique together,
+    one slot per card in the want list), carries an optional `target_price`
+    (what you'd be willing to pay — nullable, honest "no target"), and a
+    free-form note. At read time each slot is joined to its catalog row and to
+    the same `PriceService.latest_price` the rest of the app uses, so the want
+    list shows the *current market reference* beside your target — never a
+    fabricated figure. `Base.metadata.create_all()` adds this table additively
+    (no migration needed); the want row itself is the only durable state.
+    """
+
+    __tablename__ = "want_items"
+    __table_args__ = (UniqueConstraint("card_id", "variant", name="uq_want_slot"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    card_id: Mapped[str] = mapped_column(ForeignKey("cards.id"), index=True)
+    variant: Mapped[str] = mapped_column(String, default="normal")
+    target_price: Mapped[float | None] = mapped_column(Float, default=None)
+    note: Mapped[str | None] = mapped_column(String, default=None)
+    added_at: Mapped[datetime] = mapped_column(UtcDateTime, default=_utcnow)
+
+    card: Mapped[Card] = relationship()
+
+
 class ScanLog(Base):
     """One recognition attempt, kept for evaluation and future fine-tuning.
 

@@ -4,6 +4,7 @@ import { getCard, getDeals, getPriceHistory, refreshListings } from "../api/clie
 import type { CardSearchResult, DealAssessment, Listing, PricePoint } from "../api/types";
 import { formatMoney } from "../lib/format";
 import AddToBinderButton from "./AddToBinderButton";
+import AddToWantsButton from "./AddToWantsButton";
 import GradingStudio from "./GradingStudio";
 import GradingUpside from "./GradingUpside";
 import TradeUp from "./TradeUp";
@@ -244,6 +245,12 @@ export default function CardDetail({ cardId, variant = "normal", onBack, onWatch
           /binder/items and surfaces honest inline status (added / already in /
           not found / verbatim error). Distinct verb-phrase from every nav tab. */}
       <AddToBinderButton cardId={cardId} variant={variant} />
+
+      {/* Row 24 — add this card to the want list / hunt list. Self-contained:
+          POSTs /wants/items and surfaces honest inline status (added / already
+          on / not found / verbatim error). Distinct verb-phrase ("Hunt this
+          card") from every nav tab and from "Add to binder". */}
+      <AddToWantsButton cardId={cardId} variant={variant} />
     </section>
   );
 }

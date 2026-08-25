@@ -13,7 +13,7 @@ import { useReducedMotionSafe } from "../lib/useReducedMotionSafe";
 import { Donut, MoverBars } from "./viz";
 import { Reveal } from "./Reveal";
 
-type Tab = "scan" | "vault" | "alerts" | "deals" | "prices" | "ledger" | "sealed" | "catalog" | "browse" | "shop" | "more";
+type Tab = "scan" | "vault" | "alerts" | "deals" | "prices" | "ledger" | "sealed" | "catalog" | "browse" | "shop" | "wants" | "more";
 
 function formatMoney(n: number | null | undefined): string {
   if (n == null) return "—";
@@ -135,6 +135,7 @@ export default function Dashboard({
           <button className="link" onClick={() => onNavigate("catalog")}>Browse sealed catalog</button>
           <button className="link" onClick={() => onNavigate("ledger")}>Open ledger</button>
           <button className="link" onClick={() => onNavigate("shop")}>Check a listing</button>
+          <button className="link" onClick={() => onNavigate("wants")}>Track cards you want</button>
           {unread > 0 && <button className="link" onClick={() => onNavigate("alerts")}>View alerts</button>}
           <button className="link" onClick={onWatchCard}>Watch a card</button>
         </div>

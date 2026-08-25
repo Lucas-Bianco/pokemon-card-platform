@@ -8,6 +8,7 @@ import { getUnreadCount } from "../api/client";
 import type { RecognizeResponse } from "../api/types";
 import AlertsFeed from "./AlertsFeed";
 import Binder from "./Binder";
+import Wants from "./Wants";
 import CameraCapture from "./CameraCapture";
 import CardDetail from "./CardDetail";
 import CornerAdjust from "./CornerAdjust";
@@ -85,6 +86,7 @@ const TAB_TITLES: Record<TabView, string> = {
   scan: "Scan",
   vault: "Vault",
   binder: "Binder",
+  wants: "Wants",
   alerts: "Alerts",
   deals: "Deals",
   prices: "Prices",
@@ -262,6 +264,10 @@ export default function AppShell({ scan }: Props) {
             <PageTransition id="binder">
               <Binder />
             </PageTransition>
+          ) : view === "wants" ? (
+            <PageTransition id="wants">
+              <Wants />
+            </PageTransition>
           ) : view === "alerts" ? (
             <PageTransition id="alerts">
               <AlertsFeed
@@ -339,6 +345,7 @@ export default function AppShell({ scan }: Props) {
           <TabButton label="Scan" active={view === "scan" && !selectedCard} onClick={() => selectTab("scan")} glyph={<ScanGlyph />} />
           <TabButton label="Vault" active={view === "vault" && !selectedCard} onClick={() => selectTab("vault")} glyph={<VaultGlyph />} />
           <TabButton label="Binder" active={view === "binder" && !selectedCard} onClick={() => selectTab("binder")} glyph={<BinderGlyph />} />
+          <TabButton label="Wants" active={view === "wants" && !selectedCard} onClick={() => selectTab("wants")} glyph={<WantsGlyph />} />
           <TabButton
             label="Alerts"
             active={view === "alerts" && !selectedCard}
@@ -408,6 +415,7 @@ function DesktopNav({
         <TabButton label="Scan" active={view === "scan" && !selectedCard} onClick={() => onSelect("scan")} glyph={<ScanGlyph />} />
         <TabButton label="Vault" active={view === "vault" && !selectedCard} onClick={() => onSelect("vault")} glyph={<VaultGlyph />} />
         <TabButton label="Binder" active={view === "binder" && !selectedCard} onClick={() => onSelect("binder")} glyph={<BinderGlyph />} />
+        <TabButton label="Wants" active={view === "wants" && !selectedCard} onClick={() => onSelect("wants")} glyph={<WantsGlyph />} />
         <TabButton label="Alerts" active={view === "alerts" && !selectedCard} onClick={() => onSelect("alerts")} glyph={<BellGlyph />} badge={unread} />
         <TabButton label="Deals" active={view === "deals" && !selectedCard} onClick={() => onSelect("deals")} glyph={<TagGlyph />} />
         <TabButton label="Prices" active={view === "prices" && !selectedCard} onClick={() => onSelect("prices")} glyph={<PriceGlyph />} />
@@ -702,6 +710,19 @@ function BinderGlyph() {
       <rect x="4" y="3" width="16" height="18" rx="2" stroke="currentColor" strokeWidth="1.8" />
       <rect x="7" y="6.5" width="10" height="11" rx="1.2" stroke="currentColor" strokeWidth="1.6" />
       <circle cx="12" cy="5.5" r="0.9" fill="currentColor" />
+    </svg>
+  );
+}
+// A hunting / target reticle — the Wants tab's glyph (the want list / hunt list:
+// cards you're looking to acquire, with an optional target price). Distinct from
+// the Binder sleeve (you don't own these yet) and from the Bell (alerts watch
+// listing conditions; wants is a planning surface).
+function WantsGlyph() {
+  return (
+    <svg className="nav-glyph" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.8" />
+      <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M12 2v3M12 19v3M2 12h3M19 12h3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
     </svg>
   );
 }

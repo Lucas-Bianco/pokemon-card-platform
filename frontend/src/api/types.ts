@@ -1059,3 +1059,54 @@ export interface BinderReorderRequest {
 export interface BinderNoteRequest {
   note: string | null;
 }
+
+// Row 24 — want list / hunt list. A planning surface: cards you want to
+// *acquire*, distinct from the binder (cards you own and show off) and from
+// alerts (which watch listing conditions). One slot per (card_id, variant),
+// carrying an optional `target_price` (what you'd be willing to pay — null is
+// honest "no target") and a free-form note. Each slot is joined at read time
+// to its catalog row + `PriceService.latest_price` (the same reference the
+// rest of the app uses). Honest fields on every slot: `market_price` is the
+// resolved market figure or null (never a fabricated `$0`); `deal_gap` is
+// `target_price - market_price` or null when either side is missing (never
+// guessed); `within_target` is true only when both are present and the market
+// is at or below the target. Mirrors backend WantItemOut / WantListResponse /
+// WantAddIn / WantPatchIn field-for-field.
+
+export interface WantItem {
+  card_id: string;
+  variant: string;
+  target_price: number | null;
+  note: string | null;
+  added_at: string;
+  card_name: string;
+  set_id: string;
+  set_name: string;
+  number: string;
+  rarity: string | null;
+  image_small: string | null;
+  image_large: string | null;
+  market_price: number | null;
+  market_source: string | null;
+  market_source_updated_at: string | null;
+  deal_gap: number | null;
+  within_target: boolean | null;
+}
+
+export interface WantListResponse {
+  items: WantItem[];
+}
+
+export interface WantAddRequest {
+  card_id: string;
+  variant?: string;
+  target_price?: number | null;
+  note?: string | null;
+}
+
+// Partial update to a want slot. Every field is optional; a field that is
+// absent (undefined) is left untouched by the backend, and `null` clears it.
+export interface WantPatchRequest {
+  target_price?: number | null;
+  note?: string | null;
+}

@@ -101,6 +101,8 @@ from cardplatform.sealed.scan_log import SealedScanLogService
 from cardplatform.sealed.seed_data import SEALED_PRODUCTS
 from cardplatform.binder import api_models as binder_models
 from cardplatform.binder.service import BinderService
+from cardplatform.wants import api_models as want_models
+from cardplatform.wants.service import WantService
 from cardplatform.cards.lookup import CardLookupService
 from cardplatform.shop.assess import ShopAssessor
 from cardplatform.shop.api_models import ShopAssessmentOut
@@ -990,6 +992,102 @@ def create_app() -> FastAPI:
             listings_api_key_set=settings.listings_api_key is not None,
         )
         return Response(content=service.export_html(), media_type="text/html")
+
+    # -------------------------------------------------- want list (24)
+    @app.get("/wants", response_model=want_models.WantListResponse)
+    def list_wants(session: Session = Depends(get_session)) -> want_models.WantListResponse:
+        """The want list / hunt list (roadmap row 24). A planning surface — cards
+        you want to *acquire*, distinct from the binder (own+show) and alerts
+        (watch listing conditions). Each slot is joined to its catalog row and
+        to `PriceService.latest_price` (the same reference the rest of the app
+        uses). Honest: `market_price` is null when there is no price (never a
+        fabricated `$0`); `target_price` is null for "no target"; `deal_gap` and
+        `within_target` are null when either side is missing, never guessed."""
+        service = WantService(session, price_service=PriceService(session))
+        return want_models.WantListResponse(
+            items=[want_models.WantItemOut.model_validate(e) for e in service.list_items()]
+        )
+
+    @app.post("/wants/items", response_model=want_models.WantItemOut, status_code=201)
+    def add_want_item(
+        payload: want_models.WantAddIn,
+        session: Session = Depends(get_session),
+    ) -> want_models.WantItemOut:
+        """Add a card to the want list (one slot per card-variant). Optional
+        `target_price` (willingness-to-pay) and `note`. Unknown card -> 404;
+        already in want list -> 409."""
+        service = WantService(session, price_service=PriceService(session))
+        try:
+            service.add(payload.card_id, payload.variant, payload.target_price, payload.note)
+        except LookupError:
+            raise HTTPException(status_code=404, detail=f"unknown card: {payload.card_id!r}")
+        except ValueError:
+            raise HTTPException(
+                status_code=409,
+                detail=f"already in want list: {payload.card_id!r} / {payload.variant!r}",
+            )
+        entries = service.list_items()
+        entry = next(
+            (e for e in entries if e.card_id == payload.card_id and e.variant == payload.variant),
+            None,
+        )
+        assert entry is not None  # just added, must be present
+        return want_models.WantItemOut.model_validate(entry)
+
+    @app.patch("/wants/items/{card_id}/{variant}", response_model=want_models.WantItemOut)
+    def patch_want_item(
+        card_id: str,
+        variant: str,
+        payload: want_models.WantPatchIn,
+        session: Session = Depends(get_session),
+    ) -> want_models.WantItemOut:
+        """Set or clear a slot's `target_price` and/or `note`. Either field is
+        optional; `null` clears it. Omitted fields (those not present in the
+        request body) are left intact. Slot not in the want list -> 404 (even
+        when no fields are supplied, so a no-op patch still tells the truth)."""
+        service = WantService(session, price_service=PriceService(session))
+        # Distinguish "field omitted" from "field explicitly null". Pydantic
+        # records present fields in `model_fields_set`; omitted ones stay unset.
+        target_set = "target_price" in payload.model_fields_set
+        note_set = "note" in payload.model_fields_set
+        try:
+            if target_set:
+                service.set_target_price(card_id, variant, payload.target_price)
+            if note_set:
+                service.set_note(card_id, variant, payload.note)
+            if not target_set and not note_set:
+                # No fields supplied — touch the note (unchanged value) purely
+                # to validate the slot exists, so a no-op patch still 404s.
+                existing = next(
+                    (e for e in service.list_items() if e.card_id == card_id and e.variant == variant),
+                    None,
+                )
+                if existing is None:
+                    raise LookupError("not in want list")
+        except LookupError:
+            raise HTTPException(
+                status_code=404, detail=f"not in want list: {card_id!r} / {variant!r}"
+            )
+        entries = service.list_items()
+        entry = next(
+            (e for e in entries if e.card_id == card_id and e.variant == variant), None
+        )
+        assert entry is not None
+        return want_models.WantItemOut.model_validate(entry)
+
+    @app.delete("/wants/items/{card_id}/{variant}", status_code=204)
+    def remove_want_item(
+        card_id: str,
+        variant: str,
+        session: Session = Depends(get_session),
+    ) -> None:
+        """Remove a slot from the want list. 404 if the slot wasn't in the want
+        list (honest — the caller knows it wasn't there)."""
+        service = WantService(session)
+        if not service.remove(card_id, variant):
+            raise HTTPException(
+                status_code=404, detail=f"not in want list: {card_id!r} / {variant!r}"
+            )
 
     @app.post("/scans", response_model=ScanOut, status_code=201)
     async def record_scan(

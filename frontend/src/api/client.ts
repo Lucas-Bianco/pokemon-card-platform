@@ -43,6 +43,10 @@ import type {
   TradeUpAssessment,
   Valuation,
   ValuationRefreshResult,
+  WantAddRequest,
+  WantItem,
+  WantListResponse,
+  WantPatchRequest,
   Watch,
   WatchCreate,
   WatchPatch,
@@ -854,4 +858,55 @@ export async function exportBinder(): Promise<string> {
     throw new Error(`request failed: ${response.status}`);
   }
   return await response.text();
+}
+
+// ----- Want list / hunt list (row 24) ---------------------------------------
+// A planning surface — cards you want to *acquire*. Each slot is one
+// (card_id, variant); add/patch/remove mutate, list reads. Honest: a slot
+// with no market price carries market_price=null (never a fabricated $0);
+// deal_gap / within_target are null when either side is missing. card_id /
+// variant are URL-encoded — real card ids include `ex10-!` and `ex10-?`, and
+// an unencoded `?` would truncate the path.
+
+export async function getWants(): Promise<WantItem[]> {
+  const body = await expectJson<WantListResponse>(await fetch(`${BASE}/wants`));
+  return body.items;
+}
+
+export async function addWantItem(req: WantAddRequest): Promise<WantItem> {
+  const response = await fetch(`${BASE}/wants/items`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      card_id: req.card_id,
+      variant: req.variant ?? "normal",
+      target_price: req.target_price ?? null,
+      note: req.note ?? null,
+    }),
+  });
+  return expectJson<WantItem>(response);
+}
+
+export async function patchWantItem(
+  cardId: string,
+  variant: string,
+  req: WantPatchRequest,
+): Promise<WantItem> {
+  const v = encodeURIComponent(variant);
+  const response = await fetch(`${BASE}/wants/items/${encodeURIComponent(cardId)}/${v}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  return expectJson<WantItem>(response);
+}
+
+export async function removeWantItem(cardId: string, variant: string): Promise<void> {
+  const v = encodeURIComponent(variant);
+  const response = await fetch(`${BASE}/wants/items/${encodeURIComponent(cardId)}/${v}`, {
+    method: "DELETE",
+  });
+  if (!response.ok) {
+    throw new Error(`request failed: ${response.status}`);
+  }
 }

@@ -19,6 +19,7 @@ export type TabView =
   | "scan"
   | "vault"
   | "binder"
+  | "wants"
   | "alerts"
   | "deals"
   | "prices"
@@ -35,6 +36,7 @@ const TAB_VIEWS: readonly TabView[] = [
   "scan",
   "vault",
   "binder",
+  "wants",
   "alerts",
   "deals",
   "prices",

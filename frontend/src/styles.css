@@ -2932,3 +2932,75 @@ body::before {
 }
 .add-to-binder-note.ok { color: var(--ok); }
 .add-to-binder-note.err { color: var(--down); }
+
+/* Row 24 — Want list / hunt list (Wants tab + CardDetail add-to-wants). Mirrors
+   the binder grid/slot, with target-price + deal-gap specifics. */
+.wants-toolbar {
+  display: flex; align-items: center; gap: var(--sp-3);
+  margin-bottom: var(--sp-1);
+}
+.wants-hint { margin-bottom: var(--sp-3); }
+.wants-grid {
+  display: grid; gap: var(--sp-4);
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+}
+.wants-slot {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: var(--sp-3);
+  display: flex; flex-direction: column; gap: var(--sp-3);
+}
+.wants-img {
+  width: 100%; aspect-ratio: 2.5 / 3.5; object-fit: cover;
+  border-radius: 8px; background: var(--bg);
+}
+.wants-img.ph {
+  display: flex; align-items: center; justify-content: center;
+  color: var(--fg-faint); font-size: 0.8rem;
+}
+.wants-slot-meta { display: flex; flex-direction: column; gap: var(--sp-1); }
+.wants-name { font-size: 1rem; }
+.wants-market { font-size: 0.85rem; }
+.wants-market-price { color: var(--accent); font-weight: 650; }
+.wants-market.none { color: var(--fg-dim); }
+.wants-target-row {
+  display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center;
+}
+.wants-target { font-size: 0.85rem; color: var(--fg-dim); }
+.wants-target strong { color: var(--fg); }
+.wants-target-edit {
+  display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center;
+}
+.wants-target-input {
+  flex: 1 1 100px; min-width: 0; width: 8rem;
+  background: var(--bg); color: var(--fg);
+  border: 1px solid var(--line); border-radius: 8px;
+  padding: var(--sp-1) var(--sp-2);
+}
+.wants-dealgap { margin: 0; }
+.wants-dealgap.ok { color: var(--ok); }
+.wants-dealgap.down { color: var(--down); }
+.wants-note-row { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }
+.wants-note { color: var(--fg); font-style: italic; }
+.wants-note-edit { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }
+.wants-note-input {
+  flex: 1 1 140px; min-width: 0;
+  background: var(--bg); color: var(--fg);
+  border: 1px solid var(--line); border-radius: 8px;
+  padding: var(--sp-1) var(--sp-2);
+}
+.wants-slot-actions {
+  display: flex; flex-wrap: wrap; gap: var(--sp-3);
+  margin-top: var(--sp-1); padding-top: var(--sp-2);
+  border-top: 1px solid var(--line);
+}
+.wants-remove { color: var(--down); }
+
+/* CardDetail's inline add-to-wants affordance. */
+.add-to-wants {
+  display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center;
+  margin-top: var(--sp-2);
+}
+.add-to-wants-note.ok { color: var(--ok); }
+.add-to-wants-note.err { color: var(--down); }
