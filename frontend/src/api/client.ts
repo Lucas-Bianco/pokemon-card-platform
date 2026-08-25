@@ -13,6 +13,7 @@ import type {
   CardSearchResult,
   CollectionItem,
   DealsResponse,
+  Diversification,
   Grader,
   GradingLabel,
   GradingUpside,
@@ -202,6 +203,14 @@ export async function getInsuranceValue(): Promise<InsuranceValue> {
   // Replacement-value bands (conservative/median/aggressive) + a printable per-card
   // schedule, all computed server-side from the same proven price snapshots.
   return expectJson<InsuranceValue>(await fetch(`${BASE}/collection/insurance`));
+}
+
+export async function getDiversification(): Promise<Diversification> {
+  // Concentration + diversification of the collection's priced value: top holdings
+  // with share + cumulative share, concentration ratios (cards carrying 50/80/90%),
+  // and value buckets by rarity / supertype / set. Server-side, read-only; unpriced
+  // cards are excluded from totals + shares (never $0), counted separately.
+  return expectJson<Diversification>(await fetch(`${BASE}/collection/diversification`));
 }
 
 export async function patchCollectionItem(

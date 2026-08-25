@@ -182,6 +182,49 @@ export interface InsuranceValue {
   caveat: string;
 }
 
+// Concentration + diversification of the collection's *priced* value. Shares
+// are computed against priced_total; unpriced cards are counted in
+// unpriced_items and excluded from every total and share — never $0.
+export interface HoldingShare {
+  card_id: string;
+  card_name: string;
+  set_name: string;
+  variant: string;
+  quantity: number;
+  market_value: number;
+  share: number;
+  cumulative_share: number;
+}
+
+export interface BucketShare {
+  label: string;
+  market_value: number;
+  share: number;
+  holdings: number;
+  quantity: number;
+}
+
+export interface Concentration {
+  top_share: number | null;
+  cards_for_50: number | null;
+  cards_for_80: number | null;
+  cards_for_90: number | null;
+  priced_holdings: number;
+}
+
+export interface Diversification {
+  priced_total: number;
+  priced_items: number;
+  unpriced_items: number;
+  total_items: number;
+  top_holdings: HoldingShare[];
+  concentration: Concentration;
+  by_rarity: BucketShare[];
+  by_supertype: BucketShare[];
+  by_set: BucketShare[];
+  caveat: string;
+}
+
 export interface Scan {
   id: number;
   status: string;

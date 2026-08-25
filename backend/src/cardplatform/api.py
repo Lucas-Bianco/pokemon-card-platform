@@ -569,6 +569,66 @@ class InsuranceValueOut(BaseModel):
     caveat: str
 
 
+class HoldingShareOut(BaseModel):
+    """One holding's slice of the collection's priced value: market_value, share
+    of priced_total, and the running cumulative_share down the ranked list."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    card_id: str
+    card_name: str
+    set_name: str
+    variant: str
+    quantity: int
+    market_value: float
+    share: float
+    cumulative_share: float
+
+
+class BucketShareOut(BaseModel):
+    """One rarity / supertype / set grouping of the collection's value."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    label: str
+    market_value: float
+    share: float
+    holdings: int
+    quantity: int
+
+
+class ConcentrationOut(BaseModel):
+    """How few holdings carry most of the priced value. The cards_for_XX fields
+    are None when there is no priced value or the threshold is unreachable."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    top_share: float | None
+    cards_for_50: int | None
+    cards_for_80: int | None
+    cards_for_90: int | None
+    priced_holdings: int
+
+
+class DiversificationOut(BaseModel):
+    """Concentration + diversification of the collection's priced value. Shares
+    are computed against priced_total; unpriced cards are counted in
+    unpriced_items and excluded from every total and share, never $0."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    priced_total: float
+    priced_items: int
+    unpriced_items: int
+    total_items: int
+    top_holdings: list[HoldingShareOut]
+    concentration: ConcentrationOut
+    by_rarity: list[BucketShareOut]
+    by_supertype: list[BucketShareOut]
+    by_set: list[BucketShareOut]
+    caveat: str
+
+
 class GradingUpsideTierOut(BaseModel):
     """One tier of the grading spread (raw / psa9 / psa10), or null when unpriced.
 
@@ -1288,6 +1348,20 @@ def create_app() -> FastAPI:
         cards are excluded from the totals and counted in unpriced_items, never $0.
         """
         return InsuranceValueOut.model_validate(CollectionStore(session).insurance_value())
+
+    # Declared before PATCH /collection/{item_id}: a literal path must be registered
+    # ahead of the parameterised one, or "diversification" is captured as an item_id.
+    @app.get("/collection/diversification", response_model=DiversificationOut)
+    def collection_diversification(session: Session = Depends(get_session)) -> DiversificationOut:
+        """Concentration + diversification of the collection's *priced* value.
+
+        top_holdings ranks the 10 largest priced holdings with share + cumulative
+        share; concentration gives the smallest number of top holdings reaching
+        50/80/90% of priced value. by_rarity / by_supertype / by_set group every
+        holding. Unpriced cards are counted in unpriced_items and excluded from
+        every total and share, never $0.
+        """
+        return DiversificationOut.model_validate(CollectionStore(session).diversification())
 
     @app.patch("/collection/{item_id}", response_model=CollectionItemOut)
     def patch_collection_item(

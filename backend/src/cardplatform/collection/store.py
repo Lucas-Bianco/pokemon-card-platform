@@ -117,11 +117,98 @@ class InsuranceValue:
     caveat: str
 
 
+@dataclass(frozen=True)
+class HoldingShare:
+    """One holding's slice of the collection's *priced* value.
+
+    market_value = market x quantity. share = market_value / priced_total (0.0
+    when there is no priced value to divide). cumulative_share is the running
+    total of share down the ranked list — the input to the concentration ratios.
+    """
+
+    card_id: str
+    card_name: str
+    set_name: str
+    variant: str
+    quantity: int
+    market_value: float
+    share: float
+    cumulative_share: float
+
+
+@dataclass(frozen=True)
+class BucketShare:
+    """One grouping (by rarity / supertype / set) of the collection's value.
+
+    market_value is the sum of priced holdings in the bucket (0.0 when the
+    bucket's holdings are all unpriced). share = market_value / priced_total.
+    holdings counts CollectionItem rows; quantity sums their quantities. A
+    bucket with holdings but no priced value still appears — share 0.0, never
+    silently dropped and never estimated at $0.
+    """
+
+    label: str
+    market_value: float
+    share: float
+    holdings: int
+    quantity: int
+
+
+@dataclass(frozen=True)
+class Concentration:
+    """How few holdings carry most of the priced value. Every field is None when
+    there is no priced value (a collection with 0 priced holdings has nothing to
+    concentrate); priced_holdings is always a real count. cards_for_XX is the
+    smallest number of top holdings whose cumulative share reaches XX% — since
+    the full priced collection sums to 100%, every threshold is reachable once
+    priced_total > 0, so the None fields signal 'no priced value', not an
+    unreachable threshold."""
+
+    top_share: float | None
+    cards_for_50: int | None
+    cards_for_80: int | None
+    cards_for_90: int | None
+    priced_holdings: int
+
+
+@dataclass(frozen=True)
+class Diversification:
+    """Concentration + diversification of the collection's *priced* value.
+
+    priced_total is the sum of market x quantity across priced holdings only;
+    unpriced cards are counted in unpriced_items and excluded from every total
+    and every share, never estimated at $0. top_holdings are the (up to) 10
+    largest priced holdings. by_rarity / by_supertype / by_set group every
+    holding (priced and unpriced) so an all-unpriced bucket still shows up at
+    share 0.0.
+    """
+
+    priced_total: float
+    priced_items: int
+    unpriced_items: int
+    total_items: int
+    top_holdings: list[HoldingShare]
+    concentration: Concentration
+    by_rarity: list[BucketShare]
+    by_supertype: list[BucketShare]
+    by_set: list[BucketShare]
+    caveat: str
+
+
 _INSURANCE_CAVEAT = (
     "Replacement-value bands from the same proven price snapshot the rest of the app "
     "uses (TCGplayer market reference via pokemontcg.io, or Cardmarket aggregate as "
     "fallback). Unpriced cards are excluded from the totals, never guessed at $0. "
     "An indicative estimate, not a binding appraisal."
+)
+
+
+_DIVERSIFICATION_CAVEAT = (
+    "Concentration of the collection's *priced* value. Shares are computed against "
+    "the sum of priced holdings only; unpriced cards are counted in unpriced_items "
+    "and excluded from every total and every share, never estimated at $0. A high "
+    "concentration (a few cards carrying most of the value) is a risk flag, not a "
+    "verdict — diversification is descriptive, never a recommendation to trade."
 )
 
 
@@ -265,6 +352,149 @@ class CollectionStore:
             schedule=schedule,
             caveat=_INSURANCE_CAVEAT,
         )
+
+    def diversification(self) -> Diversification:
+        """Concentration + diversification of the collection's *priced* value.
+
+        One pass over every holding resolves its priced market value via the same
+        `latest_price` the rest of the app uses. priced_total is the sum of
+        market x quantity across priced holdings; unpriced holdings are counted in
+        unpriced_items and excluded from every total and every share, never
+        estimated at $0. top_holdings ranks the (up to) 10 largest priced holdings
+        with share + cumulative_share. concentration gives the smallest number of
+        top holdings reaching 50/80/90% of priced value (None when priced_total is
+        0 or the threshold is unreachable). by_rarity / by_supertype / by_set group
+        every holding — an all-unpriced bucket still appears at share 0.0.
+        """
+        rows = self.list_items()
+        priced_total = 0.0
+        unpriced_items = 0
+        recs: list[tuple[CollectionItem, float | None]] = []
+        for row in rows:
+            snapshot = self.prices.latest_price(row.card_id, row.variant)
+            market = snapshot.market if snapshot is not None else None
+            if market is None:
+                unpriced_items += 1
+                recs.append((row, None))
+            else:
+                value = market * row.quantity
+                priced_total += value
+                recs.append((row, value))
+
+        priced_recs = sorted(
+            ((row, mv) for row, mv in recs if mv is not None),
+            key=lambda rm: rm[1],
+            reverse=True,
+        )
+
+        top_holdings: list[HoldingShare] = []
+        cumulative = 0.0
+        for row, value in priced_recs[:10]:
+            share = value / priced_total if priced_total else 0.0
+            cumulative += share
+            top_holdings.append(
+                HoldingShare(
+                    card_id=row.card_id,
+                    card_name=row.card.name,
+                    set_name=row.card.card_set.name,
+                    variant=row.variant,
+                    quantity=row.quantity,
+                    market_value=value,
+                    share=share,
+                    cumulative_share=cumulative,
+                )
+            )
+
+        if priced_total > 0 and priced_recs:
+            running = 0.0
+            cards_for_50 = cards_for_80 = cards_for_90 = None
+            # Epsilon absorbs floating-point drift so the count matches the
+            # rounded cumulative share the UI shows (e.g. 0.7 + 0.2 accumulates
+            # to 0.8999…, which must still count as reaching the 90% threshold).
+            eps = 1e-9
+            for index, (_, value) in enumerate(priced_recs, start=1):
+                running += value / priced_total
+                if cards_for_50 is None and running >= 0.5 - eps:
+                    cards_for_50 = index
+                if cards_for_80 is None and running >= 0.8 - eps:
+                    cards_for_80 = index
+                if cards_for_90 is None and running >= 0.9 - eps:
+                    cards_for_90 = index
+            top_share = priced_recs[0][1] / priced_total
+            concentration = Concentration(
+                top_share=top_share,
+                cards_for_50=cards_for_50,
+                cards_for_80=cards_for_80,
+                cards_for_90=cards_for_90,
+                priced_holdings=len(priced_recs),
+            )
+        else:
+            concentration = Concentration(
+                top_share=None,
+                cards_for_50=None,
+                cards_for_80=None,
+                cards_for_90=None,
+                priced_holdings=len(priced_recs),
+            )
+
+        by_rarity = self._diversification_buckets(
+            recs, priced_total, key=lambda r: r.card.rarity or "Unknown"
+        )
+        by_supertype = self._diversification_buckets(
+            recs, priced_total, key=lambda r: r.card.supertype or "Unknown"
+        )
+        by_set = self._diversification_buckets(
+            recs, priced_total, key=lambda r: r.card.card_set.name
+        )
+
+        return Diversification(
+            priced_total=priced_total,
+            priced_items=len(priced_recs),
+            unpriced_items=unpriced_items,
+            total_items=len(rows),
+            top_holdings=top_holdings,
+            concentration=concentration,
+            by_rarity=by_rarity,
+            by_supertype=by_supertype,
+            by_set=by_set,
+            caveat=_DIVERSIFICATION_CAVEAT,
+        )
+
+    @staticmethod
+    def _diversification_buckets(
+        recs: list[tuple[CollectionItem, float | None]],
+        priced_total: float,
+        *,
+        key,
+    ) -> list[BucketShare]:
+        """Group holdings by ``key(row)`` (rarity / supertype / set name). Each
+        bucket accumulates market_value from its priced holdings only (0.0 when
+        all its holdings are unpriced), counts holdings and sums quantities. A
+        bucket with holdings but no priced value still appears — share 0.0,
+        never dropped and never estimated at $0. Sorted by market value desc."""
+        buckets: dict[str, dict[str, float]] = {}
+        for row, value in recs:
+            label = key(row)
+            bucket = buckets.setdefault(
+                label, {"market_value": 0.0, "holdings": 0, "quantity": 0}
+            )
+            bucket["holdings"] += 1
+            bucket["quantity"] += row.quantity
+            if value is not None:
+                bucket["market_value"] += value
+
+        shares = [
+            BucketShare(
+                label=label,
+                market_value=b["market_value"],
+                share=b["market_value"] / priced_total if priced_total else 0.0,
+                holdings=int(b["holdings"]),
+                quantity=int(b["quantity"]),
+            )
+            for label, b in buckets.items()
+        ]
+        shares.sort(key=lambda s: s.market_value, reverse=True)
+        return shares
 
     def portfolio(self) -> Portfolio:
         """The collection as priced holdings plus a summary: per-item market value and

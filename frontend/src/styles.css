@@ -537,6 +537,53 @@ h1 { font-size: 1.25rem; margin: 4px 0 16px; }
 .insurance-band .muted { font-size: 0.68rem; }
 .insurance-caveat { margin: 8px 0 0; }
 .insurance-toggle { margin-top: 8px; }
+
+/* Portfolio concentration & diversification (Row 23). */
+.diversification { margin-top: 16px; }
+.diversification-headline { font-size: 0.95rem; margin: 6px 0 10px; }
+.diversification-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+  margin: 8px 0;
+}
+.diversification-tile {
+  background: var(--glass, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px;
+}
+.diversification-tile .label { display: block; font-size: 0.72rem; color: var(--fg-dim); margin-bottom: 4px; }
+.diversification-tile strong { font-size: 1.05rem; display: block; }
+.diversification-tile .muted { font-size: 0.68rem; }
+.diversification-top { margin: 12px 0; }
+.diversification-top ul,
+.diversification-buckets ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.diversification-holding,
+.diversification-buckets li {
+  background: var(--glass, rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.diversification-holding-name strong { font-size: 0.9rem; }
+.diversification-holding-share { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.diversification-share-text { font-size: 0.82rem; min-width: 44px; color: var(--accent); }
+.diversification-cumulative { margin-left: auto; font-size: 0.68rem; }
+.diversification-buckets { margin: 12px 0; }
+.diversification-buckets h4 { margin: 0 0 6px; font-size: 0.82rem; color: var(--fg-dim); }
+.diversification-bucket-row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.diversification-bucket-label { font-size: 0.88rem; }
+.diversification-bucket-value { font-size: 0.82rem; }
+.diversification-bar {
+  height: 4px;
+  background: var(--line);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-top: 6px;
+}
+.diversification-bar-fill { height: 100%; background: var(--accent); border-radius: 4px; }
+.diversification-caveat { margin: 10px 0 0; }
 .insurance-schedule-wrap { margin-top: 12px; }
 .insurance-schedule {
   width: 100%;
