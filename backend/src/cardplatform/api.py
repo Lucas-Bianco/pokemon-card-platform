@@ -664,6 +664,39 @@ class PortfolioHistoryOut(BaseModel):
     caveat: str
 
 
+class FreshnessBandOut(BaseModel):
+    """One age band of the collection's priced holdings (fresh/aging/stale/outdated).
+    max_age_days is the band's exclusive upper bound (None for outdated). A band
+    with no holdings still appears at zero so the four bands are always complete."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    label: str
+    max_age_days: int | None
+    holdings: int
+    quantity: int
+    market_value: float
+    share: float
+
+
+class PriceFreshnessOut(BaseModel):
+    """How stale the collection's pricing is, banded by each holding's latest
+    snapshot fetched_at. Staleness is by our refresh time, not the provider's data
+    stamp. Unpriced holdings are counted separately and excluded from every band,
+    never $0. oldest/newest_fetched_at bound the priced holdings' refresh times."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    bands: list[FreshnessBandOut]
+    priced_holdings: int
+    unpriced_holdings: int
+    total_holdings: int
+    priced_value_total: float
+    oldest_fetched_at: datetime | None
+    newest_fetched_at: datetime | None
+    caveat: str
+
+
 class GradingUpsideTierOut(BaseModel):
     """One tier of the grading spread (raw / psa9 / psa10), or null when unpriced.
 
@@ -1513,6 +1546,21 @@ def create_app() -> FastAPI:
         return PortfolioHistoryOut.model_validate(
             CollectionStore(session).portfolio_history(since=since, days=days)
         )
+
+    # Declared before PATCH /collection/{item_id}: a literal path must be registered
+    # ahead of the parameterised one, or "price-freshness" is captured as an item_id.
+    @app.get("/collection/price-freshness", response_model=PriceFreshnessOut)
+    def collection_price_freshness(
+        session: Session = Depends(get_session),
+    ) -> PriceFreshnessOut:
+        """How stale the collection's pricing is, banded by each holding's latest
+        snapshot fetched_at (fresh <7d / aging 7-30d / stale 30-90d / outdated >90d).
+
+        Staleness is by the app's last refresh time, not the provider's data stamp;
+        an old band is a prompt to refresh, never a verdict on value. Unpriced
+        holdings are counted separately and excluded from every band (never $0).
+        """
+        return PriceFreshnessOut.model_validate(CollectionStore(session).price_freshness())
 
     @app.patch("/collection/{item_id}", response_model=CollectionItemOut)
     def patch_collection_item(

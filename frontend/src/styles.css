@@ -587,6 +587,22 @@ h1 { font-size: 1.25rem; margin: 4px 0 16px; }
 .portfolio-history { margin-top: 16px; }
 .portfolio-history > h3 { margin: 0 0 8px; }
 .portfolio-history-caveat { margin: 10px 0 0; }
+.price-freshness { margin-top: 16px; }
+.price-freshness > h3 { margin: 0 0 8px; }
+.price-freshness-caveat { margin: 10px 0 0; }
+.freshness-bands { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.freshness-band { display: flex; flex-direction: column; gap: 6px; }
+.freshness-band-head {
+  display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px;
+}
+.freshness-band-value { white-space: nowrap; }
+.freshness-bar { height: 6px; background: var(--line); border-radius: 4px; overflow: hidden; }
+.freshness-bar-fill { height: 100%; border-radius: 4px; }
+.freshness-bar-fill.freshness-fresh { background: var(--ok); }
+.freshness-bar-fill.freshness-aging { background: var(--accent); }
+.freshness-bar-fill.freshness-stale { background: var(--warn); }
+.freshness-bar-fill.freshness-outdated { background: var(--down); }
+.freshness-band.is-empty .freshness-bar-fill { background: var(--line); }
 .insurance-schedule-wrap { margin-top: 12px; }
 .insurance-schedule {
   width: 100%;

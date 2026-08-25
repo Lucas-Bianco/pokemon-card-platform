@@ -233,6 +233,50 @@ class PortfolioHistory:
     caveat: str
 
 
+@dataclass(frozen=True)
+class FreshnessBand:
+    """One age band of the collection's priced holdings.
+
+    label is 'fresh' / 'aging' / 'stale' / 'outdated'. max_age_days is the band's
+    exclusive upper bound in days (None for 'outdated', which has no upper bound).
+    holdings / quantity count the priced holdings in the band; market_value is the
+    sum of market x quantity across them; share is market_value / priced_value_total
+    (0.0 when there is no priced value). A band with no holdings still appears —
+    holdings 0, market_value 0.0 — so the four bands are always a complete picture.
+    """
+
+    label: str
+    max_age_days: int | None
+    holdings: int
+    quantity: int
+    market_value: float
+    share: float
+
+
+@dataclass(frozen=True)
+class PriceFreshness:
+    """How stale the collection's pricing is, banded by the age of each holding's
+    latest price snapshot.
+
+    Staleness is measured by ``fetched_at`` — when the app last refreshed the price
+    the holding is valued at — NOT by the provider's own data stamp (which is
+    free-text and provider-specific). An old fetched_at means 'we haven't checked
+    recently', so a refresh will update it. bands is always the four labels in order
+    (fresh / aging / stale / outdated). unpriced_holdings are counted separately and
+    excluded from every band, never guessed at $0. oldest / newest_fetched_at bound
+    the priced holdings' refresh times (None when nothing is priced).
+    """
+
+    bands: list[FreshnessBand]
+    priced_holdings: int
+    unpriced_holdings: int
+    total_holdings: int
+    priced_value_total: float
+    oldest_fetched_at: datetime | None
+    newest_fetched_at: datetime | None
+    caveat: str
+
+
 _INSURANCE_CAVEAT = (
     "Replacement-value bands from the same proven price snapshot the rest of the app "
     "uses (TCGplayer market reference via pokemontcg.io, or Cardmarket aggregate as "
@@ -258,6 +302,25 @@ _PORTFOLIO_HISTORY_CAVEAT = (
     "and unpriced holdings are excluded (never $0). Depth depends on your "
     "price-refresh cadence — a short line is a young history, not censored data."
 )
+
+
+_FRESHNESS_CAVEAT = (
+    "Price freshness is measured by when the app last refreshed each holding's "
+    "price (fetched_at), not by the provider's own data stamp. An old band means "
+    "'we haven't checked recently' — a refresh updates it. Unpriced holdings are "
+    "counted separately and excluded from every band, never guessed at $0. This is "
+    "descriptive — a stale collection is a prompt to refresh, never a verdict on value."
+)
+
+
+# (label, exclusive upper bound in days). 'outdated' has no upper bound (None).
+# Ordered fresh -> aging -> stale -> outdated so the UI renders a complete picture.
+_FRESHNESS_BANDS: list[tuple[str, int | None]] = [
+    ("fresh", 7),
+    ("aging", 30),
+    ("stale", 90),
+    ("outdated", None),
+]
 
 
 class CollectionStore:
@@ -698,6 +761,79 @@ class CollectionStore:
             times.append(row.fetched_at)
             effs.append(eff)
         return times, effs
+
+    def price_freshness(self, now: datetime | None = None) -> PriceFreshness:
+        """Band the collection's priced holdings by the age of their latest price
+        snapshot's ``fetched_at`` — i.e. how long since the app last refreshed each
+        holding's price. Staleness is by our refresh time, not the provider's data
+        stamp; an old band is a prompt to refresh, never a verdict on value.
+
+        Each priced holding lands in exactly one of fresh (<7d) / aging (7-30d) /
+        stale (30-90d) / outdated (>90d). Bands carry count, quantity, market_value,
+        and share of priced_value_total; a band with no holdings still appears at
+        zero so the four bands are always a complete picture. Unpriced holdings (no
+        snapshot, or a snapshot with no market figure) are counted separately and
+        excluded from every band, never $0. ``now`` defaults to the current time but
+        can be pinned for deterministic tests.
+        """
+        now = now or datetime.now(timezone.utc)
+        rows = self.list_items()
+        total = len(rows)
+        accum: dict[str, dict[str, float]] = {
+            label: {"holdings": 0, "quantity": 0, "market_value": 0.0}
+            for label, _ in _FRESHNESS_BANDS
+        }
+        priced_value_total = 0.0
+        unpriced = 0
+        fetched_ats: list[datetime] = []
+
+        for row in rows:
+            snapshot = self.prices.latest_price(row.card_id, row.variant)
+            if snapshot is None or snapshot.market is None:
+                unpriced += 1
+                continue
+            value = snapshot.market * row.quantity
+            priced_value_total += value
+            fetched_ats.append(snapshot.fetched_at)
+            age_days = (now - snapshot.fetched_at).total_seconds() / 86400.0
+            label = self._freshness_label(age_days)
+            accum[label]["holdings"] += 1
+            accum[label]["quantity"] += row.quantity
+            accum[label]["market_value"] += value
+
+        bands = [
+            FreshnessBand(
+                label=label,
+                max_age_days=max_age,
+                holdings=int(accum[label]["holdings"]),
+                quantity=int(accum[label]["quantity"]),
+                market_value=accum[label]["market_value"],
+                share=(accum[label]["market_value"] / priced_value_total)
+                if priced_value_total
+                else 0.0,
+            )
+            for label, max_age in _FRESHNESS_BANDS
+        ]
+
+        return PriceFreshness(
+            bands=bands,
+            priced_holdings=total - unpriced,
+            unpriced_holdings=unpriced,
+            total_holdings=total,
+            priced_value_total=priced_value_total,
+            oldest_fetched_at=min(fetched_ats) if fetched_ats else None,
+            newest_fetched_at=max(fetched_ats) if fetched_ats else None,
+            caveat=_FRESHNESS_CAVEAT,
+        )
+
+    @staticmethod
+    def _freshness_label(age_days: float) -> str:
+        """Map an age in days to a band label. A negative age (clock skew, a
+        snapshot fetched 'in the future') is treated as fresh."""
+        for label, max_age in _FRESHNESS_BANDS:
+            if max_age is None or age_days < max_age:
+                return label
+        return _FRESHNESS_BANDS[-1][0]
 
     def set_cost_basis(
         self,

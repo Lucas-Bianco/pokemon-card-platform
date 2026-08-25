@@ -13,6 +13,7 @@ import { formatMoney } from "../lib/format";
 import InsuranceValue from "./InsuranceValue";
 import Diversification from "./Diversification";
 import PortfolioHistoryChart from "./PortfolioHistoryChart";
+import PriceFreshness from "./PriceFreshness";
 import PriceChart from "./PriceChart";
 import { staggerContainer, staggerItem } from "./motion";
 
@@ -191,6 +192,8 @@ export default function PortfolioView(_props: Props) {
       {hasHoldings && <Diversification />}
 
       {hasHoldings && <PortfolioHistoryChart />}
+
+      {hasHoldings && <PriceFreshness />}
 
       {summary && summary.allocation.length > 1 && (
         <div className="allocation">

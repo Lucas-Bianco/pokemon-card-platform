@@ -249,6 +249,37 @@ export interface PortfolioHistory {
   caveat: string;
 }
 
+// One staleness band for the priced holdings in the vault. label is one of
+// fresh / aging / stale / outdated; max_age_days is the exclusive upper bound in
+// days (null = outdated, no upper bound); holdings/quantity/market_value are the
+// priced holdings that fall in this band; share is market_value / priced_value_total
+// (0 when nothing is priced). Mirrors FreshnessBandOut in backend api.py.
+export interface FreshnessBand {
+  label: string;
+  max_age_days: number | null;
+  holdings: number;
+  quantity: number;
+  market_value: number;
+  share: number;
+}
+
+// Price-freshness overview of the vault — bands the PRICED holdings by the age of
+// their latest price snapshot's fetched_at (when the app last refreshed each
+// holding's price), not the provider's own data stamp. Unpriced holdings are
+// counted separately and excluded from every band, never $0. All four bands are
+// always present (zero-valued when empty). Descriptive — stale is a prompt to
+// refresh, never a verdict on value. Mirrors PriceFreshnessOut in backend api.py.
+export interface PriceFreshness {
+  bands: FreshnessBand[];
+  priced_holdings: number;
+  unpriced_holdings: number;
+  total_holdings: number;
+  priced_value_total: number;
+  oldest_fetched_at: string | null;
+  newest_fetched_at: string | null;
+  caveat: string;
+}
+
 export interface Scan {
   id: number;
   status: string;

@@ -22,6 +22,7 @@ import type {
   Portfolio,
   PortfolioHistory,
   Price,
+  PriceFreshness,
   PriceHistory,
   PushSubscription,
   RecognizeResponse,
@@ -226,6 +227,15 @@ export async function getPortfolioHistory(): Promise<PortfolioHistory> {
   // since sold or added aren't reflected in past totals; unpriced holdings are
   // excluded (never $0). Empty points means no price history yet, not a $0 line.
   return expectJson<PortfolioHistory>(await fetch(`${BASE}/collection/portfolio/history`));
+}
+
+export async function getPriceFreshness(): Promise<PriceFreshness> {
+  // Band the vault's priced holdings by the age of each holding's latest price
+  // snapshot's fetched_at (when the app last refreshed it), not the provider's
+  // own data stamp. Four bands always present; unpriced holdings counted
+  // separately and excluded from every band, never $0. Descriptive — a stale
+  // collection is a prompt to refresh, never a verdict on value.
+  return expectJson<PriceFreshness>(await fetch(`${BASE}/collection/price-freshness`));
 }
 
 export async function patchCollectionItem(

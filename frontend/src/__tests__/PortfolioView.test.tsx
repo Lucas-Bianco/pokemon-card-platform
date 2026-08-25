@@ -103,6 +103,47 @@ function stubFetch(body: Portfolio, history?: PriceHistory) {
     if (String(url).includes("/collection/insurance")) {
       return { ok: true, status: 200, json: async () => insurance };
     }
+    if (String(url).includes("/collection/diversification")) {
+      // Honest empty diversification — no priced value to concentrate.
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          concentration: { top_share: null, cards_for_50: null, cards_for_80: null, cards_for_90: null },
+          top_holdings: [],
+          by_rarity: [],
+          by_supertype: [],
+          by_set: [],
+          priced_total: 0,
+          priced_items: 0,
+          unpriced_items: 0,
+          total_items: 0,
+          caveat: "",
+        }),
+      };
+    }
+    if (String(url).includes("/collection/price-freshness")) {
+      // Honest empty freshness — nothing priced to band.
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          bands: [
+            { label: "fresh", max_age_days: 7, holdings: 0, quantity: 0, market_value: 0, share: 0 },
+            { label: "aging", max_age_days: 30, holdings: 0, quantity: 0, market_value: 0, share: 0 },
+            { label: "stale", max_age_days: 90, holdings: 0, quantity: 0, market_value: 0, share: 0 },
+            { label: "outdated", max_age_days: null, holdings: 0, quantity: 0, market_value: 0, share: 0 },
+          ],
+          priced_holdings: 0,
+          unpriced_holdings: 0,
+          total_holdings: 0,
+          priced_value_total: 0,
+          oldest_fetched_at: null,
+          newest_fetched_at: null,
+          caveat: "",
+        }),
+      };
+    }
     if (String(url).includes("/prices/history")) {
       return {
         ok: true,
