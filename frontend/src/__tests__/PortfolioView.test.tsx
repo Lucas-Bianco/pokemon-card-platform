@@ -88,6 +88,15 @@ function stubFetch(body: Portfolio, history?: PriceHistory) {
     caveat: "An indicative estimate, not a binding appraisal.",
   };
   const spy = vi.fn().mockImplementation(async (url: string) => {
+    // The portfolio-history endpoint must be matched BEFORE the bare /collection/portfolio
+    // branch, because "/collection/portfolio/history" contains "/collection/portfolio".
+    if (String(url).includes("/collection/portfolio/history")) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ points: [], priced_items: 0, unpriced_items: 0, total_items: 0, caveat: "" }),
+      };
+    }
     if (String(url).includes("/collection/portfolio")) {
       return { ok: true, status: 200, json: async () => body };
     }

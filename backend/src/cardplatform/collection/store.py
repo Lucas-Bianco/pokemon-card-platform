@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+from bisect import bisect_right
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from cardplatform.db.models import Card, CollectionItem
+from cardplatform.db.models import Card, CollectionItem, PriceSnapshot
 from cardplatform.prices.service import PriceService
 
 
@@ -195,6 +196,43 @@ class Diversification:
     caveat: str
 
 
+@dataclass(frozen=True)
+class PortfolioValuePoint:
+    """One point on the portfolio value-over-time reconstruction.
+
+    market_value is the sum of market x quantity across holdings priced at or before
+    `observed_at`, using the same tcgplayer-then-cardmarket resolution latest_price
+    uses, evaluated at that point in time. Unpriced holdings are excluded (counted
+    only in unpriced_items), never guessed at $0. observed_at is the snapshot
+    fetched_at — the indexed observation time the per-card chart also keys on.
+    """
+
+    observed_at: datetime
+    market_value: float
+    priced_items: int
+    unpriced_items: int
+
+
+@dataclass(frozen=True)
+class PortfolioHistory:
+    """Reconstructed portfolio market value over time.
+
+    points is the per-observation total, oldest first. The reconstruction holds the
+    CURRENT set of holdings and quantities fixed and asks, at each past price
+    observation, 'what would these cards have been worth then?' — so a card you've
+    since sold or added is not reflected in past totals. priced_items /
+    unpriced_items are the current counts the reconstruction is based on. Empty
+    points means there is no price history yet (a young collection or one that has
+    never been refreshed), not a $0 valuation.
+    """
+
+    points: list[PortfolioValuePoint]
+    priced_items: int
+    unpriced_items: int
+    total_items: int
+    caveat: str
+
+
 _INSURANCE_CAVEAT = (
     "Replacement-value bands from the same proven price snapshot the rest of the app "
     "uses (TCGplayer market reference via pokemontcg.io, or Cardmarket aggregate as "
@@ -209,6 +247,16 @@ _DIVERSIFICATION_CAVEAT = (
     "and excluded from every total and every share, never estimated at $0. A high "
     "concentration (a few cards carrying most of the value) is a risk flag, not a "
     "verdict — diversification is descriptive, never a recommendation to trade."
+)
+
+
+_PORTFOLIO_HISTORY_CAVEAT = (
+    "Reconstructed from append-only price snapshots: at each observation, your "
+    "current holdings are valued at the most recent price recorded at or before "
+    "that time, using the same TCGplayer-then-Cardmarket resolution the rest of the "
+    "app uses. Cards you've since sold or added aren't reflected in past totals, "
+    "and unpriced holdings are excluded (never $0). Depth depends on your "
+    "price-refresh cadence — a short line is a young history, not censored data."
 )
 
 
@@ -507,6 +555,149 @@ class CollectionStore:
         """Summary without the full holdings list (a lightweight portfolio read)."""
         items = [self._portfolio_item(row) for row in self.list_items()]
         return self._summary(items)
+
+    def portfolio_history(
+        self,
+        since: datetime | None = None,
+        days: int | None = None,
+    ) -> PortfolioHistory:
+        """Reconstruct the portfolio's total market value at each past price
+        observation, for the *current* set of holdings.
+
+        For each holding we build an effective-price step timeline using the same
+        tcgplayer-then-cardmarket resolution ``latest_price`` uses, but evaluated
+        point-in-time: at observation T the effective price is the newest TCGplayer
+        snapshot (this variant) at or before T, else the newest Cardmarket aggregate
+        at or before T — so the chart shows the same notion of 'the price' the rest
+        of the app uses, never a blend of sources. We then walk every distinct
+        observation time (the union of all holdings' snapshot fetched_at, oldest
+        first) and sum market x quantity across holdings priced at or before that
+        time. Unpriced holdings contribute nothing and are counted in unpriced_items,
+        never $0.
+
+        ``since`` / ``days`` only filter which observation times are EMITTED — the
+        per-holding timelines still include earlier snapshots, so a holding priced
+        before the window still contributes its correct pre-window price to points
+        inside it. Empty points means there is no price history yet, not a $0
+        valuation.
+        """
+        rows = self.list_items()
+        total_items = len(rows)
+        if total_items == 0:
+            return PortfolioHistory(
+                points=[],
+                priced_items=0,
+                unpriced_items=0,
+                total_items=0,
+                caveat=_PORTFOLIO_HISTORY_CAVEAT,
+            )
+
+        if since is None and days is not None:
+            since = datetime.now(timezone.utc) - timedelta(days=days)
+
+        # Per holding: parallel (times, effs) step-function lists. times are the
+        # fetched_at at which the holding's effective price was last updated, sorted
+        # ascending; effs[i] is the effective market price observed at times[i]
+        # (None before the holding's first observation). The union of all times is
+        # the chart's x axis.
+        holding_timelines: list[tuple[list[datetime], list[float | None], int]] = []
+        global_times: list[datetime] = []
+        for row in rows:
+            times, effs = self._effective_price_timeline(row.card_id, row.variant)
+            holding_timelines.append((times, effs, row.quantity))
+            global_times.extend(times)
+
+        if not global_times:
+            # Holdings exist but none has any price snapshot yet.
+            return PortfolioHistory(
+                points=[],
+                priced_items=0,
+                unpriced_items=total_items,
+                total_items=total_items,
+                caveat=_PORTFOLIO_HISTORY_CAVEAT,
+            )
+
+        global_times.sort()
+        points: list[PortfolioValuePoint] = []
+        seen: set[datetime] = set()
+        for t in global_times:
+            # Dedupe: a holding may have two snapshots sharing a fetched_at; the
+            # union still emits one portfolio point per distinct observation time.
+            if t in seen:
+                continue
+            if since is not None and t < since:
+                continue
+            seen.add(t)
+            market_value = 0.0
+            priced_items = 0
+            for times, effs, qty in holding_timelines:
+                idx = bisect_right(times, t) - 1
+                if idx < 0:
+                    # This holding has no observation at or before t yet — unpriced.
+                    continue
+                eff = effs[idx]
+                if eff is None:
+                    continue
+                market_value += eff * qty
+                priced_items += 1
+            points.append(
+                PortfolioValuePoint(
+                    observed_at=t,
+                    market_value=market_value,
+                    priced_items=priced_items,
+                    unpriced_items=total_items - priced_items,
+                )
+            )
+
+        return PortfolioHistory(
+            points=points,
+            priced_items=points[-1].priced_items if points else 0,
+            unpriced_items=points[-1].unpriced_items if points else total_items,
+            total_items=total_items,
+            caveat=_PORTFOLIO_HISTORY_CAVEAT,
+        )
+
+    def _effective_price_timeline(
+        self, card_id: str, variant: str
+    ) -> tuple[list[datetime], list[float | None]]:
+        """Step-function timeline of this holding's effective market price.
+
+        Mirrors ``PriceService.latest_price``: TCGplayer (this variant) preferred,
+        Cardmarket (aggregate) as fallback — but evaluated point-in-time. Walks the
+        merged snapshot stream oldest-first, maintaining the last TCGplayer and
+        Cardmarket market figures seen; at each snapshot the effective price is the
+        last TCGplayer figure if any, else the last Cardmarket figure, else None.
+        Emits one (time, effective) pair per snapshot, so sampling at an observation
+        time with ``bisect_right`` returns the holding's price as of that moment.
+        """
+        stmt = (
+            select(PriceSnapshot)
+            .where(
+                PriceSnapshot.card_id == card_id,
+                or_(
+                    (PriceSnapshot.source == "tcgplayer")
+                    & (PriceSnapshot.variant == variant),
+                    (PriceSnapshot.source == "cardmarket")
+                    & (PriceSnapshot.variant == "aggregate"),
+                ),
+            )
+            .order_by(PriceSnapshot.fetched_at.asc(), PriceSnapshot.id.asc())
+        )
+        rows = self.session.scalars(stmt).all()
+
+        times: list[datetime] = []
+        effs: list[float | None] = []
+        last_tcg: float | None = None
+        last_cm: float | None = None
+        for row in rows:
+            if row.source == "tcgplayer":
+                last_tcg = row.market
+            else:  # cardmarket aggregate
+                last_cm = row.market
+            eff = last_tcg if last_tcg is not None else last_cm
+            times.append(row.fetched_at)
+            effs.append(eff)
+        return times, effs
 
     def set_cost_basis(
         self,

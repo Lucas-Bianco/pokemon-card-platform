@@ -584,6 +584,9 @@ h1 { font-size: 1.25rem; margin: 4px 0 16px; }
 }
 .diversification-bar-fill { height: 100%; background: var(--accent); border-radius: 4px; }
 .diversification-caveat { margin: 10px 0 0; }
+.portfolio-history { margin-top: 16px; }
+.portfolio-history > h3 { margin: 0 0 8px; }
+.portfolio-history-caveat { margin: 10px 0 0; }
 .insurance-schedule-wrap { margin-top: 12px; }
 .insurance-schedule {
   width: 100%;

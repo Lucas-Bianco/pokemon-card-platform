@@ -225,6 +225,30 @@ export interface Diversification {
   caveat: string;
 }
 
+// One point on the reconstructed portfolio value-over-time chart. observed_at is
+// the snapshot fetched_at; market_value is the sum of market x quantity across
+// holdings priced at or before that time. priced_items / unpriced_items are the
+// counts at that point (holdings gain pricing as their first snapshot arrives).
+// Mirrors PortfolioValuePointOut in backend api.py.
+export interface PortfolioValuePoint {
+  observed_at: string;
+  market_value: number;
+  priced_items: number;
+  unpriced_items: number;
+}
+
+// Reconstructed portfolio market value over time, from append-only snapshots. The
+// reconstruction holds the CURRENT holdings and quantities fixed — cards you've
+// since sold or added aren't reflected in past totals. Empty points means no price
+// history yet, not a $0 valuation. Mirrors PortfolioHistoryOut in backend api.py.
+export interface PortfolioHistory {
+  points: PortfolioValuePoint[];
+  priced_items: number;
+  unpriced_items: number;
+  total_items: number;
+  caveat: string;
+}
+
 export interface Scan {
   id: number;
   status: string;

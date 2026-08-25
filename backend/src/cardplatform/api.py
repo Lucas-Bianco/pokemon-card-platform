@@ -631,6 +631,39 @@ class DiversificationOut(BaseModel):
     caveat: str
 
 
+class PortfolioValuePointOut(BaseModel):
+    """One point on the reconstructed portfolio value-over-time chart.
+
+    observed_at is the snapshot fetched_at; market_value is the sum of market x
+    quantity across holdings priced at or before that time. priced_items /
+    unpriced_items are the counts at that point (holdings gain pricing as their
+    first snapshot arrives)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    observed_at: datetime
+    market_value: float
+    priced_items: int
+    unpriced_items: int
+
+
+class PortfolioHistoryOut(BaseModel):
+    """Reconstructed portfolio market value over time, from append-only snapshots.
+
+    points is the per-observation total, oldest first. The reconstruction holds the
+    CURRENT holdings and quantities fixed — cards you've since sold or added aren't
+    reflected in past totals. priced_items / unpriced_items are the current counts.
+    Empty points means no price history yet, not a $0 valuation."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    points: list[PortfolioValuePointOut]
+    priced_items: int
+    unpriced_items: int
+    total_items: int
+    caveat: str
+
+
 class GradingUpsideTierOut(BaseModel):
     """One tier of the grading spread (raw / psa9 / psa10), or null when unpriced.
 
@@ -1460,6 +1493,26 @@ def create_app() -> FastAPI:
         every total and share, never $0.
         """
         return DiversificationOut.model_validate(CollectionStore(session).diversification())
+
+    # Declared before PATCH /collection/{item_id}: a literal path must be registered
+    # ahead of the parameterised one, or "portfolio" is captured as an item_id.
+    @app.get("/collection/portfolio/history", response_model=PortfolioHistoryOut)
+    def collection_portfolio_history(
+        since: datetime | None = None,
+        days: int | None = None,
+        session: Session = Depends(get_session),
+    ) -> PortfolioHistoryOut:
+        """Reconstructed portfolio market value over time, from append-only snapshots.
+
+        At each past price observation, the current holdings are valued at the most
+        recent price recorded at or before that time, using the same
+        TCGplayer-then-Cardmarket resolution the rest of the app uses. Cards you've
+        since sold or added aren't reflected in past totals; unpriced holdings are
+        excluded (never $0). Empty points means no price history yet.
+        """
+        return PortfolioHistoryOut.model_validate(
+            CollectionStore(session).portfolio_history(since=since, days=days)
+        )
 
     @app.patch("/collection/{item_id}", response_model=CollectionItemOut)
     def patch_collection_item(

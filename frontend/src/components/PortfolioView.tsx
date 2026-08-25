@@ -12,6 +12,7 @@ import type { Portfolio, PortfolioItem, PricePoint } from "../api/types";
 import { formatMoney } from "../lib/format";
 import InsuranceValue from "./InsuranceValue";
 import Diversification from "./Diversification";
+import PortfolioHistoryChart from "./PortfolioHistoryChart";
 import PriceChart from "./PriceChart";
 import { staggerContainer, staggerItem } from "./motion";
 
@@ -188,6 +189,8 @@ export default function PortfolioView(_props: Props) {
       {hasHoldings && <InsuranceValue />}
 
       {hasHoldings && <Diversification />}
+
+      {hasHoldings && <PortfolioHistoryChart />}
 
       {summary && summary.allocation.length > 1 && (
         <div className="allocation">

@@ -20,6 +20,7 @@ import type {
   InsuranceValue,
   ListingsResponse,
   Portfolio,
+  PortfolioHistory,
   Price,
   PriceHistory,
   PushSubscription,
@@ -215,6 +216,16 @@ export async function getDiversification(): Promise<Diversification> {
   // and value buckets by rarity / supertype / set. Server-side, read-only; unpriced
   // cards are excluded from totals + shares (never $0), counted separately.
   return expectJson<Diversification>(await fetch(`${BASE}/collection/diversification`));
+}
+
+export async function getPortfolioHistory(): Promise<PortfolioHistory> {
+  // Reconstructed portfolio market value over time, from append-only price
+  // snapshots. At each past observation the current holdings are valued at the
+  // most recent price recorded at or before that time, using the same
+  // TCGplayer-then-Cardmarket resolution the rest of the app uses. Cards you've
+  // since sold or added aren't reflected in past totals; unpriced holdings are
+  // excluded (never $0). Empty points means no price history yet, not a $0 line.
+  return expectJson<PortfolioHistory>(await fetch(`${BASE}/collection/portfolio/history`));
 }
 
 export async function patchCollectionItem(
