@@ -590,6 +590,9 @@ h1 { font-size: 1.25rem; margin: 4px 0 16px; }
 .price-freshness { margin-top: 16px; }
 .price-freshness > h3 { margin: 0 0 8px; }
 .price-freshness-caveat { margin: 10px 0 0; }
+.acquisition-timeline { margin-top: 16px; }
+.acquisition-timeline > h3 { margin: 0 0 8px; }
+.acquisition-timeline-caveat { margin: 10px 0 0; }
 .freshness-bands { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-direction: column; gap: 10px; }
 .freshness-band { display: flex; flex-direction: column; gap: 6px; }
 .freshness-band-head {

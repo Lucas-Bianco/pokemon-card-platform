@@ -697,6 +697,37 @@ class PriceFreshnessOut(BaseModel):
     caveat: str
 
 
+class AcquisitionPointOut(BaseModel):
+    """One point on the collection-growth timeline. observed_at is a holding's
+    acquired_at; cumulative_cards is total card quantity at/before that time;
+    cumulative_cost_basis sums only holdings with a recorded purchase price."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    observed_at: datetime
+    cumulative_cards: int
+    cumulative_cost_basis: float
+
+
+class AcquisitionTimelineOut(BaseModel):
+    """Collection growth over time — cumulative cards + cost basis at each distinct
+    acquired_at, oldest-first. Distinct from portfolio value-over-time (price
+    driven): this is acquisition-driven. Unpriced acquisitions raise the card line
+    only, never a fabricated $0 cost line; undated holdings are excluded, never a
+    point at time zero; empty = no points, not a point at 0."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    points: list[AcquisitionPointOut]
+    total_holdings: int
+    holdings_with_cost: int
+    holdings_without_cost: int
+    undated_holdings: int
+    total_cards: int
+    total_cost_basis: float
+    caveat: str
+
+
 class GradingUpsideTierOut(BaseModel):
     """One tier of the grading spread (raw / psa9 / psa10), or null when unpriced.
 
@@ -1561,6 +1592,25 @@ def create_app() -> FastAPI:
         holdings are counted separately and excluded from every band (never $0).
         """
         return PriceFreshnessOut.model_validate(CollectionStore(session).price_freshness())
+
+    @app.get("/collection/acquisition-timeline", response_model=AcquisitionTimelineOut)
+    def collection_acquisition_timeline(
+        session: Session = Depends(get_session),
+    ) -> AcquisitionTimelineOut:
+        """Collection growth over time — cumulative card count + cumulative cost
+        basis at each distinct holding acquired_at, oldest-first.
+
+        Distinct from portfolio value-over-time (price driven): this is
+        acquisition-driven — when you *built* the collection. Each holding's
+        quantity raises the card line at its acquired_at; its acquired_price x
+        quantity raises the cost line only when a purchase price was recorded, so
+        unpriced acquisitions never a fabricated $0 cost line. Holdings with no
+        acquired_at are excluded and counted separately, never a point at time zero.
+        Empty collection = no points, not a point at 0.
+        """
+        return AcquisitionTimelineOut.model_validate(
+            CollectionStore(session).acquisition_timeline()
+        )
 
     @app.patch("/collection/{item_id}", response_model=CollectionItemOut)
     def patch_collection_item(

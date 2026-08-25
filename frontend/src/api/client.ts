@@ -9,6 +9,7 @@ import type {
   BinderListResponse,
   BinderNoteRequest,
   BinderReorderRequest,
+  AcquisitionTimeline,
   CardLookupItem,
   CardSearchResult,
   CollectionItem,
@@ -236,6 +237,15 @@ export async function getPriceFreshness(): Promise<PriceFreshness> {
   // separately and excluded from every band, never $0. Descriptive — a stale
   // collection is a prompt to refresh, never a verdict on value.
   return expectJson<PriceFreshness>(await fetch(`${BASE}/collection/price-freshness`));
+}
+
+export async function getAcquisitionTimeline(): Promise<AcquisitionTimeline> {
+  // Collection growth over time — cumulative card count (always populated;
+  // acquired_at defaults to now on add) + cumulative cost basis (only holdings
+  // with a recorded purchase price, never a fabricated $0). Undated holdings are
+  // excluded from the timeline, counted separately. Distinct from portfolio
+  // value-over-time (price-driven): this is acquisition-driven.
+  return expectJson<AcquisitionTimeline>(await fetch(`${BASE}/collection/acquisition-timeline`));
 }
 
 export async function patchCollectionItem(

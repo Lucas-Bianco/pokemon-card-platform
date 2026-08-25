@@ -277,6 +277,47 @@ class PriceFreshness:
     caveat: str
 
 
+@dataclass(frozen=True)
+class AcquisitionPoint:
+    """One point on the collection-growth timeline.
+
+    observed_at is a holding's acquired_at (when it was added to the vault).
+    cumulative_cards is the total card quantity across holdings acquired at or
+    before observed_at. cumulative_cost_basis is the sum of acquired_price x
+    quantity across holdings acquired at/before observed_at that have a recorded
+    purchase price — holdings without a purchase price raise the card count only,
+    never a fabricated $0 cost line.
+    """
+
+    observed_at: datetime
+    cumulative_cards: int
+    cumulative_cost_basis: float
+
+
+@dataclass(frozen=True)
+class AcquisitionTimeline:
+    """The collection's growth over time, reconstructed from each holding's
+    acquired_at (the moment it was added to the vault).
+
+    Distinct from PortfolioHistory (price-driven value-over-time): this is
+    acquisition-driven — when you *built* the collection, not what it was worth.
+    points is one per distinct acquired_at, oldest-first. holdings_without_cost is
+    the count of holdings with no recorded purchase price; they raise the card
+    line but never the cost line (never $0). undated_holdings (acquired_at null)
+    are excluded from the timeline and counted separately — never a fabricated
+    point at "time zero". An empty collection has no points, not a point at 0.
+    """
+
+    points: list[AcquisitionPoint]
+    total_holdings: int
+    holdings_with_cost: int
+    holdings_without_cost: int
+    undated_holdings: int
+    total_cards: int
+    total_cost_basis: float
+    caveat: str
+
+
 _INSURANCE_CAVEAT = (
     "Replacement-value bands from the same proven price snapshot the rest of the app "
     "uses (TCGplayer market reference via pokemontcg.io, or Cardmarket aggregate as "
@@ -310,6 +351,17 @@ _FRESHNESS_CAVEAT = (
     "'we haven't checked recently' — a refresh updates it. Unpriced holdings are "
     "counted separately and excluded from every band, never guessed at $0. This is "
     "descriptive — a stale collection is a prompt to refresh, never a verdict on value."
+)
+
+
+_ACQUISITION_CAVEAT = (
+    "Collection growth reconstructed from each holding's acquired_at — the moment it "
+    "was added to the vault, not its print date. The card line counts every holding; "
+    "the cost line sums only holdings with a recorded purchase price, so unpriced "
+    "acquisitions raise the card line but never a fabricated $0 cost line. Holdings "
+    "with no acquired_at are excluded from the timeline and counted separately, never "
+    "a point at time zero. Cards you've since removed aren't reflected — this is your "
+    "current vault, grown forward."
 )
 
 
@@ -834,6 +886,73 @@ class CollectionStore:
             if max_age is None or age_days < max_age:
                 return label
         return _FRESHNESS_BANDS[-1][0]
+
+    def acquisition_timeline(self) -> AcquisitionTimeline:
+        """The collection's growth over time — cumulative card count + cumulative
+        cost basis at each distinct acquired_at, oldest-first.
+
+        Each holding contributes its ``quantity`` to the card line at its
+        ``acquired_at``; its ``acquired_price * quantity`` contributes to the cost
+        line ONLY when a purchase price was recorded (unpriced acquisitions raise the
+        card line but never a fabricated $0 cost line). Holdings with no
+        ``acquired_at`` (None) are excluded from the timeline and counted in
+        ``undated_holdings`` — never a fabricated point at time zero. An empty
+        collection has no points, not a point at 0. Same-acquired_at holdings
+        collapse to one point whose cumulative is the sum at that time.
+        """
+        rows = self.list_items()
+        total_holdings = len(rows)
+        undated = 0
+        holdings_with_cost = 0
+        holdings_without_cost = 0
+        total_cards = 0
+        total_cost_basis = 0.0
+
+        # (acquired_at -> [quantity, cost_contribution]) accumulated per timestamp.
+        per_time: dict[datetime, list[int]] = {}
+        for row in rows:
+            if row.acquired_at is None:
+                undated += 1
+                total_cards += row.quantity  # undated holdings still count toward the vault
+                continue
+            cost = 0.0
+            if row.acquired_price is not None:
+                cost = (row.acquired_price or 0.0) * row.quantity
+                holdings_with_cost += 1
+            else:
+                holdings_without_cost += 1
+            total_cards += row.quantity
+            total_cost_basis += cost
+            bucket = per_time.setdefault(row.acquired_at, [0, 0.0])
+            bucket[0] += row.quantity
+            bucket[1] += cost
+
+        # Walk distinct acquired_at oldest-first, accumulating cumulatives.
+        cum_cards = 0
+        cum_cost = 0.0
+        points: list[AcquisitionPoint] = []
+        for acquired_at in sorted(per_time.keys()):
+            qty, cost = per_time[acquired_at]
+            cum_cards += qty
+            cum_cost += cost
+            points.append(
+                AcquisitionPoint(
+                    observed_at=acquired_at,
+                    cumulative_cards=cum_cards,
+                    cumulative_cost_basis=cum_cost,
+                )
+            )
+
+        return AcquisitionTimeline(
+            points=points,
+            total_holdings=total_holdings,
+            holdings_with_cost=holdings_with_cost,
+            holdings_without_cost=holdings_without_cost,
+            undated_holdings=undated,
+            total_cards=total_cards,
+            total_cost_basis=total_cost_basis,
+            caveat=_ACQUISITION_CAVEAT,
+        )
 
     def set_cost_basis(
         self,

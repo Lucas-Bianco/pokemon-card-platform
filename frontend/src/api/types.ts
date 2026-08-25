@@ -280,6 +280,34 @@ export interface PriceFreshness {
   caveat: string;
 }
 
+// One point on the collection-growth timeline. observed_at is a holding's
+// acquired_at (when it was added to the vault); cumulative_cards is total card
+// quantity at/before that time; cumulative_cost_basis sums only holdings with a
+// recorded purchase price (unpriced acquisitions raise the card line only, never
+// a fabricated $0). Mirrors AcquisitionPointOut in backend api.py.
+export interface AcquisitionPoint {
+  observed_at: string;
+  cumulative_cards: number;
+  cumulative_cost_basis: number;
+}
+
+// Collection growth over time — cumulative cards + cost basis at each distinct
+// holding acquired_at, oldest-first. Distinct from portfolio value-over-time
+// (price-driven): this is acquisition-driven. holdings_without_cost raise the
+// card line only; undated_holdings are excluded from the timeline, never a point
+// at time zero; empty = no points, not a point at 0. Mirrors
+// AcquisitionTimelineOut in backend api.py.
+export interface AcquisitionTimeline {
+  points: AcquisitionPoint[];
+  total_holdings: number;
+  holdings_with_cost: number;
+  holdings_without_cost: number;
+  undated_holdings: number;
+  total_cards: number;
+  total_cost_basis: number;
+  caveat: string;
+}
+
 export interface Scan {
   id: number;
   status: string;

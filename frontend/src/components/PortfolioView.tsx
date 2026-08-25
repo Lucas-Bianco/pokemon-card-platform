@@ -14,6 +14,7 @@ import InsuranceValue from "./InsuranceValue";
 import Diversification from "./Diversification";
 import PortfolioHistoryChart from "./PortfolioHistoryChart";
 import PriceFreshness from "./PriceFreshness";
+import AcquisitionTimelineChart from "./AcquisitionTimelineChart";
 import PriceChart from "./PriceChart";
 import { staggerContainer, staggerItem } from "./motion";
 
@@ -194,6 +195,8 @@ export default function PortfolioView(_props: Props) {
       {hasHoldings && <PortfolioHistoryChart />}
 
       {hasHoldings && <PriceFreshness />}
+
+      {hasHoldings && <AcquisitionTimelineChart />}
 
       {summary && summary.allocation.length > 1 && (
         <div className="allocation">

@@ -144,6 +144,23 @@ function stubFetch(body: Portfolio, history?: PriceHistory) {
         }),
       };
     }
+    if (String(url).includes("/collection/acquisition-timeline")) {
+      // Honest empty acquisition timeline — no holdings to grow.
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          points: [],
+          total_holdings: 0,
+          holdings_with_cost: 0,
+          holdings_without_cost: 0,
+          undated_holdings: 0,
+          total_cards: 0,
+          total_cost_basis: 0,
+          caveat: "",
+        }),
+      };
+    }
     if (String(url).includes("/prices/history")) {
       return {
         ok: true,
