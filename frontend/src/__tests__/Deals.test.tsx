@@ -228,4 +228,46 @@ describe("Deals", () => {
     expect(onOpenCard).toHaveBeenCalledTimes(1);
     expect(onOpenCard).toHaveBeenCalledWith({ cardId: "sv3-215", variant: undefined });
   });
+
+  it("'Show only deals' collapses the feed to the RIP/FLIP cards, hiding non-deal context cards", async () => {
+    const deal = baseDeal({ listing_id: "L1", title: "Real Deal" });
+    const notDeal = baseDeal({
+      listing_id: "L2",
+      title: "Context Listing",
+      is_rip: false,
+      is_flip: false,
+    });
+    stubFetch({ feed: baseResponse({ deals: [deal, notDeal] }) });
+
+    const { container } = render(<Deals />);
+    await waitFor(() => {
+      expect(container.querySelectorAll(".deal-card").length).toBe(2);
+    });
+    expect(container.textContent ?? "").toMatch(/2 listings/i);
+    expect(container.textContent ?? "").toMatch(/1 deal/i);
+    expect(container.textContent ?? "").toContain("Context Listing");
+
+    const filter = container.querySelector(".deals-filter input[type=checkbox]") as HTMLInputElement;
+    expect(filter).not.toBeNull();
+    fireEvent.click(filter);
+
+    await waitFor(() => {
+      expect(container.querySelectorAll(".deal-card").length).toBe(1);
+    });
+    expect(container.textContent ?? "").toContain("Real Deal");
+    expect(container.textContent ?? "").not.toContain("Context Listing");
+  });
+
+  it("hides the 'Show only deals' filter when no listing is a deal", async () => {
+    const notDeal = baseDeal({ listing_id: "L2", title: "Context Listing", is_rip: false, is_flip: false });
+    stubFetch({ feed: baseResponse({ deals: [notDeal] }) });
+
+    const { container } = render(<Deals />);
+    await waitFor(() => {
+      expect(container.querySelector(".deal-card")).not.toBeNull();
+    });
+    expect(container.textContent ?? "").toMatch(/1 listing/i);
+    expect(container.textContent ?? "").toMatch(/0 deals/i);
+    expect(container.querySelector(".deals-filter")).toBeNull();
+  });
 });

@@ -209,6 +209,14 @@ function DealsBody({
   onOpenCard?: (card: { cardId: string; variant?: string }) => void;
 }) {
   const reduced = useReducedMotion();
+  // "Show only deals" — collapses the feed to just the RIP/FLIP cards, the
+  // thing a sniper scanning the ranked list wants to act on. Default off so
+  // the full ranked feed (with its "not a deal" context cards) still renders.
+  // Hooks must run before the early returns below.
+  const [dealsOnly, setDealsOnly] = useState(false);
+  useEffect(() => {
+    setDealsOnly(false);
+  }, [data]);
   if (loading) {
     return <div className="skeleton skeleton-block" aria-label="Loading deals" />;
   }
@@ -240,23 +248,46 @@ function DealsBody({
     return <p className="muted">No deals right now for this card.</p>;
   }
 
+  const dealsCount = data.deals.filter((d) => d.is_rip || d.is_flip).length;
+  const shown = dealsOnly ? data.deals.filter((d) => d.is_rip || d.is_flip) : data.deals;
+
   return (
-    <motion.ul
-      className="deal-list"
-      variants={staggerContainer}
-      initial={reduced ? "show" : "hidden"}
-      animate="show"
-    >
-      {data.deals.map((d) => (
-        <DealCard
-          key={d.listing_id}
-          deal={d}
-          cardId={data.card_id}
-          variant={data.variant}
-          onOpenCard={onOpenCard}
-        />
-      ))}
-    </motion.ul>
+    <>
+      {/* At-a-glance feed summary + a "Show only deals" focus filter. Honest
+          counts only (never a summed $); the filter is hidden when nothing is
+          a deal, so you never see a toggle that empties the list. */}
+      <div className="deals-summary muted small">
+        {data.deals.length} listing{data.deals.length === 1 ? "" : "s"} · {dealsCount} deal
+        {dealsCount === 1 ? "" : "s"}
+        {dealsCount > 0 && (
+          <label className="deals-filter">
+            <input
+              type="checkbox"
+              checked={dealsOnly}
+              onChange={(e) => setDealsOnly(e.target.checked)}
+            />
+            <span>Show only deals</span>
+          </label>
+        )}
+      </div>
+
+      <motion.ul
+        className="deal-list"
+        variants={staggerContainer}
+        initial={reduced ? "show" : "hidden"}
+        animate="show"
+      >
+        {shown.map((d) => (
+          <DealCard
+            key={d.listing_id}
+            deal={d}
+            cardId={data.card_id}
+            variant={data.variant}
+            onOpenCard={onOpenCard}
+          />
+        ))}
+      </motion.ul>
+    </>
   );
 }
 

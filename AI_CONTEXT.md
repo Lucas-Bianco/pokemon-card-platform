@@ -1654,4 +1654,15 @@ Fifth Phase B feature polish. The key-mode Sealed tab (`SealedDeals`, the flip-e
 
 New CSS `.deals-summary` / `.deals-filter` (accent checkbox) appended near `.deal-list`. The 6 existing `SealedDeals.test.tsx` tests pass unchanged (default off → full feed renders); added **2 new tests** pinning the filter (toggling drops the context listing and keeps the flip; the summary reads "2 listings · 1 flip"; a no-flips feed shows "0 flips" and no filter toggle). Full suite **397 frontend green**, tsc + build clean. 105-scan baseline untouched (frontend-only; no backend, no data/ writes).
 
-**Phase B remaining:** Deals — the last key surface.
+## Phase B — Deals polish: feed summary + "Show only deals" filter (shipped 2026-08-28)
+
+Sixth and final Phase B feature polish. The key-mode Deals tab (the card sniper) is structurally parallel to Sealed — a ranked feed mixing real RIP/FLIP cards with "not a deal at this price" context cards. Applied the same summary + focus-filter polish so the action-relevant subset is one tap away:
+
+  - `<div className="deals-summary">` above the feed reads `N listing(s) · M deal(s)` where a "deal" is `is_rip || is_flip` — honest counts only, never a summed $ (the raw-market + PSA-10-comp rows already carry the per-card economics; summing deals would imply a portfolio value the feed is not).
+  - **"Show only deals"** `<label className="deals-filter">` checkbox, inline in the summary, **gated on `dealsCount > 0`** — when nothing is a deal, the filter is hidden (you never see a toggle that would empty the list). `dealsOnly` state **default off** so the full ranked feed (with context cards) still renders; toggling on filters `data.deals.filter((d) => d.is_rip || d.is_flip)`.
+  - Reset on new results: `useEffect(() => setDealsOnly(false), [data])` — each fetch produces a fresh `DealsResponse` object, so a stale "deals only" never carries over from the previous card/feed. The hooks are placed **before DealsBody's early returns** (Rules of Hooks).
+  - Honest: a pure client-side filter of already-fetched data — no new price logic, no fabricated values. The rip/flip rows, em-dash null edges, RIP/FLIP chips, per-card "view" link, and the mislabel-noise caveat are all unchanged.
+
+Reuses the existing `.deals-summary` / `.deals-filter` CSS (added in the Sealed commit) — no new CSS. The 7 existing `Deals.test.tsx` tests pass unchanged (default off → full feed renders); added **2 new tests** pinning the filter (toggling keeps the real deal and drops the context listing; the summary reads "2 listings · 1 deal"; a no-deals feed shows "0 deals" and no filter toggle). Full suite **399 frontend green**, tsc + build clean. 105-scan baseline untouched (frontend-only; no backend, no data/ writes).
+
+**Phase B complete** — all six Key-mode surfaces polished (Vault, Scan, Binder, Sets, Sealed, Deals), each its own tested+committed change. Remaining roadmap: #57 F (publishable-app overhaul) and #58 G (private repo + Pages relocation), both pending user decisions; future row 17 multi-TCG.
