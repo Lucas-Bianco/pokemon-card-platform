@@ -181,19 +181,45 @@ export default function Binder() {
   if (list.length === 0) {
     return (
       <section className="binder">
-        <p className="muted">
-          Your binder is empty. Add cards from any card detail (the “Add to binder” button)
-          to curate a shareable page — each price shown is a proven eBay sale, never a
-          fabricated figure.
+        <p className="muted">Your binder is empty.</p>
+        <p className="muted small binder-lede">
+          A binder is a curated, ordered subset of your vault you show off — each price
+          shown is a proven eBay sale, never a fabricated figure.
         </p>
+        <ol className="binder-howto">
+          <li>Scan a card, or open any card already in your vault.</li>
+          <li>
+            Tap <strong>Add to binder</strong> on that card to pin it here, in the order you
+            want it shown.
+          </li>
+          <li>
+            <strong>Export binder</strong> or <strong>Print binder</strong> above to share it
+            — the export is a standalone HTML file you host or attach anywhere.
+          </li>
+        </ol>
       </section>
     );
   }
 
+  // Proven-coverage summary: how many of the displayed slots are actually
+  // backed by a proven eBay sale. Honest counts only — never a summed $ value
+  // (summing disparate single sales would imply a portfolio value the binder
+  // is not). A slot counts as "proven" when proven_sale is a real object; the
+  // unavailable (no eBay key) and empty (no sale yet) cases do not.
+  const provenCount = list.filter((i) => i.proven_sale !== null).length;
+  const provenLabel =
+    provenCount === 0
+      ? "none proven yet"
+      : provenCount === list.length
+        ? "all proven"
+        : `${provenCount} of ${list.length} proven`;
+
   return (
     <section className="binder">
       <div className="binder-toolbar">
-        <span className="muted small">{list.length} card(s)</span>
+        <span className="muted small binder-count">
+          {list.length} card{list.length === 1 ? "" : "s"} · {provenLabel}
+        </span>
         <button className="link binder-export" onClick={() => void handleExport()} disabled={busy}>
           Export binder
         </button>

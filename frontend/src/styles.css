@@ -3050,6 +3050,15 @@ body::before {
   margin-bottom: var(--sp-2);
 }
 .binder-toolbar .muted.small { margin-right: auto; }
+.binder-count { font-weight: 600; color: var(--fg-dim); }
+.binder-lede { margin: var(--sp-1) 0 var(--sp-3); max-width: 60ch; }
+.binder-howto {
+  margin: 0 0 var(--sp-2); padding: var(--sp-3) var(--sp-3) var(--sp-3) var(--sp-5);
+  max-width: 60ch; color: var(--fg-dim);
+  display: flex; flex-direction: column; gap: var(--sp-2);
+}
+.binder-howto li { line-height: 1.45; }
+.binder-howto strong { color: var(--fg); font-weight: 600; }
 .binder-note-hint { margin: var(--sp-1) 0 var(--sp-4); max-width: 60ch; }
 .binder-grid {
   display: grid; gap: var(--sp-4);

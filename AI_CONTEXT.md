@@ -1611,4 +1611,25 @@ All eight panels still mount, the `salePrefill` flow is unchanged, and the exist
 
 **Tests** — no new test file (a reorder of existing mounts; the contract is unchanged so the existing 9 `PortfolioView.test.tsx` tests pin it). Full suite **393 frontend green**, tsc clean, build clean (509.51 kB JS). 105-scan baseline untouched (frontend-only; no backend, no data/ writes). Commit `d639cb0`, pushed `91db169..d639cb0` to origin/main.
 
-**Phase B remaining:** Scan, Binder, Sets, Sealed, Deals — each its own tested+committed change.
+## Phase B — Scan polish: surface the confirm loop, group grading analysis (shipped 2026-08-28)
+
+Second Phase B feature polish. The key-mode Scan result buried the core collector loop — *confirm this is the right card + record what you paid* — under five deep analysis panels (GradingUpside, CenteringPanel, GradingStudio, TradeUp, AuthenticityPanel) plus the OCR note. Reordered for information hierarchy — **the act-on-this-scan loop leads**:
+
+  status → card + price + ProofOfSales → **What you paid** input → **confirm / pick** action → **Grading & analysis** (collapsible) → record-a-grade → scan another
+
+  - The "What you paid" `<label className="paid">` input + the confirm/pick actions now sit right under the card identity + value, so a scan-to-add isn't buried under the grading wall. `onPick`/`onConfirm` still both receive `acquiredPrice`.
+  - **Grading & analysis** `<details className="result-section result-analysis" open>` with a styled `<summary>Grading &amp; analysis</summary>` groups the five deep panels + the OCR note. Card-gated (`card &&`); `CenteringPanel` still needs `result.centering`; `AuthenticityPanel` still needs `scanId !== null`. Default `open` keeps every panel mounted so the honest-price invariants and existing assertions are unchanged.
+  - The "Record this card's grade" form stays **outside** the collapsible (the project wants these labelled-data contributions visible), now after the analysis. Rescan stays at the bottom.
+
+All panels still mount (the `<details>` defaults open), the grading-label POST/GET flow and ProofOfSales are unchanged, and the existing `ScanResultGrading.test.tsx` assertions (query by class/text, never order) all pass. New CSS `.result-section` / `.result-analysis > summary` (same ▾/▸ glyph pattern as `.vault-analytics`) appended after `.actions .primary`, before `.candidates`. Full suite **393 frontend green** (a re-run flaky Toast timer test passes in isolation), tsc + build clean (509.64 kB JS). 105-scan baseline untouched (frontend-only). Commit `b9638e0`, pushed `d639cb0..b9638e0` to origin/main.
+
+## Phase B — Binder polish: proven-coverage summary + first-run orientation (shipped 2026-08-28)
+
+Third Phase B feature polish. The Binder is a "show off with proof" surface, not a cluttered analytics wall — its actions are correctly per-slot, so the polish is *informational*, not a reorder. Two honest additions:
+
+  - **Proven-coverage summary** in the toolbar: the count line now reads `N card(s) · {provenLabel}` where `provenLabel` is `"none proven yet"` / `"all proven"` / `"M of N proven"` — i.e. how many of the displayed slots are actually backed by a proven eBay sale. **Honest counts only, never a summed $ value**: summing disparate single sales would imply a portfolio value the binder is not. A slot counts as proven only when `proven_sale` is a real object; the unavailable (no eBay key) and empty (no sale yet) cases do not. `provenCount = list.filter((i) => i.proven_sale !== null).length`.
+  - **First-run orientation** in the empty state: the one-sentence empty state became a lead line ("Your binder is empty.") + a short honest lede (what a binder *is* — a curated ordered subset you show off, each price a proven eBay sale) + a 3-step `<ol className="binder-howto">` (scan/open a card → Add to binder → Export/Print to share). Gives a first-run user a clear path instead of one sentence. The "Your binder is empty" text and the "proven eBay sale" framing are preserved verbatim so the existing empty-state assertions still pass.
+
+New CSS `.binder-count` (dim, semibold) / `.binder-lede` / `.binder-howto` (ordered list, dim, gap, bold labels) appended near `.binder-toolbar`. All 8 `Binder.test.tsx` tests pass unchanged (they query by class/text, never order). Full suite **393 frontend green**, tsc + build clean. 105-scan baseline untouched (frontend-only; no backend, no data/ writes).
+
+**Phase B remaining:** Sets, Sealed, Deals — each its own tested+committed change.
