@@ -285,6 +285,21 @@ h1 { font-size: 1.25rem; margin: 4px 0 16px; }
 }
 .actions .primary { background: var(--ok); color: #04210c; border-color: transparent; font-weight: 600; }
 
+/* ScanResult section grouping (Phase B polish) — the core confirm loop leads,
+   the deep grading & analysis panels follow in a collapsible section. */
+.result-section { margin-top: var(--sp-4, 20px); }
+.result-analysis > summary {
+  cursor: pointer;
+  font-size: 0.95rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fg-dim);
+  list-style: none;
+}
+.result-analysis > summary::-webkit-details-marker { display: none; }
+.result-analysis > summary::before { content: "▾ "; color: var(--fg-dim); }
+.result-analysis:not([open]) > summary::before { content: "▸ "; }
+
 .candidates { list-style: none; margin: 12px 0 8px; padding: 0; display: grid; gap: 8px; }
 .candidates button {
   width: 100%;

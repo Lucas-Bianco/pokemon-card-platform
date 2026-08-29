@@ -154,41 +154,11 @@ export default function ScanResult({
         </div>
       )}
 
-      {/* The grading spread only makes sense once a card is identified — it is
-          keyed on card_id. Hidden for not_found, where there is no card to price. */}
-      {card && <GradingUpside cardId={card.id} variant={variant} />}
-
-      {/* Absent whenever the border could not be measured. There is nothing to say in
-          that case, so the panel does not appear at all rather than as an empty box. */}
-      {result.centering && <CenteringPanel centering={result.centering} />}
-
-      {/* A pre-submission self-assessment: the measured centering ceiling plus the
-          user's own corner/edge/surface sub-score estimates -> an estimated grade
-          band. A calculator of the user's inputs, not a prediction from the image.
-          Card-gated like GradingUpside/CenteringPanel — no card, no estimate. */}
-      {card && <GradingStudio centering={result.centering} grader="PSA" />}
-
-      {/* Row 19 — trade-up / sell-now simulator. A scan with a measured
-          centering ceiling pre-fills the cap box, so grades the card can't
-          reach are ruled out from the start. Card-gated like the panels above. */}
-      {card && (
-        <TradeUp
-          cardId={card.id}
-          variant={variant}
-          initialCenteringCap={result.centering?.psa_cap ?? null}
-        />
-      )}
-
-      {/* The honest counterfeit tool: the one measurable auto-signal (printed
-          number vs catalog) + a user-driven physical checklist. A guide, never a
-          verdict — see AuthenticityPanel. Card-gated like GradingStudio: without
-          a recognized card there is no catalog number to cross-check. */}
-      {card && scanId !== null && <AuthenticityPanel scanId={scanId} />}
-
-      {result.collector_number_read && (
-        <p className="ocr-note">Read card number: {result.collector_number_read}</p>
-      )}
-
+      {/* The core collector loop surfaces first: confirm this is the right card
+          (and what you paid) right under the identity + value, so a scan-to-add
+          isn't buried under the grading analysis below. The paid input pairs
+          with the confirm/pick action — onPick/onConfirm both receive
+          acquiredPrice. */}
       {(status === "confident" || status === "ambiguous") && (
         <label className="paid">
           <span>What you paid (optional)</span>
@@ -204,6 +174,73 @@ export default function ScanResult({
         </label>
       )}
 
+      {status === "confident" && (
+        <div className="actions">
+          <button className="primary" onClick={() => onConfirm(acquiredPrice)}>
+            Correct — add to collection
+          </button>
+          <button onClick={onReject}>Wrong card</button>
+        </div>
+      )}
+
+      {status === "ambiguous" && (
+        <CandidatePicker
+          candidates={result.candidates}
+          onPick={(cardId) => onPick(cardId, acquiredPrice)}
+          onReject={onReject}
+        />
+      )}
+
+      {status === "not_found" && (
+        <p className="muted">
+          No card detected. Try a darker background, and leave a margin around the card.
+        </p>
+      )}
+
+      {/* Deep grading & analysis — the honest grading upside, centering,
+          Grading Studio, trade-up simulator, authenticity guide, and the OCR
+          read. Collapsible so the confirm above stays the primary action; default
+          open so the rich analysis is still visible without an extra tap.
+          Card-gated (no card → nothing to analyse); CenteringPanel also needs
+          result.centering; AuthenticityPanel needs a logged scanId. */}
+      {card && (
+        <details className="result-section result-analysis" open>
+          <summary>Grading &amp; analysis</summary>
+          {/* The grading spread only makes sense once a card is identified — it is
+              keyed on card_id. Hidden for not_found, where there is no card to price. */}
+          <GradingUpside cardId={card.id} variant={variant} />
+          {/* Absent whenever the border could not be measured. There is nothing to
+              say in that case, so the panel does not appear at all rather than as
+              an empty box. */}
+          {result.centering && <CenteringPanel centering={result.centering} />}
+          {/* A pre-submission self-assessment: the measured centering ceiling plus
+              the user's own corner/edge/surface sub-score estimates -> an estimated
+              grade band. A calculator of the user's inputs, not a prediction from
+              the image. Card-gated like GradingUpside/CenteringPanel — no card, no
+              estimate. */}
+          <GradingStudio centering={result.centering} grader="PSA" />
+          {/* Row 19 — trade-up / sell-now simulator. A scan with a measured
+              centering ceiling pre-fills the cap box, so grades the card can't
+              reach are ruled out from the start. Card-gated like the panels above. */}
+          <TradeUp
+            cardId={card.id}
+            variant={variant}
+            initialCenteringCap={result.centering?.psa_cap ?? null}
+          />
+          {/* The honest counterfeit tool: the one measurable auto-signal (printed
+              number vs catalog) + a user-driven physical checklist. A guide, never
+              a verdict — see AuthenticityPanel. Card-gated like GradingStudio:
+              without a recognized card there is no catalog number to cross-check. */}
+          {scanId !== null && <AuthenticityPanel scanId={scanId} />}
+          {result.collector_number_read && (
+            <p className="ocr-note">Read card number: {result.collector_number_read}</p>
+          )}
+        </details>
+      )}
+
+      {/* Record a grade — the project's only labelled-data contribution. A deeper
+          action than the confirm above, so it sits after the analysis; kept
+          outside the collapsible so it stays visible (the project wants these). */}
       {card && scanId !== null && (
         <div className="grading-label-section">
           {labelError && <p className="error">{labelError}</p>}
@@ -272,29 +309,6 @@ export default function ScanResult({
             </form>
           )}
         </div>
-      )}
-
-      {status === "confident" && (
-        <div className="actions">
-          <button className="primary" onClick={() => onConfirm(acquiredPrice)}>
-            Correct — add to collection
-          </button>
-          <button onClick={onReject}>Wrong card</button>
-        </div>
-      )}
-
-      {status === "ambiguous" && (
-        <CandidatePicker
-          candidates={result.candidates}
-          onPick={(cardId) => onPick(cardId, acquiredPrice)}
-          onReject={onReject}
-        />
-      )}
-
-      {status === "not_found" && (
-        <p className="muted">
-          No card detected. Try a darker background, and leave a margin around the card.
-        </p>
       )}
 
       <button className="rescan" onClick={onRescan}>
