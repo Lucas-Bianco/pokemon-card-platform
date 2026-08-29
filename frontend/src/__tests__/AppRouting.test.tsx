@@ -1,4 +1,4 @@
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import App from "../App";
@@ -200,6 +200,14 @@ function stubFetch() {
 }
 
 afterEach(() => vi.unstubAllGlobals());
+
+// These tests document the FULL-mode routing contract (Home landing, the full
+// 15-tab nav incl. Browse). The app's default is now the curated "key" mode, so
+// each test opts into full mode explicitly rather than relying on the default —
+// key-mode behaviour is covered separately in AppMode.test.tsx.
+beforeEach(() => {
+  localStorage.setItem("cardplatform_app_mode", "full");
+});
 
 /** Boot the app at a URL, the way a reload or a home-screen shortcut would. */
 function renderAt(url: string) {

@@ -49,6 +49,22 @@ const TAB_VIEWS: readonly TabView[] = [
   "more",
 ];
 
+// The curated "key" mode nav: the six core collector-loop features plus More
+// (which holds every other surface). Order is the collector's loop — capture
+// (Scan), own (Vault), show off (Binder), complete (Sets), sealed (Sealed),
+// deal-hunt (Deals), then settings + everything-else (More). Key mode still
+// renders every view; a non-key view reached via the command palette or a
+// deep link is shown with the More tab highlighted, never hidden.
+export const KEY_TAB_VIEWS: readonly TabView[] = [
+  "scan",
+  "vault",
+  "binder",
+  "sets",
+  "sealed",
+  "deals",
+  "more",
+];
+
 // `?view=` spellings that are not the canonical tab id. The manifest's
 // Portfolio shortcut points at `?view=portfolio` while the tab is called
 // "vault" internally — dropping this alias would land every already-installed

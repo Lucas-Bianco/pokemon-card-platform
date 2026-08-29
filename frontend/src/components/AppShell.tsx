@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence } from "framer-motion";
 
 import { useIsDesktop } from "../lib/useIsDesktop";
 import { useRoute } from "../lib/useRoute";
-import type { TabView } from "../lib/route";
+import { KEY_TAB_VIEWS, type TabView } from "../lib/route";
+import type { AppMode } from "../lib/appMode";
 import { getUnreadCount } from "../api/client";
 import type { RecognizeResponse } from "../api/types";
 import AlertsFeed from "./AlertsFeed";
@@ -79,6 +80,20 @@ export interface ScanFlow {
 
 interface Props {
   scan: ScanFlow;
+  appMode: AppMode;
+  onAppModeChange: (mode: AppMode) => void;
+}
+
+// A single nav entry: which tab it opens, its label, its glyph, and whether it
+// carries the unread-alert badge. The nav is now config-driven (one array for
+// full mode, the key subset for key mode) so the bottom-nav and the desktop
+// sidebar render from the same source and the do-not-break "exactly one button
+// per label" invariant holds in both modes — only one nav is ever mounted.
+export interface NavItem {
+  view: TabView;
+  label: string;
+  glyph: React.ReactNode;
+  badge?: "unread";
 }
 
 const TAB_TITLES: Record<TabView, string> = {
@@ -105,7 +120,7 @@ const TAB_TITLES: Record<TabView, string> = {
 // in-browser header toggle did not scale beyond two tabs. A slim header carries
 // the active title. CardDetail renders as a transient detail view over the
 // current tab; back returns to it.
-export default function AppShell({ scan }: Props) {
+export default function AppShell({ scan, appMode, onAppModeChange }: Props) {
   const { toast } = useToast();
   // The tab, the open set and the open card live in the URL rather than in
   // component state, so a reload lands back where the user was, a link can
@@ -143,6 +158,32 @@ export default function AppShell({ scan }: Props) {
   // failed count is honest zero (no fake badge), not an error.
   useEffect(() => {
     refreshUnread();
+  }, []);
+
+  // Key-mode landing: a fresh load with no `?view=` lands on Scan, not Home —
+  // Home/Dashboard is a non-key surface tucked under More in key mode, so the
+  // curated first screen is the collector's entry point (capture a card). Only
+  // the bare no-view landing redirects; an explicit `?view=home` (or any non-key
+  // view reached via the command palette) still renders that surface, just with
+  // the More tab highlighted — non-key surfaces stay reachable, never hidden.
+  //
+  // The raw initial URL is captured during render (before effects), because the
+  // useRoute mount effect canonicalises `?view=home` → "" (home omits the view
+  // param) before this effect runs — reading location.search here would make an
+  // explicit home deep-link look identical to a bare "/" and wrongly redirect it.
+  const initialSearch = useRef<string | null>(null);
+  if (initialSearch.current === null) initialSearch.current = window.location.search;
+  // Mount-only: a later toggle to key while sitting on Home leaves you there
+  // (More highlights), so toggling mode never forces a navigation.
+  useEffect(() => {
+    if (
+      appMode === "key" &&
+      view === "home" &&
+      !/[?&]view=/.test(initialSearch.current ?? "")
+    ) {
+      navigate({ view: "scan", set: null, card: null }, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Selecting a tab clears both overlays, exactly as the previous state-based
@@ -211,6 +252,53 @@ export default function AppShell({ scan }: Props) {
   }, [selectTab]);
 
   const title = selectedCard ? "Card" : selectedSet ? "Sets" : TAB_TITLES[view];
+
+  // The nav is config-driven so the bottom-nav and the desktop sidebar render
+  // from one source. Full mode shows every tab in the existing order; key mode
+  // shows the curated seven (KEY_TAB_VIEWS) in the collector-loop order. The
+  // glyph elements are rebuilt only when the mode changes.
+  const navItems = useMemo<NavItem[]>(
+    () => {
+      const full: NavItem[] = [
+        { view: "home", label: "Home", glyph: <HomeGlyph /> },
+        { view: "scan", label: "Scan", glyph: <ScanGlyph /> },
+        { view: "vault", label: "Vault", glyph: <VaultGlyph /> },
+        { view: "binder", label: "Binder", glyph: <BinderGlyph /> },
+        { view: "wants", label: "Wants", glyph: <WantsGlyph /> },
+        { view: "alerts", label: "Alerts", glyph: <BellGlyph />, badge: "unread" },
+        { view: "deals", label: "Deals", glyph: <TagGlyph /> },
+        { view: "prices", label: "Prices", glyph: <PriceGlyph /> },
+        { view: "sealed", label: "Sealed", glyph: <BoxGlyph /> },
+        { view: "catalog", label: "Catalog", glyph: <CatalogGlyph /> },
+        { view: "ledger", label: "Ledger", glyph: <LedgerGlyph /> },
+        { view: "browse", label: "Browse", glyph: <SearchGlyph /> },
+        { view: "sets", label: "Sets", glyph: <SetsGlyph /> },
+        { view: "shop", label: "Shop", glyph: <ShopGlyph /> },
+        { view: "more", label: "More", glyph: <MoreGlyph /> },
+      ];
+      if (appMode === "key") {
+        return KEY_TAB_VIEWS.map(
+          (v) => full.find((n) => n.view === v) as NavItem,
+        );
+      }
+      return full;
+    },
+    [appMode],
+  );
+
+  // A tab is active when its view is showing and no card overlay is open. In
+  // key mode, every non-key surface lives under More, so More stays highlighted
+  // while one of them is open — the surface still renders, it is just not in the
+  // curated nav. A card overlay over any view highlights nothing (Back is the
+  // way out, not a tab).
+  function isItemActive(item: NavItem): boolean {
+    if (selectedCard) return false;
+    if (view === item.view) return true;
+    if (appMode === "key" && item.view === "more" && !KEY_TAB_VIEWS.includes(view)) {
+      return true;
+    }
+    return false;
+  }
 
   return (
     <main className="app app-shell">
@@ -309,7 +397,7 @@ export default function AppShell({ scan }: Props) {
             </PageTransition>
           ) : (
             <PageTransition id="more">
-              <More />
+              <More appMode={appMode} onAppModeChange={onAppModeChange} />
             </PageTransition>
           )}
         </AnimatePresence>
@@ -338,55 +426,24 @@ export default function AppShell({ scan }: Props) {
       />
 
       {isDesktop ? (
-        <DesktopNav view={view} selectedCard={!!selectedCard} unread={unread} onSelect={selectTab} />
+        <DesktopNav
+          items={navItems}
+          isActive={isItemActive}
+          unread={unread}
+          onSelect={selectTab}
+        />
       ) : (
         <nav className="bottom-nav" aria-label="Primary">
-          <TabButton label="Home" active={view === "home" && !selectedCard} onClick={() => selectTab("home")} glyph={<HomeGlyph />} />
-          <TabButton label="Scan" active={view === "scan" && !selectedCard} onClick={() => selectTab("scan")} glyph={<ScanGlyph />} />
-          <TabButton label="Vault" active={view === "vault" && !selectedCard} onClick={() => selectTab("vault")} glyph={<VaultGlyph />} />
-          <TabButton label="Binder" active={view === "binder" && !selectedCard} onClick={() => selectTab("binder")} glyph={<BinderGlyph />} />
-          <TabButton label="Wants" active={view === "wants" && !selectedCard} onClick={() => selectTab("wants")} glyph={<WantsGlyph />} />
-          <TabButton
-            label="Alerts"
-            active={view === "alerts" && !selectedCard}
-            onClick={() => selectTab("alerts")}
-            glyph={<BellGlyph />}
-            badge={unread}
-          />
-          <TabButton
-            label="Deals"
-            active={view === "deals" && !selectedCard}
-            onClick={() => selectTab("deals")}
-            glyph={<TagGlyph />}
-          />
-          <TabButton
-            label="Prices"
-            active={view === "prices" && !selectedCard}
-            onClick={() => selectTab("prices")}
-            glyph={<PriceGlyph />}
-          />
-          <TabButton
-            label="Sealed"
-            active={view === "sealed" && !selectedCard}
-            onClick={() => selectTab("sealed")}
-            glyph={<BoxGlyph />}
-          />
-          <TabButton
-            label="Catalog"
-            active={view === "catalog" && !selectedCard}
-            onClick={() => selectTab("catalog")}
-            glyph={<CatalogGlyph />}
-          />
-          <TabButton
-            label="Ledger"
-            active={view === "ledger" && !selectedCard}
-            onClick={() => selectTab("ledger")}
-            glyph={<LedgerGlyph />}
-          />
-          <TabButton label="Browse" active={view === "browse" && !selectedCard} onClick={() => selectTab("browse")} glyph={<SearchGlyph />} />
-          <TabButton label="Sets" active={view === "sets" && !selectedCard} onClick={() => selectTab("sets")} glyph={<SetsGlyph />} />
-          <TabButton label="Shop" active={view === "shop" && !selectedCard} onClick={() => selectTab("shop")} glyph={<ShopGlyph />} />
-          <TabButton label="More" active={view === "more" && !selectedCard} onClick={() => selectTab("more")} glyph={<MoreGlyph />} />
+          {navItems.map((item) => (
+            <TabButton
+              key={item.view}
+              label={item.label}
+              active={isItemActive(item)}
+              onClick={() => selectTab(item.view)}
+              glyph={item.glyph}
+              badge={item.badge === "unread" ? unread : undefined}
+            />
+          ))}
         </nav>
       )}
     </main>
@@ -394,13 +451,13 @@ export default function AppShell({ scan }: Props) {
 }
 
 function DesktopNav({
-  view,
-  selectedCard,
+  items,
+  isActive,
   unread,
   onSelect,
 }: {
-  view: TabView;
-  selectedCard: boolean;
+  items: NavItem[];
+  isActive: (item: NavItem) => boolean;
   unread: number;
   onSelect: (tab: TabView) => void;
 }) {
@@ -411,21 +468,16 @@ function DesktopNav({
         <span className="app-sidebar-title">Card Scan</span>
       </div>
       <nav className="app-sidebar-nav">
-        <TabButton label="Home" active={view === "home" && !selectedCard} onClick={() => onSelect("home")} glyph={<HomeGlyph />} />
-        <TabButton label="Scan" active={view === "scan" && !selectedCard} onClick={() => onSelect("scan")} glyph={<ScanGlyph />} />
-        <TabButton label="Vault" active={view === "vault" && !selectedCard} onClick={() => onSelect("vault")} glyph={<VaultGlyph />} />
-        <TabButton label="Binder" active={view === "binder" && !selectedCard} onClick={() => onSelect("binder")} glyph={<BinderGlyph />} />
-        <TabButton label="Wants" active={view === "wants" && !selectedCard} onClick={() => onSelect("wants")} glyph={<WantsGlyph />} />
-        <TabButton label="Alerts" active={view === "alerts" && !selectedCard} onClick={() => onSelect("alerts")} glyph={<BellGlyph />} badge={unread} />
-        <TabButton label="Deals" active={view === "deals" && !selectedCard} onClick={() => onSelect("deals")} glyph={<TagGlyph />} />
-        <TabButton label="Prices" active={view === "prices" && !selectedCard} onClick={() => onSelect("prices")} glyph={<PriceGlyph />} />
-        <TabButton label="Sealed" active={view === "sealed" && !selectedCard} onClick={() => onSelect("sealed")} glyph={<BoxGlyph />} />
-        <TabButton label="Catalog" active={view === "catalog" && !selectedCard} onClick={() => onSelect("catalog")} glyph={<CatalogGlyph />} />
-        <TabButton label="Ledger" active={view === "ledger" && !selectedCard} onClick={() => onSelect("ledger")} glyph={<LedgerGlyph />} />
-        <TabButton label="Browse" active={view === "browse" && !selectedCard} onClick={() => onSelect("browse")} glyph={<SearchGlyph />} />
-        <TabButton label="Sets" active={view === "sets" && !selectedCard} onClick={() => onSelect("sets")} glyph={<SetsGlyph />} />
-        <TabButton label="Shop" active={view === "shop" && !selectedCard} onClick={() => onSelect("shop")} glyph={<ShopGlyph />} />
-        <TabButton label="More" active={view === "more" && !selectedCard} onClick={() => onSelect("more")} glyph={<MoreGlyph />} />
+        {items.map((item) => (
+          <TabButton
+            key={item.view}
+            label={item.label}
+            active={isActive(item)}
+            onClick={() => onSelect(item.view)}
+            glyph={item.glyph}
+            badge={item.badge === "unread" ? unread : undefined}
+          />
+        ))}
       </nav>
     </aside>
   );

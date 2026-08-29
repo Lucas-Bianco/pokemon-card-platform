@@ -2,6 +2,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, waitFor } from "@testing-library/react";
 
 import More from "../components/More";
+import type { AppMode } from "../lib/appMode";
+
+// More now takes the app mode + setter (the App mode toggle lives at the top of
+// the pane). These push-channel tests don't exercise the toggle, so they pass a
+// no-op setter and the default 'key' mode — the channel cards render identically
+// regardless of mode.
+function renderMore(mode: AppMode = "key") {
+  return render(<More appMode={mode} onAppModeChange={() => {}} />);
+}
 
 // A minimal fake of the browser Push API. jsdom ships neither serviceWorker nor
 // PushManager, so the whole surface the component touches is stubbed here: the
@@ -56,7 +65,7 @@ describe("More - push can be turned off", () => {
     stubPush({ subscribed: true });
     stubFetch();
 
-    const { container } = render(<More />);
+    const { container } = renderMore();
 
     await waitFor(() => {
       expect(container.querySelector(".channel-on")).not.toBeNull();
@@ -68,7 +77,7 @@ describe("More - push can be turned off", () => {
     stubPush({ subscribed: false });
     stubFetch();
 
-    const { container } = render(<More />);
+    const { container } = renderMore();
 
     await waitFor(() => {
       expect(container.textContent ?? "").toContain("Enable push");
@@ -80,7 +89,7 @@ describe("More - push can be turned off", () => {
     const { unsubscribe } = stubPush({ subscribed: true });
     const spy = stubFetch();
 
-    const { container } = render(<More />);
+    const { container } = renderMore();
     await waitFor(() => {
       expect(container.textContent ?? "").toContain("Disable push");
     });
@@ -108,7 +117,7 @@ describe("More - push can be turned off", () => {
     const { unsubscribe } = stubPush({ subscribed: true });
     stubFetch(404);
 
-    const { container } = render(<More />);
+    const { container } = renderMore();
     await waitFor(() => {
       expect(container.textContent ?? "").toContain("Disable push");
     });
@@ -126,7 +135,7 @@ describe("More - push can be turned off", () => {
     stubPush({ subscribed: true, unsubscribeResult: false });
     stubFetch();
 
-    const { container } = render(<More />);
+    const { container } = renderMore();
     await waitFor(() => {
       expect(container.textContent ?? "").toContain("Disable push");
     });

@@ -1794,6 +1794,17 @@ h1 { font-size: 1.25rem; margin: 4px 0 16px; }
 .channel-card .link { align-self: flex-start; }
 
 .more-watchlist { margin-top: var(--sp-3); }
+
+/* App mode toggle (curated "key" vs all-tabs "full"). Sits at the top of the
+   More pane, above Channels. The two-option row mirrors the watchlist
+   active/on styling so the selected side reads as "current". */
+.app-mode-card .app-mode-toggle {
+  display: flex;
+  gap: var(--sp-1);
+  margin-top: var(--sp-2);
+}
+.app-mode-toggle .link { padding: 6px 14px; font-size: 0.85rem; min-height: 36px; }
+.app-mode-toggle .link.on { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 50%, var(--line)); }
 .watchlist-rows {
   list-style: none;
   margin: 0;

@@ -10,6 +10,7 @@ import {
 } from "./api/client";
 import type { RecognizeResponse } from "./api/types";
 import AppShell from "./components/AppShell";
+import { readAppMode, writeAppMode, type AppMode } from "./lib/appMode";
 import { useToast } from "./components/Toast";
 
 const VARIANT = "normal";
@@ -29,6 +30,16 @@ const BULK_MAX_CARDS = 9;
 // a persistent bottom nav in-browser and PWA alike.
 export default function App() {
   const { toast } = useToast();
+  // The two faces of the app (curated "key" vs all-tabs "full") are owned here
+  // so the nav restructure in AppShell and the toggle in More read one source.
+  // Read synchronously at init so the first render already shows the right nav
+  // — no flash of the wrong tab set. The setter persists to localStorage so the
+  // choice survives a reload; the in-memory state still drives the UI either way.
+  const [appMode, setAppMode] = useState<AppMode>(() => readAppMode());
+  const changeAppMode = useCallback((m: AppMode) => {
+    setAppMode(m);
+    writeAppMode(m);
+  }, []);
   const [result, setResult] = useState<RecognizeResponse | null>(null);
   const [scanId, setScanId] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
@@ -297,6 +308,8 @@ export default function App() {
 
   return (
     <AppShell
+      appMode={appMode}
+      onAppModeChange={changeAppMode}
       scan={{
         result,
         variant: VARIANT,

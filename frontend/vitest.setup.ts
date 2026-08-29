@@ -7,4 +7,13 @@ import { beforeEach } from "vitest";
 // starting from the default landing view, exactly as they did before routing.
 beforeEach(() => {
   window.history.replaceState(null, "", "/");
+  // The app mode (curated "key" vs all-tabs "full") is persisted to localStorage
+  // and read at first render. Clear it per test so each one starts from the
+  // default ('key') unless it explicitly opts into a mode — a test that toggled
+  // to "full" must not leave the next test booting in full mode.
+  try {
+    localStorage.clear();
+  } catch {
+    /* jsdom always has localStorage; guard for type-safety only. */
+  }
 });

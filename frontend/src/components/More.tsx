@@ -9,6 +9,7 @@ import {
   unsubscribePush,
 } from "../api/client";
 import type { Watch } from "../api/types";
+import type { AppMode } from "../lib/appMode";
 
 // Decode a VAPID public key from base64url to the Uint8Array the Push API
 // expects. The server stores the key base64url-encoded; an empty string means
@@ -43,7 +44,13 @@ async function currentSubscription(): Promise<PushSubscription | null> {
 // hints ("set CARDPLATFORM_SMTP_* to enable"); push queries the VAPID
 // endpoint and refuses to fake a subscription when the key is empty. The
 // watchlist section lists existing watches with active toggles + delete.
-export default function More() {
+export default function More({
+  appMode,
+  onAppModeChange,
+}: {
+  appMode: AppMode;
+  onAppModeChange: (mode: AppMode) => void;
+}) {
   const [push, setPush] = useState<PushState>({ status: "idle" });
 
   // Reflect the browser's real state on mount. Without this the card reads
@@ -156,6 +163,43 @@ export default function More() {
 
   return (
     <section className="more-pane">
+      {/* App mode — the curated "key" flagship vs the all-tabs "full" app.
+          The toggle persists to localStorage via the App-level setter, so a
+          reload keeps the choice. Both modes render every surface; key mode
+          just narrows the nav and lands on Scan, full mode shows all 15 tabs.
+          Honest copy: each side says exactly what it shows, never a vague
+          "recommended". */}
+      <h2>App mode</h2>
+      <div className="channel-card app-mode-card">
+        <div className="channel-head">
+          <strong>{appMode === "key" ? "Key" : "Full"}</strong>
+          <span className={appMode === "key" ? "channel-on" : "channel-off"}>
+            {appMode === "key" ? "Curated" : "All tabs"}
+          </span>
+        </div>
+        <p className="muted small">
+          {appMode === "key"
+            ? "Key mode — the six core collector features (Scan, Vault, Binder, Sets, Sealed, Deals) front and centre, every other surface tucked under this More tab. The focused, polished collector loop."
+            : "Full mode — every feature in the nav (Home, Wants, Alerts, Prices, Catalog, Ledger, Browse, Shop included). Switch to Key for a focused collector loop."}
+        </p>
+        <div className="app-mode-toggle">
+          <button
+            className={`link ${appMode === "key" ? "on" : ""}`}
+            aria-pressed={appMode === "key"}
+            onClick={() => onAppModeChange("key")}
+          >
+            Key
+          </button>
+          <button
+            className={`link ${appMode === "full" ? "on" : ""}`}
+            aria-pressed={appMode === "full"}
+            onClick={() => onAppModeChange("full")}
+          >
+            Full
+          </button>
+        </div>
+      </div>
+
       <h2>Channels</h2>
 
       {/* Push — queries the VAPID endpoint; honest about unconfigured. */}
