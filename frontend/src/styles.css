@@ -2971,6 +2971,13 @@ body::before {
 .checklist-num { font-size: 0.75rem; }
 .checklist-owned { color: var(--ok); font-weight: 600; font-size: 0.8rem; }
 .checklist-price { color: var(--fg); font-weight: 600; font-size: 0.85rem; }
+.checklist-filter {
+  display: inline-flex; align-items: center; gap: var(--sp-2);
+  margin: var(--sp-2) 0; padding: var(--sp-1) var(--sp-3);
+  border: 1px solid var(--line); border-radius: 999px;
+  color: var(--fg-dim); font-size: 0.85rem; cursor: pointer; user-select: none;
+}
+.checklist-filter input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; }
 
 /* 10 tabs fit on mobile without crowding (visual-only; no test queries layout). */
 .bottom-nav { overflow-x: auto; -webkit-overflow-scrolling: touch; }

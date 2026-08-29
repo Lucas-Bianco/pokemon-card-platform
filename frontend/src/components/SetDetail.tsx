@@ -13,10 +13,18 @@ interface Props {
 export default function SetDetail({ setId, onBack, onSelectCard }: Props) {
   const [data, setData] = useState<SetCompletion | null>(null);
   const [error, setError] = useState(false);
+  // "Show only missing" — collapses the checklist to just the gaps, the
+  // thing a collector chasing completion actually wants to see. Default off
+  // so the full ordered checklist (and its order-sensitive assertions) still
+  // renders. Reset when the set changes so a stale filter never carries over.
+  const [missingOnly, setMissingOnly] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     setError(false);
+    // A new set resets the filter so a stale "missing only" never carries
+    // over from the set you just left.
+    setMissingOnly(false);
     getSetCompletion(setId)
       .then((d) => {
         if (!cancelled) setData(d);
@@ -87,8 +95,23 @@ export default function SetDetail({ setId, onBack, onSelectCard }: Props) {
         </p>
       )}
 
+      {/* The completion action loop: a collector opens a set to see what to
+          chase next. "Show only missing" collapses the checklist to just the
+          gaps instead of scrolling past every card already owned. Only shown
+          when there's something to filter to (a complete set has no gaps). */}
+      {!complete && (
+        <label className="checklist-filter">
+          <input
+            type="checkbox"
+            checked={missingOnly}
+            onChange={(e) => setMissingOnly(e.target.checked)}
+          />
+          <span>Show only missing ({s.missing})</span>
+        </label>
+      )}
+
       <ul className="checklist">
-        {data.cards.map((c) => (
+        {(missingOnly ? data.cards.filter((c) => !c.owned) : data.cards).map((c) => (
           <li key={c.card_id}>
             <button className="checklist-tile" onClick={() => onSelectCard(c.card_id)}>
               <span className="checklist-thumb-wrap">

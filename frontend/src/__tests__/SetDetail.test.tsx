@@ -113,4 +113,41 @@ describe("SetDetail", () => {
     fireEvent.click(back);
     expect(onBack).toHaveBeenCalledTimes(1);
   });
+
+  it("'Show only missing' collapses the checklist to the gaps, hiding owned cards", async () => {
+    stubDetail(detail);
+    const { container } = render(<SetDetail setId="base1" onBack={noop} onSelectCard={noop} />);
+    await waitFor(() => {
+      expect(container.textContent ?? "").toContain("Base");
+    });
+    // Default off: all three cards render, including the owned one.
+    expect(container.querySelectorAll(".checklist-tile").length).toBe(3);
+    expect(container.textContent ?? "").toContain("Bulbasaur");
+
+    const filter = container.querySelector(".checklist-filter input[type=checkbox]") as HTMLInputElement;
+    expect(filter).not.toBeNull();
+    fireEvent.click(filter);
+
+    // On: only the two missing cards remain; the owned Bulbasaur is hidden.
+    await waitFor(() => {
+      expect(container.querySelectorAll(".checklist-tile").length).toBe(2);
+    });
+    expect(container.textContent ?? "").not.toContain("Bulbasaur");
+    expect(container.textContent ?? "").toContain("Ivysaur");
+    expect(container.textContent ?? "").toContain("Venusaur");
+  });
+
+  it("does not show the 'Show only missing' filter for a complete set", async () => {
+    stubDetail({
+      ...detail,
+      cards: detail.cards.map((c) => ({ ...c, owned: true })),
+      summary: { owned: 3, checklist_size: 3, missing: 0, pct_complete: 1,
+        est_cost_to_complete: 0.0, unpriced_missing: 0 },
+    });
+    const { container } = render(<SetDetail setId="base1" onBack={noop} onSelectCard={noop} />);
+    await waitFor(() => {
+      expect(container.textContent ?? "").toMatch(/complete/i);
+    });
+    expect(container.querySelector(".checklist-filter")).toBeNull();
+  });
 });

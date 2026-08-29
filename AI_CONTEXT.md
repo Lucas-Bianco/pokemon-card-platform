@@ -1632,4 +1632,15 @@ Third Phase B feature polish. The Binder is a "show off with proof" surface, not
 
 New CSS `.binder-count` (dim, semibold) / `.binder-lede` / `.binder-howto` (ordered list, dim, gap, bold labels) appended near `.binder-toolbar`. All 8 `Binder.test.tsx` tests pass unchanged (they query by class/text, never order). Full suite **393 frontend green**, tsc + build clean. 105-scan baseline untouched (frontend-only; no backend, no data/ writes).
 
-**Phase B remaining:** Sets, Sealed, Deals — each its own tested+committed change.
+## Phase B — Sets polish: "Show only missing" filter on the set checklist (shipped 2026-08-28)
+
+Fourth Phase B feature polish. The set-completion tool's core action loop is "open a set → see what you're missing → chase it", but `SetDetail` rendered **every** card in number order — finding the gaps meant scrolling past everything you already own. Added a **"Show only missing"** filter so a collector chasing completion sees just the gaps immediately:
+
+  - `<label className="checklist-filter">` with a checkbox, rendered above the checklist, gated on `!complete` (a complete set has no gaps, so the filter is hidden then). Label reads `Show only missing ({s.missing})` so the gap count is visible at a glance.
+  - `missingOnly` state, **default off** — so the full ordered checklist (and its order-sensitive `["1","2","3"]` assertion) still renders by default. Toggling on filters `data.cards.filter((c) => !c.owned)`.
+  - Reset on set change: the `setId` effect now calls `setMissingOnly(false)` alongside `setError(false)`, so a stale "missing only" never carries over from the set you just left.
+  - Honest: a pure client-side filter of already-fetched data — no new price logic, no fabricated values. The unpriced-missing caveat + the per-card "no market price" / price+source+staleness lines are unchanged.
+
+New CSS `.checklist-filter` (pill, border, dim label, accent checkbox) appended after `.checklist-price`. The 6 existing `SetDetail.test.tsx` tests pass unchanged (default off → all cards render); added **2 new tests** pinning the filter (toggling drops the owned card and keeps the two missing ones; a complete set shows no filter). Full suite **395 frontend green**, tsc + build clean. 105-scan baseline untouched (frontend-only; no backend, no data/ writes).
+
+**Phase B remaining:** Sealed, Deals — each its own tested+committed change.
