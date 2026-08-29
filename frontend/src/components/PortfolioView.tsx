@@ -195,21 +195,12 @@ export default function PortfolioView(_props: Props) {
         </p>
       )}
 
-      {hasHoldings && <InsuranceValue />}
-
-      {hasHoldings && <Diversification />}
-
-      {hasHoldings && <PortfolioHistoryChart />}
-
-      {hasHoldings && <PriceFreshness />}
-
-      {hasHoldings && <AcquisitionTimelineChart />}
-
-      {hasHoldings && <VaultExport />}
-
-      <VaultImport />
-
-      <SoldLedger prefill={salePrefill} onPrefillConsumed={() => setSalePrefill(null)} />
+      {/* Sections reordered for the key-mode Vault: the holdings table is the
+          primary content a collector acts on, so it sits right under the
+          headline KPIs and the at-a-glance allocation / movers. The action
+          tools (export / import / sold-ledger) and the deep read-only
+          analytics panels follow at the bottom of this view — see the Tools
+          and Analytics sections after the table. */}
 
       {summary && summary.allocation.length > 1 && (
         <div className="allocation">
@@ -388,6 +379,32 @@ export default function PortfolioView(_props: Props) {
             </tbody>
           </table>
         </div>
+      )}
+
+      {/* Tools — act on the collection: export, import, and the sold-lot
+          ledger. Kept open (not collapsible) because a holding row's "Log
+          sale" button pre-fills the sold-ledger form and scrolls to it; a
+          closed container would hide that. */}
+      <section className="vault-section vault-tools" aria-label="Vault tools">
+        <h2>Tools</h2>
+        {hasHoldings && <VaultExport />}
+        <VaultImport />
+        <SoldLedger prefill={salePrefill} onPrefillConsumed={() => setSalePrefill(null)} />
+      </section>
+
+      {/* Read-only analytics — insurance value, diversification, value-over-
+          time, price freshness, acquisition timeline. Collapsible so a
+          collector who just wants their holdings can fold the wall away;
+          default open so the data is visible without an extra tap. */}
+      {hasHoldings && (
+        <details className="vault-section vault-analytics" open>
+          <summary>Analytics</summary>
+          <InsuranceValue />
+          <Diversification />
+          <PortfolioHistoryChart />
+          <PriceFreshness />
+          <AcquisitionTimelineChart />
+        </details>
       )}
     </section>
   );

@@ -686,6 +686,31 @@ h1 { font-size: 1.25rem; margin: 4px 0 16px; }
 .import-report > h4 { margin: 0 0 8px; }
 .import-skip-table { margin-top: 6px; }
 .import-skip-table td { font-size: 0.82rem; }
+
+/* Vault section grouping (Phase B polish) — the Tools section and the
+   collapsible Analytics section that replace the old flat panel stack. */
+.vault-section { margin-top: var(--sp-4, 20px); }
+.vault-section > h2 {
+  margin: 0 0 var(--sp-2, 10px);
+  font-size: 0.95rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fg-dim);
+}
+.vault-analytics > summary {
+  cursor: pointer;
+  font-size: 0.95rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fg-dim);
+  list-style: none;
+}
+.vault-analytics > summary::-webkit-details-marker { display: none; }
+.vault-analytics > summary::before {
+  content: "▾ ";
+  color: var(--fg-dim);
+}
+.vault-analytics:not([open]) > summary::before { content: "▸ "; }
 .freshness-bands { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-direction: column; gap: 10px; }
 .freshness-band { display: flex; flex-direction: column; gap: 6px; }
 .freshness-band-head {
