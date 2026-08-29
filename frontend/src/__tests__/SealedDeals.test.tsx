@@ -217,4 +217,67 @@ describe("SealedDeals", () => {
     expect(container.textContent ?? "").toMatch(/listed estimate.*actual eBay sales/i);
     expect(proofBtn.textContent).toMatch(/hide proven sales/i);
   });
+
+  it("'Show only flips' collapses the feed to the flips, hiding the non-flip context cards", async () => {
+    const flip = baseDeal({ listing_id: "1", title: "Real Flip" });
+    const notFlip = baseDeal({
+      listing_id: "2",
+      title: "Context Listing",
+      listing_price: 130.0,
+      flip_edge: -10.0,
+      deal_score: -10.0,
+      is_flip: false,
+    });
+    stubFetch(baseResponse({ deals: [flip, notFlip] }));
+
+    const { container } = render(<SealedDeals />);
+    fireEvent.change(container.querySelector('input[type="search"]') as HTMLInputElement, {
+      target: { value: "scarlet violet booster box" },
+    });
+    fireEvent.click(container.querySelector('button[type="submit"]') as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(container.querySelectorAll(".deal-card").length).toBe(2);
+    });
+    // Summary counts both listings and flips.
+    expect(container.textContent ?? "").toMatch(/2 listings/i);
+    expect(container.textContent ?? "").toMatch(/1 flip/i);
+    expect(container.textContent ?? "").toContain("Context Listing");
+
+    const filter = container.querySelector(".deals-filter input[type=checkbox]") as HTMLInputElement;
+    expect(filter).not.toBeNull();
+    fireEvent.click(filter);
+
+    // On: only the flip remains; the context listing is hidden.
+    await waitFor(() => {
+      expect(container.querySelectorAll(".deal-card").length).toBe(1);
+    });
+    expect(container.textContent ?? "").toContain("Real Flip");
+    expect(container.textContent ?? "").not.toContain("Context Listing");
+  });
+
+  it("hides the 'Show only flips' filter when no listing is a flip", async () => {
+    const notFlip = baseDeal({
+      listing_id: "2",
+      title: "Context Listing",
+      flip_edge: -10.0,
+      deal_score: -10.0,
+      is_flip: false,
+    });
+    stubFetch(baseResponse({ deals: [notFlip] }));
+
+    const { container } = render(<SealedDeals />);
+    fireEvent.change(container.querySelector('input[type="search"]') as HTMLInputElement, {
+      target: { value: "scarlet violet booster box" },
+    });
+    fireEvent.click(container.querySelector('button[type="submit"]') as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(container.querySelector(".deal-card")).not.toBeNull();
+    });
+    expect(container.textContent ?? "").toMatch(/1 listing/i);
+    expect(container.textContent ?? "").toMatch(/0 flips/i);
+    // No filter toggle when there are no flips to filter to.
+    expect(container.querySelector(".deals-filter")).toBeNull();
+  });
 });

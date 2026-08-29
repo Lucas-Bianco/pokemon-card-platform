@@ -1643,4 +1643,15 @@ Fourth Phase B feature polish. The set-completion tool's core action loop is "op
 
 New CSS `.checklist-filter` (pill, border, dim label, accent checkbox) appended after `.checklist-price`. The 6 existing `SetDetail.test.tsx` tests pass unchanged (default off → all cards render); added **2 new tests** pinning the filter (toggling drops the owned card and keeps the two missing ones; a complete set shows no filter). Full suite **395 frontend green**, tsc + build clean. 105-scan baseline untouched (frontend-only; no backend, no data/ writes).
 
-**Phase B remaining:** Sealed, Deals — each its own tested+committed change.
+## Phase B — Sealed polish: feed summary + "Show only flips" filter (shipped 2026-08-28)
+
+Fifth Phase B feature polish. The key-mode Sealed tab (`SealedDeals`, the flip-edge sniper) returned a ranked feed mixing real flips with "not a deal at this price" context cards — a sniper scanning the list had to pick the flips out by eye. Added an **at-a-glance summary + focus filter** so the action-relevant subset is one tap away:
+
+  - `<div className="deals-summary">` above the feed reads `N listing(s) · M flip(s)` — honest counts only, never a summed $ (the sealed market median is already its own row above; summing flips would imply a portfolio value the feed is not).
+  - **"Show only flips"** `<label className="deals-filter">` checkbox, rendered inline in the summary row, **gated on `flips.length > 0`** — when no listing is a flip, the filter is hidden (you never see a toggle that would empty the list). `flipsOnly` state **default off** so the full ranked feed (with context cards) still renders by default; toggling on filters `data.deals.filter((d) => d.is_flip)`.
+  - Reset on new search: `useEffect(() => setFlipsOnly(false), [data.query])` so a stale "flips only" never carries over from the previous query's results.
+  - Honest: a pure client-side filter of already-fetched data — no new price logic, no fabricated values. The sealed-market row, the "no market price" / null-edge em dashes, the per-deal proven-sales toggle, and the mislabel-noise caveat are all unchanged.
+
+New CSS `.deals-summary` / `.deals-filter` (accent checkbox) appended near `.deal-list`. The 6 existing `SealedDeals.test.tsx` tests pass unchanged (default off → full feed renders); added **2 new tests** pinning the filter (toggling drops the context listing and keeps the flip; the summary reads "2 listings · 1 flip"; a no-flips feed shows "0 flips" and no filter toggle). Full suite **397 frontend green**, tsc + build clean. 105-scan baseline untouched (frontend-only; no backend, no data/ writes).
+
+**Phase B remaining:** Deals — the last key surface.

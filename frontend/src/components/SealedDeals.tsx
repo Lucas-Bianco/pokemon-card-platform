@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { motion, useReducedMotion } from "framer-motion";
 
@@ -80,6 +80,16 @@ export default function SealedDeals() {
 
 function SealedDealsBody({ data }: { data: SealedDealsResponse }) {
   const reduced = useReducedMotion();
+  // "Show only flips" — collapses the feed to just the actual flips, the
+  // thing a sniper scanning the ranked list wants to act on. Default off so
+  // the full ranked feed (with its context "not a deal" cards) still renders.
+  const [flipsOnly, setFlipsOnly] = useState(false);
+  // Reset on a new search so a stale "flips only" never carries over from the
+  // previous query's results.
+  useEffect(() => {
+    setFlipsOnly(false);
+  }, [data.query]);
+
   // HONEST empty states — the FEATURE, not an afterthought. A missing key and
   // a queried-but-empty source carry different honest copy; a null market
   // (no sold comps) surfaces "no market price" rather than a fabricated $0.
@@ -100,6 +110,9 @@ function SealedDealsBody({ data }: { data: SealedDealsResponse }) {
   if (data.deals.length === 0) {
     return <p className="muted">No deals right now for “{data.query}”.</p>;
   }
+
+  const flips = data.deals.filter((d) => d.is_flip);
+  const shown = flipsOnly ? flips : data.deals;
 
   return (
     <>
@@ -127,13 +140,32 @@ function SealedDealsBody({ data }: { data: SealedDealsResponse }) {
           No recent sold comps to establish a market price — flip edges unavailable.
         </p>
       )}
+
+      {/* At-a-glance feed summary + a "Show only flips" focus filter. Honest
+          counts only (never a summed $); the filter is hidden when there are no
+          flips to filter to, so you never see a toggle that empties the list. */}
+      <div className="deals-summary muted small">
+        {data.deals.length} listing{data.deals.length === 1 ? "" : "s"} · {flips.length} flip
+        {flips.length === 1 ? "" : "s"}
+        {flips.length > 0 && (
+          <label className="deals-filter">
+            <input
+              type="checkbox"
+              checked={flipsOnly}
+              onChange={(e) => setFlipsOnly(e.target.checked)}
+            />
+            <span>Show only flips</span>
+          </label>
+        )}
+      </div>
+
       <motion.ul
         className="deal-list"
         variants={staggerContainer}
         initial={reduced ? "show" : "hidden"}
         animate="show"
       >
-        {data.deals.map((d) => (
+        {shown.map((d) => (
           <SealedDealCard key={d.listing_id} deal={d} />
         ))}
       </motion.ul>
