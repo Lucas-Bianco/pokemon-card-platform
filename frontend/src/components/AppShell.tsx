@@ -96,6 +96,15 @@ export interface NavItem {
   label: string;
   glyph: React.ReactNode;
   badge?: "unread";
+  // A short, plain-language description of what the tab is for, surfaced as the
+  // button's `title` (a hover/focus tooltip on desktop, and an accessible
+  // description that screen readers announce after the label). The button's
+  // accessible NAME stays the one-word label — `title` only contributes when
+  // nothing else names the control, and the visible label always does — so
+  // getByRole("button", { name: "Scan" }) still resolves to exactly this
+  // button. Purely additive orientation for a 15-tab shell whose one-word
+  // labels (Vault, Wants, Ledger, Sealed…) are otherwise ambiguous.
+  desc: string;
 }
 
 const TAB_TITLES: Record<TabView, string> = {
@@ -114,6 +123,27 @@ const TAB_TITLES: Record<TabView, string> = {
   sets: "Sets",
   shop: "Shop",
   more: "More",
+};
+
+// One-line purpose for each tab — the nav tooltip / accessible description.
+// Kept short and action-oriented so a new user can scan the shell and know
+// where each surface lives without trial-and-error. Never changes the label.
+const NAV_DESCRIPTIONS: Record<TabView, string> = {
+  home: "Your collection at a glance — market value, allocation, and movers.",
+  scan: "Scan a card with your camera to identify and price it.",
+  vault: "Your collection — holdings, value, analytics, export, and sold lots.",
+  binder: "A curated, shareable showcase of your best cards.",
+  wants: "Cards you're hunting — track what to acquire next.",
+  alerts: "Price and restock alerts on the cards you watch.",
+  deals: "Live eBay card listings ranked by flip edge.",
+  prices: "Look up any card's market price, history, and grading upside.",
+  sealed: "Sealed-product deals — booster boxes and sets ranked by flip edge.",
+  catalog: "Browse the sealed-product catalog with honest MSRP.",
+  ledger: "Sealed purchase ledger — what you paid for sealed stock.",
+  browse: "Browse the full Pokémon card catalog by set.",
+  sets: "Set checklists — track completion and cost-to-finish.",
+  shop: "Paste an eBay listing URL to assess a deal.",
+  more: "Settings, alert channels, app mode, and your watchlist.",
 };
 
 // Five-tab shell: Alerts-first (the alert feed is the landing surface — T7 ships
@@ -270,21 +300,21 @@ export default function AppShell({ scan, appMode, onAppModeChange }: Props) {
   const navItems = useMemo<NavItem[]>(
     () => {
       const full: NavItem[] = [
-        { view: "home", label: "Home", glyph: <HomeGlyph /> },
-        { view: "scan", label: "Scan", glyph: <ScanGlyph /> },
-        { view: "vault", label: "Vault", glyph: <VaultGlyph /> },
-        { view: "binder", label: "Binder", glyph: <BinderGlyph /> },
-        { view: "wants", label: "Wants", glyph: <WantsGlyph /> },
-        { view: "alerts", label: "Alerts", glyph: <BellGlyph />, badge: "unread" },
-        { view: "deals", label: "Deals", glyph: <TagGlyph /> },
-        { view: "prices", label: "Prices", glyph: <PriceGlyph /> },
-        { view: "sealed", label: "Sealed", glyph: <BoxGlyph /> },
-        { view: "catalog", label: "Catalog", glyph: <CatalogGlyph /> },
-        { view: "ledger", label: "Ledger", glyph: <LedgerGlyph /> },
-        { view: "browse", label: "Browse", glyph: <SearchGlyph /> },
-        { view: "sets", label: "Sets", glyph: <SetsGlyph /> },
-        { view: "shop", label: "Shop", glyph: <ShopGlyph /> },
-        { view: "more", label: "More", glyph: <MoreGlyph /> },
+        { view: "home", label: "Home", glyph: <HomeGlyph />, desc: NAV_DESCRIPTIONS.home },
+        { view: "scan", label: "Scan", glyph: <ScanGlyph />, desc: NAV_DESCRIPTIONS.scan },
+        { view: "vault", label: "Vault", glyph: <VaultGlyph />, desc: NAV_DESCRIPTIONS.vault },
+        { view: "binder", label: "Binder", glyph: <BinderGlyph />, desc: NAV_DESCRIPTIONS.binder },
+        { view: "wants", label: "Wants", glyph: <WantsGlyph />, desc: NAV_DESCRIPTIONS.wants },
+        { view: "alerts", label: "Alerts", glyph: <BellGlyph />, badge: "unread", desc: NAV_DESCRIPTIONS.alerts },
+        { view: "deals", label: "Deals", glyph: <TagGlyph />, desc: NAV_DESCRIPTIONS.deals },
+        { view: "prices", label: "Prices", glyph: <PriceGlyph />, desc: NAV_DESCRIPTIONS.prices },
+        { view: "sealed", label: "Sealed", glyph: <BoxGlyph />, desc: NAV_DESCRIPTIONS.sealed },
+        { view: "catalog", label: "Catalog", glyph: <CatalogGlyph />, desc: NAV_DESCRIPTIONS.catalog },
+        { view: "ledger", label: "Ledger", glyph: <LedgerGlyph />, desc: NAV_DESCRIPTIONS.ledger },
+        { view: "browse", label: "Browse", glyph: <SearchGlyph />, desc: NAV_DESCRIPTIONS.browse },
+        { view: "sets", label: "Sets", glyph: <SetsGlyph />, desc: NAV_DESCRIPTIONS.sets },
+        { view: "shop", label: "Shop", glyph: <ShopGlyph />, desc: NAV_DESCRIPTIONS.shop },
+        { view: "more", label: "More", glyph: <MoreGlyph />, desc: NAV_DESCRIPTIONS.more },
       ];
       if (appMode === "key") {
         return KEY_TAB_VIEWS.map(
@@ -464,6 +494,7 @@ export default function AppShell({ scan, appMode, onAppModeChange }: Props) {
             <TabButton
               key={item.view}
               label={item.label}
+              title={item.desc}
               active={isItemActive(item)}
               onClick={() => selectTab(item.view)}
               glyph={item.glyph}
@@ -498,6 +529,7 @@ function DesktopNav({
           <TabButton
             key={item.view}
             label={item.label}
+            title={item.desc}
             active={isActive(item)}
             onClick={() => onSelect(item.view)}
             glyph={item.glyph}
@@ -511,19 +543,21 @@ function DesktopNav({
 
 function TabButton({
   label,
+  title,
   active,
   onClick,
   glyph,
   badge,
 }: {
   label: string;
+  title?: string;
   active: boolean;
   onClick: () => void;
   glyph: React.ReactNode;
   badge?: number;
 }) {
   return (
-    <button aria-current={active} onClick={onClick}>
+    <button aria-current={active} title={title} onClick={onClick}>
       <span className="nav-glyph-wrap">
         {glyph}
         {badge !== undefined && badge > 0 && (

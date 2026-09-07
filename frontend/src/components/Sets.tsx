@@ -49,7 +49,9 @@ export default function Sets({ onSelectSet }: Props) {
   return (
     <section className="sets">
       <h2>Sets</h2>
-      <p className="muted small">Track completion for every set in the catalog.</p>
+      <p className="muted small">
+        See how much of each set you own and what it'd cost to finish it. Tap a set for its checklist.
+      </p>
       <input
         className="sets-input"
         type="search"

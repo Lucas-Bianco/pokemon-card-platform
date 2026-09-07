@@ -396,3 +396,36 @@ describe("card detail routing", () => {
     expect(window.location.search).toBe("?view=vault");
   });
 });
+
+describe("nav tooltips", () => {
+  // Full mode renders all 15 tabs, so every nav button is present and carries
+  // its purpose as a `title`. The one-word label stays the accessible name —
+  // `title` only contributes when nothing else names the control, and the
+  // visible label always does — so getByRole("button", { name: "Vault" })
+  // still resolves to exactly one button (the do-not-break contract).
+  beforeEach(() => {
+    localStorage.setItem("cardplatform_app_mode", "full");
+  });
+
+  it("each nav button carries a descriptive title for orientation", () => {
+    stubFetch();
+    renderAt("/");
+
+    const vault = screen.getByRole("button", { name: "Vault" }) as HTMLButtonElement;
+    expect(vault.title).toMatch(/collection/i);
+    // A genuinely ambiguous one-word tab gets a purposeful description too.
+    const ledger = screen.getByRole("button", { name: "Ledger" }) as HTMLButtonElement;
+    expect(ledger.title).toMatch(/sealed/i);
+  });
+
+  it("the label is still the accessible name — exactly one Scan button", () => {
+    stubFetch();
+    renderAt("/");
+
+    // The do-not-break contract: "Scan" resolves to exactly one nav button,
+    // title or no title (title never supplants a visible text label).
+    const scan = screen.getAllByRole("button", { name: "Scan" });
+    expect(scan.length).toBe(1);
+    expect((scan[0] as HTMLButtonElement).title).toMatch(/camera/i);
+  });
+});
