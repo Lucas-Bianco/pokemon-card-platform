@@ -1845,6 +1845,73 @@ h1 { font-size: 1.25rem; margin: 4px 0 16px; }
 }
 .app-mode-toggle .link { padding: 6px 14px; font-size: 0.85rem; min-height: 36px; }
 .app-mode-toggle .link.on { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 50%, var(--line)); }
+
+/* "Show welcome again" link in the More pane — sits under the App mode card. */
+.welcome-again { align-self: flex-start; }
+
+/* First-run welcome overlay (Key mode). A fixed, dimmed backdrop with a centred
+   dark-glass card reusing the channel-card surface, so it reads as part of the
+   app. Sits above the app content but outside the primary nav, so it never
+   breaks the unique-Scan-button or nav-label contracts. */
+.welcome-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-3);
+}
+.welcome-card {
+  width: min(420px, 100%);
+  padding: var(--sp-4);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  text-align: left;
+}
+.welcome-card h2 { margin: 0; font-size: 1.2rem; }
+.welcome-steps {
+  list-style: none;
+  margin: var(--sp-1) 0 var(--sp-2);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.welcome-steps li {
+  display: flex;
+  gap: var(--sp-2);
+  align-items: flex-start;
+}
+.welcome-step-num {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ok);
+  border: 1px solid color-mix(in srgb, var(--ok) 45%, var(--line));
+}
+.welcome-step-body { display: flex; flex-direction: column; gap: 2px; }
+.welcome-step-body strong { font-size: 0.95rem; }
+.welcome-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-1);
+}
+.welcome-actions .primary { flex: 1; }
+.welcome-actions .link { padding: 6px 10px; }
 .watchlist-rows {
   list-style: none;
   margin: 0;

@@ -4,6 +4,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import App from "../App";
 import { ToastProvider } from "../components/Toast";
 import { APP_MODE_STORAGE_KEY } from "../lib/appMode";
+import { WELCOME_SEEN_KEY } from "../lib/welcome";
 
 // Key-mode behaviour: the curated 7-tab nav, Scan landing, non-key surfaces
 // still reachable with More highlighted, and the More-tab toggle that flips to
@@ -170,5 +171,34 @@ describe("App mode — toggling", () => {
 
     // Full mode does NOT redirect — the bare landing is Home, as before.
     expect(activeTitle(container)).toBe("Home");
+  });
+});
+
+describe("Welcome overlay (first run, key mode)", () => {
+  it("shows the overlay on the Scan landing and dismisses it for good", async () => {
+    stubFetch();
+    const { container } = renderAt("/");
+
+    // Key mode boots on Scan; the welcome overlay renders over it once.
+    await waitFor(() => {
+      expect(container.querySelector(".welcome-overlay")).not.toBeNull();
+    });
+
+    fireEvent.click(screen.getByText("Start scanning"));
+
+    // Dismissed: overlay unmounts and the flag persists so it won't return.
+    await waitFor(() => {
+      expect(container.querySelector(".welcome-overlay")).toBeNull();
+    });
+    expect(localStorage.getItem(WELCOME_SEEN_KEY)).toBe("1");
+  });
+
+  it("does not show the overlay once the dismissed flag is already set", async () => {
+    localStorage.setItem(WELCOME_SEEN_KEY, "1");
+    stubFetch();
+    const { container } = renderAt("/");
+
+    await waitFor(() => expect(activeTitle(container)).toBe("Scan"));
+    expect(container.querySelector(".welcome-overlay")).toBeNull();
   });
 });

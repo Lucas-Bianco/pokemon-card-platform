@@ -10,6 +10,7 @@ import {
 } from "../api/client";
 import type { Watch } from "../api/types";
 import type { AppMode } from "../lib/appMode";
+import { clearWelcomeSeen } from "../lib/welcome";
 
 // Decode a VAPID public key from base64url to the Uint8Array the Push API
 // expects. The server stores the key base64url-encoded; an empty string means
@@ -52,6 +53,10 @@ export default function More({
   onAppModeChange: (mode: AppMode) => void;
 }) {
   const [push, setPush] = useState<PushState>({ status: "idle" });
+  // Whether "Show welcome again" has just been tapped. The overlay reads its
+  // flag at mount, so the re-show lands on the next app open — this state only
+  // drives the one-line confirmation that the request was honoured.
+  const [welcomeReset, setWelcomeReset] = useState(false);
 
   // Reflect the browser's real state on mount. Without this the card reads
   // "Off" after every reload even while this device is still subscribed — and
@@ -199,6 +204,23 @@ export default function More({
           </button>
         </div>
       </div>
+
+      {/* Re-show the first-run welcome overlay on the next app open. Low-risk:
+          it only clears the dismissed flag; the overlay itself re-mounts on a
+          fresh Scan landing, never instantly. */}
+      {welcomeReset ? (
+        <p className="muted small welcome-again">Welcome will show again next time you open the app.</p>
+      ) : (
+        <button
+          className="link welcome-again"
+          onClick={() => {
+            clearWelcomeSeen();
+            setWelcomeReset(true);
+          }}
+        >
+          Show welcome again
+        </button>
+      )}
 
       <h2>Channels</h2>
 

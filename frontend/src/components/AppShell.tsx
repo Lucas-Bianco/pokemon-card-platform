@@ -5,6 +5,7 @@ import { useIsDesktop } from "../lib/useIsDesktop";
 import { useRoute } from "../lib/useRoute";
 import { KEY_TAB_VIEWS, type TabView } from "../lib/route";
 import type { AppMode } from "../lib/appMode";
+import { readWelcomeSeen, writeWelcomeSeen } from "../lib/welcome";
 import { getUnreadCount } from "../api/client";
 import type { RecognizeResponse } from "../api/types";
 import AlertsFeed from "./AlertsFeed";
@@ -27,6 +28,7 @@ import SealedDeals from "./SealedDeals";
 import SealedLedger from "./SealedLedger";
 import ShopAssistant from "./ShopAssistant";
 import WatchCardSheet from "./WatchCardSheet";
+import WelcomeOverlay from "./WelcomeOverlay";
 import { PageTransition } from "./motion";
 import { CommandPalette } from "./CommandPalette";
 import { useToast } from "./Toast";
@@ -139,6 +141,10 @@ export default function AppShell({ scan, appMode, onAppModeChange }: Props) {
     variant?: string;
   }>({ open: false });
   const [paletteOpen, setPaletteOpen] = useState(false);
+  // First-run welcome overlay (Key mode only). Read once at mount so a reload
+  // honours the dismissed flag; the overlay is shown only on the Scan landing,
+  // never over a card/set detail or another tab.
+  const [welcomeOpen, setWelcomeOpen] = useState(() => !readWelcomeSeen());
 
   function openWatchSheet(card?: { cardId?: string; variant?: string }) {
     setWatchSheet({ open: true, cardId: card?.cardId, variant: card?.variant });
@@ -402,6 +408,15 @@ export default function AppShell({ scan, appMode, onAppModeChange }: Props) {
           )}
         </AnimatePresence>
       </div>
+
+      {welcomeOpen && appMode === "key" && view === "scan" && !selectedCard && !selectedSet && (
+        <WelcomeOverlay
+          onDismiss={() => {
+            writeWelcomeSeen();
+            setWelcomeOpen(false);
+          }}
+        />
+      )}
 
       {watchSheet.open && (
         <WatchCardSheet

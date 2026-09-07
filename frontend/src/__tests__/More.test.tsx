@@ -3,6 +3,7 @@ import { fireEvent, render, waitFor } from "@testing-library/react";
 
 import More from "../components/More";
 import type { AppMode } from "../lib/appMode";
+import { WELCOME_SEEN_KEY } from "../lib/welcome";
 
 // More now takes the app mode + setter (the App mode toggle lives at the top of
 // the pane). These push-channel tests don't exercise the toggle, so they pass a
@@ -144,5 +145,26 @@ describe("More - push can be turned off", () => {
     await waitFor(() => {
       expect(container.textContent ?? "").toMatch(/couldn't turn push off/i);
     });
+  });
+});
+
+describe("More - welcome overlay re-show", () => {
+  it("'Show welcome again' clears the dismissed flag and confirms", () => {
+    localStorage.setItem(WELCOME_SEEN_KEY, "1");
+    stubFetch();
+
+    const { container } = renderMore();
+    expect(localStorage.getItem(WELCOME_SEEN_KEY)).toBe("1");
+
+    fireEvent.click(
+      [...container.querySelectorAll("button")].find(
+        (b) => (b.textContent ?? "").trim() === "Show welcome again",
+      ) as HTMLElement,
+    );
+
+    expect(localStorage.getItem(WELCOME_SEEN_KEY)).toBeNull();
+    expect(container.textContent ?? "").toContain(
+      "Welcome will show again next time you open the app.",
+    );
   });
 });
