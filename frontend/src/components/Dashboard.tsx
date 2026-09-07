@@ -127,17 +127,19 @@ export default function Dashboard({
       </div>
 
       <Reveal delay={0.24}>
+        {/* A focused set of quick actions — the core collector loop (scan,
+            deals, prices, browse) plus the watch nudge and an alerts shortcut
+            when there's unread. The other surfaces (sealed catalog, ledger,
+            shop, wants) live in the nav tabs; duplicating every tab here made
+            the row noisy. CTAs stay distinct verb-phrases, never an exact
+            nav-tab name, so the unique "Scan" nav button still resolves. */}
         <div className="dashboard-ctas dashboard-ctas-row">
           <button className="primary" onClick={() => onNavigate("scan")}>Start scanning</button>
-          <button className="link" onClick={() => onNavigate("browse")}>Browse the catalog</button>
           <button className="link" onClick={() => onNavigate("deals")}>Snipe deals</button>
           <button className="link" onClick={() => onNavigate("prices")}>Look up card prices</button>
-          <button className="link" onClick={() => onNavigate("catalog")}>Browse sealed catalog</button>
-          <button className="link" onClick={() => onNavigate("ledger")}>Open ledger</button>
-          <button className="link" onClick={() => onNavigate("shop")}>Check a listing</button>
-          <button className="link" onClick={() => onNavigate("wants")}>Track cards you want</button>
-          {unread > 0 && <button className="link" onClick={() => onNavigate("alerts")}>View alerts</button>}
+          <button className="link" onClick={() => onNavigate("browse")}>Browse the catalog</button>
           <button className="link" onClick={onWatchCard}>Watch a card</button>
+          {unread > 0 && <button className="link" onClick={() => onNavigate("alerts")}>View alerts</button>}
         </div>
       </Reveal>
     </div>

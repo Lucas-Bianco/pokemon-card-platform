@@ -168,3 +168,18 @@ describe("More - welcome overlay re-show", () => {
     );
   });
 });
+
+describe("More - intro", () => {
+  it("orients the user with a one-line intro above the sections", () => {
+    stubFetch();
+    const { container } = renderMore();
+
+    const intro = container.querySelector(".more-intro");
+    expect(intro).not.toBeNull();
+    const text = intro?.textContent ?? "";
+    // Says what the tab is for (settings/the rest of the app) and names the
+    // key actions, without colliding with nav-tab labels.
+    expect(text).toMatch(/settings/i);
+    expect(text).toMatch(/watchlist/i);
+  });
+});

@@ -168,6 +168,14 @@ export default function More({
 
   return (
     <section className="more-pane">
+      {/* Orient the user — "More" is the settings/config hub and the home of
+          every surface not in the Key-mode nav. A one-line intro so a new user
+          landing here knows what this tab is for before the sections begin. */}
+      <p className="muted small more-intro">
+        Settings and the rest of the app — switch between the focused Key layout
+        and the full feature set, manage alert channels, and edit your watchlist.
+      </p>
+
       {/* App mode — the curated "key" flagship vs the all-tabs "full" app.
           The toggle persists to localStorage via the App-level setter, so a
           reload keeps the choice. Both modes render every surface; key mode

@@ -1806,6 +1806,7 @@ h1 { font-size: 1.25rem; margin: 4px 0 16px; }
 }
 .more-pane h2 { margin: 0 0 var(--sp-1); font-size: 1.1rem; }
 .more-pane h3 { margin: 0 0 var(--sp-2); font-size: 0.95rem; color: var(--fg-dim); }
+.more-pane .more-intro { margin: 0 0 var(--sp-1); line-height: 1.4; }
 
 .channel-card {
   padding: var(--sp-3) var(--sp-4);
