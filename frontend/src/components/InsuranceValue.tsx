@@ -7,7 +7,7 @@ import { useEffect, useState } from "react";
 
 import { getInsuranceValue } from "../api/client";
 import type { InsuranceValue as InsuranceValueT } from "../api/types";
-import { formatMoney, formatStaleness } from "../lib/format";
+import { formatMoney, formatStaleness, sourceLabel } from "../lib/format";
 
 export default function InsuranceValue() {
   const [data, setData] = useState<InsuranceValueT | null>(null);
@@ -94,7 +94,7 @@ export default function InsuranceValue() {
                   <td data-label="High">{formatMoney(line.high)}</td>
                   <td data-label="Source" className="col-source muted small">
                     {line.priced
-                      ? `${line.source ?? ""}${line.source ? " · " : ""}${formatStaleness(line.source_updated_at)}`
+                      ? `${line.source ? `${sourceLabel(line.source)} · ` : ""}${formatStaleness(line.source_updated_at)}`
                       : "—"}
                   </td>
                 </tr>

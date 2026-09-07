@@ -77,7 +77,7 @@ describe("TradeUp", () => {
     const text = container.textContent ?? "";
     expect(text).toContain("$1019.00"); // grade net
     expect(text).toContain("$300.00"); // market reference (ask)
-    expect(text).toContain("tcgplayer");
+    expect(text).toMatch(/tcgplayer/i);
     expect(text).toContain("pkmnprices");
     // Descriptive read (grade nets more) -> "Grade, then sell"
     expect(text).toContain("Grade, then sell");

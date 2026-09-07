@@ -58,7 +58,7 @@ describe("SetDetail", () => {
     const tiles = container.querySelectorAll(".checklist-tile");
     expect(tiles[0].textContent).toMatch(/owned/i);
     expect(tiles[1].textContent).toContain("$3.00");
-    expect(tiles[1].textContent).toContain("tcgplayer");
+    expect(tiles[1].textContent).toMatch(/tcgplayer/i);
     expect(tiles[2].textContent).toMatch(/no market price/i);
   });
 

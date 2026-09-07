@@ -4,7 +4,7 @@ import { motion, useReducedMotion } from "framer-motion";
 
 import { getSealedDeals, getSealedSoldComps } from "../api/client";
 import type { SealedDealAssessment, SealedDealsResponse } from "../api/types";
-import { formatMoney } from "../lib/format";
+import { formatMoney, sourceLabel } from "../lib/format";
 import { relativeTime } from "../lib/time";
 import { staggerContainer, staggerItem } from "./motion";
 import ProofOfSales from "./ProofOfSales";
@@ -124,7 +124,7 @@ function SealedDealsBody({ data }: { data: SealedDealsResponse }) {
               {formatMoney(data.sealed_market.price)}
               <span className="muted small">
                 {" "}
-                {data.sealed_market.source}
+                {sourceLabel(data.sealed_market.source)}
                 {data.sealed_market.source_updated_at
                   ? ` · updated ${relativeTime(data.sealed_market.source_updated_at)}`
                   : ""}

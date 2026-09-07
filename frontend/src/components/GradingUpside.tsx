@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 
 import { getGradingUpside } from "../api/client";
 import type { GradingTier, GradingUpside as GradingUpsideData } from "../api/types";
-import { formatMoney, formatStaleness } from "../lib/format";
+import { formatMoney, formatStaleness, sourceLabel } from "../lib/format";
 
 interface Props {
   cardId: string;
@@ -34,7 +34,7 @@ function TierRow({ label, tier }: { label: string; tier: GradingTier | null }) {
       <dd>
         <strong>{formatMoney(tier.market)}</strong>
         <span className="price-meta">
-          {tier.source} · {formatStaleness(tier.source_updated_at)}
+          {sourceLabel(tier.source)} · {formatStaleness(tier.source_updated_at)}
         </span>
       </dd>
     </div>

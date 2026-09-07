@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 
 import { getResolvedPrice, refreshPrice } from "../api/client";
 import type { Price } from "../api/types";
-import { formatMoney, formatStaleness } from "../lib/format";
+import { formatMoney, formatStaleness, sourceLabel } from "../lib/format";
 
 interface Props {
   cardId: string;
@@ -14,14 +14,6 @@ interface Props {
 }
 
 type State = "idle" | "loading" | "fetching" | "none";
-
-// Raw source strings ("tcgplayer" / "cardmarket") are opaque to a user. The card
-// detail view labels them so the figure is legible as a market reference vs a fallback.
-function sourceLabel(source: string): string {
-  if (source === "tcgplayer") return "TCGplayer market reference";
-  if (source === "cardmarket") return "Cardmarket aggregate";
-  return source;
-}
 
 export default function PriceLine({ cardId, variant, initial, showBand = false }: Props) {
   const [price, setPrice] = useState<Price | null>(initial);

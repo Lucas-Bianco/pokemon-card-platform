@@ -1,5 +1,5 @@
 import type { PricePoint } from "../api/types";
-import { formatMoney } from "../lib/format";
+import { formatMoney, sourceLabel } from "../lib/format";
 
 interface Props {
   points: PricePoint[];
@@ -63,7 +63,7 @@ export default function PriceChart({ points, variant, onClose }: Props) {
           One price point ({formatMoney(only.market)}) — need more history to draw a trend.
         </p>
         <p className="chart-caption muted small">
-          {only.source} · as of {only.source_updated_at}
+          {sourceLabel(only.source)} · as of {only.source_updated_at}
         </p>
       </div>
     );
@@ -89,7 +89,7 @@ export default function PriceChart({ points, variant, onClose }: Props) {
         <span className="current">current {formatMoney(current)}</span>
       </p>
       <p className="chart-caption muted small">
-        {latestPriced.source} · as of {latestPriced.source_updated_at}
+        {sourceLabel(latestPriced.source)} · as of {latestPriced.source_updated_at}
       </p>
       {/* Honest about history depth. Snapshots are append-only and never trimmed,
           so the line only reaches back as far as the price-refresh job has been

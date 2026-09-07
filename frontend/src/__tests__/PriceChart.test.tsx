@@ -67,7 +67,7 @@ describe("PriceChart", () => {
     const { container } = render(<PriceChart points={points} variant="holofoil" />);
 
     const text = container.textContent ?? "";
-    expect(text).toContain("tcgplayer");
+    expect(text).toMatch(/tcgplayer/i);
     expect(text).toContain("2026/07/29");
   });
 

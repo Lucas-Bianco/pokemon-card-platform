@@ -4,7 +4,7 @@ import { motion, useReducedMotion } from "framer-motion";
 
 import { getCardLookup } from "../api/client";
 import type { CardLookupItem } from "../api/types";
-import { formatMoney, formatStaleness } from "../lib/format";
+import { formatMoney, formatStaleness, sourceLabel } from "../lib/format";
 import { staggerContainer, staggerItem } from "./motion";
 
 // The Prices tab lookup (Task D): type a card name -> see matches with their
@@ -156,7 +156,7 @@ function PriceLookupCard({ result }: { result: CardLookupItem }) {
         <div className="deal-row price-lookup-source">
           <span className="deal-row-label">Source</span>
           <span className="deal-row-value muted small">
-            {result.source}
+            {sourceLabel(result.source)}
             {result.source_updated_at
               ? ` · ${formatStaleness(result.source_updated_at)}`
               : ""}

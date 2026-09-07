@@ -16,7 +16,7 @@ import { useEffect, useState } from "react";
 
 import { getTradeUp } from "../api/client";
 import type { TradeUpAssessment, TradeUpLeg } from "../api/types";
-import { formatMoney, formatStaleness } from "../lib/format";
+import { formatMoney, formatStaleness, sourceLabel } from "../lib/format";
 
 interface Props {
   cardId: string;
@@ -61,7 +61,7 @@ function LegRow({ leg }: { leg: TradeUpLeg }) {
         )}
         <span className="tradeup-note muted small">
           {leg.note}
-          {leg.source ? ` · ${leg.source}` : ""}
+          {leg.source ? ` · ${sourceLabel(leg.source)}` : ""}
           {leg.source ? ` · ${formatStaleness(leg.source_updated_at)}` : ""}
           {leg.evidence_count !== null && leg.evidence_count > 0
             ? ` · ${leg.evidence_count} sale${leg.evidence_count === 1 ? "" : "s"}`

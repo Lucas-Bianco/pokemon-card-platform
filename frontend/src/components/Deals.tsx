@@ -4,7 +4,7 @@ import { motion, useReducedMotion } from "framer-motion";
 
 import { getDeals, getDealsFeed, searchCards } from "../api/client";
 import type { CardSearchResult, DealAssessment, DealsResponse } from "../api/types";
-import { formatMoney } from "../lib/format";
+import { formatMoney, sourceLabel } from "../lib/format";
 import { relativeTime } from "../lib/time";
 import { staggerContainer, staggerItem } from "./motion";
 
@@ -359,7 +359,7 @@ function DealCard({
             {formatMoney(deal.raw_market.price)}
             <span className="muted small">
               {" "}
-              {deal.raw_market.source} · updated {relativeTime(deal.raw_market.source_updated_at)}
+              {sourceLabel(deal.raw_market.source)} · updated {relativeTime(deal.raw_market.source_updated_at)}
             </span>
           </span>
         ) : (
@@ -382,7 +382,7 @@ function DealCard({
               {formatMoney(deal.psa10_comp.price)}
               <span className="muted small">
                 {" "}
-                {deal.psa10_comp.source} · updated{" "}
+                {sourceLabel(deal.psa10_comp.source)} · updated{" "}
                 {relativeTime(deal.psa10_comp.source_updated_at)}
               </span>
             </>

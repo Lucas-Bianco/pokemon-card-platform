@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { getSetCompletion } from "../api/client";
-import { formatMoney } from "../lib/format";
+import { formatMoney, sourceLabel } from "../lib/format";
 import type { SetCompletion } from "../api/types";
 
 interface Props {
@@ -132,7 +132,7 @@ export default function SetDetail({ setId, onBack, onSelectCard }: Props) {
                   <span className="checklist-price">
                     {formatMoney(c.market)}
                     <span className="muted small">
-                      {" "}{c.source}
+                      {" "}{sourceLabel(c.source)}
                       {c.source_updated_at ? ` · as of ${c.source_updated_at}` : ""}
                     </span>
                   </span>

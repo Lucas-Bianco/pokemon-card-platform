@@ -48,8 +48,10 @@ describe("GradingUpside", () => {
     expect(text).toContain("$25.00"); // fee
     expect(text).toContain("+$1055.00"); // upside to 10
     expect(container.querySelector(".grading-upside-value .up")).not.toBeNull();
-    // Sources travel with every figure.
-    expect(text).toContain("tcgplayer");
+    // Sources travel with every figure. The TCGplayer slug is rendered via the
+    // shared sourceLabel helper ("TCGplayer market reference"), so match it
+    // case-insensitively; pkmnprices is an unrecognized proper name, left as-is.
+    expect(text).toMatch(/tcgplayer/i);
     expect(text).toContain("pkmnprices");
   });
 

@@ -196,7 +196,7 @@ describe("PriceLookup", () => {
     await waitFor(() =>
       expect(container.querySelector(".price-lookup-source")).toBeTruthy(),
     );
-    expect(container.textContent).toMatch(/tcgplayer/);
+    expect(container.textContent).toMatch(/tcgplayer/i);
     expect(container.textContent).toMatch(/as of 2026-08-20/);
   });
 });
