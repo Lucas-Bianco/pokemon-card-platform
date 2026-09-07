@@ -124,6 +124,17 @@ export default function PortfolioView(_props: Props) {
     <section className="portfolio">
       {error && <p className="error">{error}</p>}
 
+      {/* Orient a new user — the shell header already says "Vault", so a one-line
+          intro beats a redundant heading. Names the three things the Vault holds
+          (value, holdings, analytics) and the tools loop (export/import/log a
+          sale) so the dense layout below is scannable. Only when there are
+          holdings; the empty state below already orients. */}
+      {hasHoldings && (
+        <p className="muted small vault-intro">
+          Your collection's value, holdings, and analytics. Scan a card to add it; export, import, or log a sale from the tools below.
+        </p>
+      )}
+
       {hasHoldings && summary && (
         <motion.div
           className="valuation"

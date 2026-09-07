@@ -525,6 +525,7 @@ h1 { font-size: 1.25rem; margin: 4px 0 16px; }
 
 /* Portfolio view — supersedes .collection. Reuses .valuation/.muted/.up/.down/.unknown. */
 .portfolio .valuation { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }
+.portfolio .vault-intro { margin: 0 0 10px; line-height: 1.4; }
 .allocation, .movers { margin-top: 14px; }
 .allocation h3, .movers h3 { font-size: 0.9rem; margin: 0 0 6px; color: var(--fg-dim); }
 .allocation ul, .movers ul { list-style: none; margin: 0; padding: 0; }

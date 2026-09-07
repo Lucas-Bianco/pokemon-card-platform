@@ -384,6 +384,39 @@ describe("PortfolioView", () => {
     expect(text).not.toMatch(/cost basis/i);
   });
 
+  // The shell header already reads "Vault", so the surface orients with a
+  // one-line intro instead of a redundant heading — naming value/holdings/
+  // analytics and the tools loop so the dense layout is scannable. Shown only
+  // when there are holdings; the empty state above already orients.
+  it("shows a one-line intro orienting the Vault when there are holdings", async () => {
+    stubFetch(
+      portfolio({
+        summary: {
+          market_value: 100.0,
+          cost_basis: 80.0,
+          unrealized: 20.0,
+          unpriced_items: 0,
+          priced_items: 1,
+          allocation: [],
+          top_gainers: [],
+          top_losers: [],
+        },
+        items: [unpricedItem()],
+      }),
+    );
+
+    const { container } = render(<PortfolioView />);
+
+    await waitFor(() => {
+      expect(container.querySelector(".valuation")).not.toBeNull();
+    });
+    const intro = container.querySelector(".vault-intro");
+    expect(intro).not.toBeNull();
+    const text = intro?.textContent ?? "";
+    expect(text).toMatch(/analytics/i);
+    expect(text).toMatch(/export|log a sale/i);
+  });
+
   // The flip side: a GENUINE zero must still be reported. Holdings that are
   // all unpriced really are worth $0.00 so far, and the caveat says why.
   // Suppressing that would be its own dishonesty.
