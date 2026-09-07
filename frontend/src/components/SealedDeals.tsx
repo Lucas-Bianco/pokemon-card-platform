@@ -159,6 +159,25 @@ function SealedDealsBody({ data }: { data: SealedDealsResponse }) {
         )}
       </div>
 
+      {/* Jargon legend — "sealed", "flip edge", "sold comps" are terms a new
+          user won't know. A collapsible legend (default closed) defines each in
+          plain English. Reuses .deals-legend so it matches the Deals tab. */}
+      <details className="deals-legend">
+        <summary>What's a flip edge?</summary>
+        <dl>
+          <dt>Sealed product</dt>
+          <dd>A factory-sealed booster box, ETB, collection box, or pack — not a single card.</dd>
+          <dt>Sold comps</dt>
+          <dd>Actual completed eBay sales (proven transactions), not listed asking prices.</dd>
+          <dt>Sealed market</dt>
+          <dd>The median of recent sold comps for this product — the going sold price.</dd>
+          <dt>Flip edge</dt>
+          <dd>How far below the sold-comp median the listing is — your gross margin before selling fees.</dd>
+          <dt>FLIP</dt>
+          <dd>The listing is priced below the recent sold-comp median, so buying and reselling could profit.</dd>
+        </dl>
+      </details>
+
       <motion.ul
         className="deal-list"
         variants={staggerContainer}

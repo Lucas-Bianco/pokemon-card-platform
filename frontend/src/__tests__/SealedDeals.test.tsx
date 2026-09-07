@@ -114,6 +114,30 @@ describe("SealedDeals", () => {
     expect(container.querySelector(".deal-chip.flip")).not.toBeNull();
   });
 
+  it("shows a collapsible jargon legend defining sealed/flip-edge/sold-comps terms", async () => {
+    stubFetch(baseResponse({ deals: [baseDeal()] }));
+
+    const { container } = render(<SealedDeals />);
+    fireEvent.change(container.querySelector('input[type="search"]') as HTMLInputElement, {
+      target: { value: "scarlet violet booster box" },
+    });
+    fireEvent.click(container.querySelector('button[type="submit"]') as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(container.querySelector(".deal-card")).not.toBeNull();
+    });
+
+    const legend = container.querySelector(".deals-legend") as HTMLDetailsElement;
+    expect(legend).not.toBeNull();
+    expect(legend.open).toBe(false);
+    expect(legend.querySelector("summary")?.textContent ?? "").toMatch(/flip edge/i);
+
+    const text = legend.textContent ?? "";
+    expect(text).toMatch(/completed eBay sales/i);
+    expect(text).toMatch(/sold-comp median/i);
+    expect(text).toMatch(/booster box/i);
+  });
+
   it("shows an honest 'set a key' empty state when listings_unavailable", async () => {
     stubFetch(
       baseResponse({

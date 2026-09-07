@@ -239,7 +239,11 @@ function DealsBody({
   // dressed as "no deals right now": a missing key and a queried-but-empty
   // source carry different honest copy.
   if (data.listings_unavailable) {
-    return <p className="muted">Set a listings source key (eBay) to find deals.</p>;
+    return (
+      <p className="muted">
+        Set a listings source key (eBay API credentials) to find deals.
+      </p>
+    );
   }
   if (data.listings_empty) {
     return <p className="muted">No active listings for this card right now.</p>;
@@ -270,6 +274,28 @@ function DealsBody({
           </label>
         )}
       </div>
+
+      {/* Jargon legend — "RIP" / "FLIP" / "Rip edge" / "PSA 10 comp" are
+          collector-arbitrage terms a new user won't know. A collapsible legend
+          (default closed so it never clutters the ranked feed) defines each in
+          plain English. Purely additive; the deal cards below are unchanged. */}
+      <details className="deals-legend">
+        <summary>What's a RIP or FLIP?</summary>
+        <dl>
+          <dt>Raw market</dt>
+          <dd>The ungraded card's current market price.</dd>
+          <dt>RIP</dt>
+          <dd>The listing is priced below the raw market — buy it and resell at market.</dd>
+          <dt>Rip edge</dt>
+          <dd>How far below market the listing is (market price minus listing price).</dd>
+          <dt>PSA 10 comp / PSA 9 comp</dt>
+          <dd>The market price of a professionally graded copy at that grade.</dd>
+          <dt>FLIP</dt>
+          <dd>The listing is cheap enough that grading it and selling the graded copy would profit after the grading fee.</dd>
+          <dt>Flip to 10 / Flip to 9</dt>
+          <dd>Estimated profit if you grade the card to PSA 10 / PSA 9 and sell, after the grading fee.</dd>
+        </dl>
+      </details>
 
       <motion.ul
         className="deal-list"

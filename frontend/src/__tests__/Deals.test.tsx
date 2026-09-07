@@ -270,4 +270,26 @@ describe("Deals", () => {
     expect(container.textContent ?? "").toMatch(/0 deals/i);
     expect(container.querySelector(".deals-filter")).toBeNull();
   });
+
+  it("shows a collapsible jargon legend defining RIP/FLIP/comp terms", async () => {
+    stubFetch({ feed: baseResponse({ deals: [baseDeal()] }) });
+
+    const { container } = render(<Deals />);
+    await waitFor(() => {
+      expect(container.querySelector(".deal-card")).not.toBeNull();
+    });
+
+    const legend = container.querySelector(".deals-legend") as HTMLDetailsElement;
+    expect(legend).not.toBeNull();
+    // Collapsed by default so it never clutters the ranked feed.
+    expect(legend.open).toBe(false);
+    expect(legend.querySelector("summary")?.textContent ?? "").toMatch(/RIP or FLIP/i);
+
+    // The plain-English definitions are present (inside the closed details, but
+    // still in the DOM) — the jargon a new collector won't know is explained.
+    const text = legend.textContent ?? "";
+    expect(text).toMatch(/below the raw market/i);
+    expect(text).toMatch(/graded copy/i);
+    expect(text).toMatch(/grading fee/i);
+  });
 });

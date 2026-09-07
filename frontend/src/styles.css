@@ -2127,6 +2127,22 @@ h1 { font-size: 1.25rem; margin: 4px 0 16px; }
   color: var(--fg); font-size: 0.85rem; cursor: pointer; user-select: none;
 }
 .deals-filter input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; }
+.deals-legend {
+  margin: var(--sp-1) 0 var(--sp-2);
+  background: var(--glass, rgba(255,255,255,0.03));
+  border: 1px solid var(--hairline, rgba(255,255,255,0.08));
+  border-radius: 10px;
+  padding: var(--sp-2) var(--sp-3);
+}
+.deals-legend > summary {
+  cursor: pointer; user-select: none; font-size: 0.85rem; color: var(--fg);
+  list-style: none;
+}
+.deals-legend > summary::-webkit-details-marker { display: none; }
+.deals-legend[open] > summary { margin-bottom: var(--sp-2); }
+.deals-legend dl { margin: 0; display: grid; gap: var(--sp-1); }
+.deals-legend dt { font-weight: 600; font-size: 0.82rem; color: var(--fg); }
+.deals-legend dd { margin: 0; font-size: 0.8rem; color: var(--fg); opacity: 0.85; line-height: 1.35; }
 .deal-card {
   display: flex;
   flex-direction: column;
