@@ -1912,6 +1912,14 @@ h1 { font-size: 1.25rem; margin: 4px 0 16px; }
 }
 .welcome-actions .primary { flex: 1; }
 .welcome-actions .link { padding: 6px 10px; }
+
+/* One-line first-scan hint beneath the camera (single mode, before the first
+   card is confirmed into the Vault). Retires once cardplatform_first_scan_done
+   is set, so it never nags a returning user. */
+.scan-first-hint {
+  margin: var(--sp-1) 0 0;
+  text-align: center;
+}
 .watchlist-rows {
   list-style: none;
   margin: 0;

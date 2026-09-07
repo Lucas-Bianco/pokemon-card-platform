@@ -5,7 +5,7 @@ import { useIsDesktop } from "../lib/useIsDesktop";
 import { useRoute } from "../lib/useRoute";
 import { KEY_TAB_VIEWS, type TabView } from "../lib/route";
 import type { AppMode } from "../lib/appMode";
-import { readWelcomeSeen, writeWelcomeSeen } from "../lib/welcome";
+import { readWelcomeSeen, writeWelcomeSeen, readFirstScanDone, writeFirstScanDone } from "../lib/welcome";
 import { getUnreadCount } from "../api/client";
 import type { RecognizeResponse } from "../api/types";
 import AlertsFeed from "./AlertsFeed";
@@ -145,6 +145,10 @@ export default function AppShell({ scan, appMode, onAppModeChange }: Props) {
   // honours the dismissed flag; the overlay is shown only on the Scan landing,
   // never over a card/set detail or another tab.
   const [welcomeOpen, setWelcomeOpen] = useState(() => !readWelcomeSeen());
+  // First-scan gate: retires the CameraCapture hint and gates the one-time
+  // "Added to your Vault" bridge toast to the very first confirm. Read once at
+  // mount so a reload respects a prior first scan.
+  const [firstScanDone, setFirstScanDone] = useState(() => readFirstScanDone());
 
   function openWatchSheet(card?: { cardId?: string; variant?: string }) {
     setWatchSheet({ open: true, cardId: card?.cardId, variant: card?.variant });
@@ -346,6 +350,13 @@ export default function AppShell({ scan, appMode, onAppModeChange }: Props) {
             <PageTransition id="scan">
               <ScanPane
                 scan={scan}
+                firstScanDone={firstScanDone}
+                onFirstScan={() => {
+                  if (firstScanDone) return;
+                  writeFirstScanDone();
+                  setFirstScanDone(true);
+                  toast("Added to your Vault — tap Vault to see it", "success");
+                }}
                 onViewCard={(cardId) => openCard({ cardId })}
                 onWatchCard={(card) => openWatchSheet(card)}
               />
@@ -534,10 +545,14 @@ function TabButton({
 // preselected to that card. Non-blocking: a small banner, never a modal.
 function ScanPane({
   scan,
+  firstScanDone,
+  onFirstScan,
   onViewCard,
   onWatchCard,
 }: {
   scan: ScanFlow;
+  firstScanDone: boolean;
+  onFirstScan: () => void;
   onViewCard: (cardId: string) => void;
   onWatchCard: (card: { cardId: string; variant?: string }) => void;
 }) {
@@ -596,6 +611,11 @@ function ScanPane({
       ) : (
         <>
           {!result && <CameraCapture onCapture={scan.onCapture} busy={busy} />}
+          {!result && !firstScanDone && (
+            <p className="muted small scan-first-hint">
+              Point at a card and tap to capture — we'll identify it and add it to your Vault.
+            </p>
+          )}
 
           {error && <p className="error">{error}</p>}
           {note && <p className="note">{note}</p>}
@@ -614,8 +634,14 @@ function ScanPane({
                 result={result}
                 variant={variant}
                 scanId={scanId}
-                onConfirm={scan.onConfirm}
-                onPick={scan.onPick}
+                onConfirm={(p) => {
+                  scan.onConfirm(p);
+                  onFirstScan();
+                }}
+                onPick={(c, p) => {
+                  scan.onPick(c, p);
+                  onFirstScan();
+                }}
                 onReject={scan.onReject}
                 onRescan={scan.onRescan}
               />

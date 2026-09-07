@@ -34,3 +34,27 @@ export function clearWelcomeSeen(): void {
     /* a disabled store can't have remembered the flag anyway. */
   }
 }
+
+// First-scan gate — separate from the welcome overlay. Set the first time a
+// user confirms a scan into their Vault, so two first-run affordances can retire
+// once the loop has actually been completed once:
+//   - the CameraCapture "point at a card" hint caption (shows until first add)
+//   - the one-time "Added to your Vault — tap Vault to see it" bridge toast
+// Both read this flag; the toast handler writes it. Same try/catch guard.
+export const FIRST_SCAN_DONE_KEY = "cardplatform_first_scan_done";
+
+export function readFirstScanDone(): boolean {
+  try {
+    return localStorage.getItem(FIRST_SCAN_DONE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function writeFirstScanDone(): void {
+  try {
+    localStorage.setItem(FIRST_SCAN_DONE_KEY, "1");
+  } catch {
+    /* localStorage unavailable or full — the in-memory state still retires the hint. */
+  }
+}
