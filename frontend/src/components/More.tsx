@@ -11,6 +11,8 @@ import {
 import type { Watch } from "../api/types";
 import type { AppMode } from "../lib/appMode";
 import { clearWelcomeSeen } from "../lib/welcome";
+import { useInstallPrompt } from "../lib/useInstallPrompt";
+import InstallCard from "./InstallCard";
 
 // Decode a VAPID public key from base64url to the Uint8Array the Push API
 // expects. The server stores the key base64url-encoded; an empty string means
@@ -57,6 +59,9 @@ export default function More({
   // flag at mount, so the re-show lands on the next app open — this state only
   // drives the one-line confirmation that the request was honoured.
   const [welcomeReset, setWelcomeReset] = useState(false);
+  // PWA install state — Chromium prompt capture, iOS instructions, or already
+  // installed. See lib/useInstallPrompt.ts for the branch logic.
+  const install = useInstallPrompt();
 
   // Reflect the browser's real state on mount. Without this the card reads
   // "Off" after every reload even while this device is still subscribed — and
@@ -212,6 +217,15 @@ export default function More({
           </button>
         </div>
       </div>
+
+      {/* Install the app as a standalone PWA. Chromium captures the prompt;
+          iOS gets honest Share-sheet instructions; already-installed hides it. */}
+      <InstallCard
+        canInstall={install.canInstall}
+        iosInstructions={install.iosInstructions}
+        installed={install.installed}
+        onInstall={install.promptInstall}
+      />
 
       {/* Re-show the first-run welcome overlay on the next app open. Low-risk:
           it only clears the dismissed flag; the overlay itself re-mounts on a
