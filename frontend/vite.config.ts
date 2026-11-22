@@ -29,6 +29,12 @@ export default defineConfig({
       },
     },
   },
+  preview: {
+    // The built app is reached from Lucas's phone through `tailscale serve`, which
+    // forwards the request with its *.ts.net host name. Vite refuses unknown host
+    // names, so allow the tailnet ones (only devices on his tailnet can reach them).
+    allowedHosts: [".ts.net"],
+  },
   test: {
     environment: "jsdom",
     globals: true,
