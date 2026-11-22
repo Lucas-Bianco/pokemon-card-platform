@@ -7,7 +7,7 @@
 > **Keep it current.** Update this file after any change that alters architecture, measured
 > results, or the roadmap. A stale onboarding doc is worse than none, because it is trusted.
 >
-> Last updated: **2026-08-22**
+> Last updated: **2026-11-22**
 
 ---
 
@@ -1666,3 +1666,7 @@ Sixth and final Phase B feature polish. The key-mode Deals tab (the card sniper)
 Reuses the existing `.deals-summary` / `.deals-filter` CSS (added in the Sealed commit) — no new CSS. The 7 existing `Deals.test.tsx` tests pass unchanged (default off → full feed renders); added **2 new tests** pinning the filter (toggling keeps the real deal and drops the context listing; the summary reads "2 listings · 1 deal"; a no-deals feed shows "0 deals" and no filter toggle). Full suite **399 frontend green**, tsc + build clean. 105-scan baseline untouched (frontend-only; no backend, no data/ writes).
 
 **Phase B complete** — all six Key-mode surfaces polished (Vault, Scan, Binder, Sets, Sealed, Deals), each its own tested+committed change. Remaining roadmap: #57 F (publishable-app overhaul) and #58 G (private repo + Pages relocation), both pending user decisions; future row 17 multi-TCG.
+
+## Phone access away from home over Tailscale (2026-11-22)
+
+The app is reachable from Lucas's own devices anywhere through **Tailscale Serve** on the desktop (tailnet only, not public; no Funnel). Layout: backend `uvicorn cardplatform.api:app --host 127.0.0.1 --port 8000` (localhost only), the built front end via `vite preview --host 127.0.0.1 --port 4173` (basic-ssl HTTPS; `preview.proxy` inherits the `/api` proxy from `server.proxy`), and `tailscale serve --bg https+insecure://127.0.0.1:4173` in front. Tailscale gives a real certificate, so the camera works without trusting the self-signed one. **Gotcha:** Vite refuses unknown Host headers, so `preview.allowedHosts: [".ts.net"]` is set in `vite.config.ts`; without it the Tailscale address gets a "Blocked request" page. Rebuild (`npm run build`) after front-end changes, since preview serves `dist/`. The PC must be on and both processes running.
