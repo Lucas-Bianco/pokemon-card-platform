@@ -25,16 +25,20 @@ if (-not (Test-Path (Join-Path $front "dist\index.html"))) {
     Pop-Location
 }
 
-$backend = $null
-$preview = $null
+function Test-Listening($port) {
+    [bool](Get-NetTCPConnection -LocalAddress 127.0.0.1 -LocalPort $port -State Listen -ErrorAction SilentlyContinue)
+}
+
+# Start a part only when nothing is listening on its port: the servers outlive this script, so a
+# restarted script (the task re-runs every few minutes) must not start a second copy.
 while ($true) {
-    if ($null -eq $backend -or $backend.HasExited) {
-        $backend = Start-Part "backend" (Join-Path $root "backend\.venv\Scripts\uvicorn.exe") `
-            @("cardplatform.api:app", "--host", "127.0.0.1", "--port", "8000") $root
+    if (-not (Test-Listening 8000)) {
+        Start-Part "backend" (Join-Path $root "backend\.venv\Scripts\uvicorn.exe") `
+            @("cardplatform.api:app", "--host", "127.0.0.1", "--port", "8000") $root | Out-Null
     }
-    if ($null -eq $preview -or $preview.HasExited) {
-        $preview = Start-Part "preview" (Join-Path $env:SystemRoot "System32\cmd.exe") `
-            @("/c", "npx.cmd", "vite", "preview", "--host", "127.0.0.1", "--port", "4173", "--strictPort") $front
+    if (-not (Test-Listening 4173)) {
+        Start-Part "preview" (Join-Path $env:SystemRoot "System32\cmd.exe") `
+            @("/c", "npx.cmd", "vite", "preview", "--host", "127.0.0.1", "--port", "4173", "--strictPort") $front | Out-Null
     }
     Start-Sleep -Seconds 15
 }
